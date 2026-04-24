@@ -1,293 +1,189 @@
 ---
 name: project-bootstrap
-description: Operating rules for AI-driven project setup, architecture, implementation, testing, and debugging. Use this at the start of a project to guide design discussions and implementation work.
+description: AI駆動開発のためのコーディング作業フローガイドライン。新機能の追加、バグ修正、リファクタリング、調査、デバッグなど、プロジェクト内でコーディング作業を行うときは常にロードする。「理解 → 読解 → 計画 → 検証 → 小さく実装 → 実行 → 根本修正 → クローズ」の流れで作業を進めることで、後から高コストなデバッグを生む大規模な推測実装を避け、安全で検証可能な小さいステップで開発を進められるようにする。
 ---
 
-# Project Bootstrap Skill
+# AI駆動開発フロー
 
-Use this skill when starting or evolving a project with AI-driven development.
-This skill defines how to design, implement, validate, and debug the project without losing structural integrity.
+このスキルは、このプロジェクトにおけるコーディング作業の進め方を定義する。
+プロジェクト立ち上げ時だけでなく、**機能追加・バグ修正・リファクタ・調査など、あらゆる作業**に適用する。
 
-## Intent
-This repository should be developed through small, explicit, testable changes.
-The goal is not to generate code quickly.
-The goal is to produce code that is structurally correct, easy to reason about, and safe to extend.
+目的は **フロー** を作ること。
+小さく検証可能なステップを積み重ねることで、コードベースが理解可能な状態を保ち、デバッグコストを低く保つ。
+形式的なチェックリストとしてではなく、自然に沿って動くこと。
 
-## Core Principles
-- Prefer **KISS** over premature flexibility.
-- Use **Clean Architecture**.
-- Respect **SOLID**, but do not over-abstract.
-- Prefer **root-cause fixes** over symptom-hiding patches.
-- Prefer **fail fast** over silent fallback.
-- Treat **tests as executable contracts**.
-- Keep AI work **small, explicit, and verifiable**.
+## 基本姿勢
 
-## Development Flow
-Always work in this order.
+- **書く前に理解する。** まずコードを読む。
+- **信じる前に検証する。** API・ファイル・型が想定通り存在するかを確認する。
+- **大きくやる前に小さくやる。** 1 変更 = 1 責務。
+- **完了を主張する前に実行する。** ビルド通過 ≠ 動作している。
+- **症状より先に根本原因。** バグを小手先で回避しない。
+- **フォールバックより先に Fail fast。** 防御的コードで問題を隠さない。
+- **新パターンより先に既存パターン。** 明示的に変更する場合を除き、コードベースに合わせる。
 
-### 1. Clarify the project
-Define:
-- what to build
-- what not to build
-- success conditions
-- constraints
-- external dependencies
+## 開発フロー
 
-Do not start implementation while these are unclear.
+### 1. タスクを理解する
 
-### 2. Clarify requirements
-Define:
-- user requirement
-- system requirement
-- inputs
-- outputs
-- failure conditions
-- boundaries with external systems
+コードに触れる前に:
 
-### 3. Design before implementation
-Define:
-- main use cases
-- responsibilities
-- interfaces / DTOs / contracts
-- dependency direction
-- directory placement
-- initial test targets
+- 依頼内容を 1 文で言い換える。
+- スコープ**外**を明示する。
+- 成功条件を明示する。
+- 不明点があれば質問する、または仮定を明示する。
 
-If this cannot be described clearly, do not implement yet.
+これができないなら、止まって確認する。
 
-### 4. Define test viewpoints
-Before implementation, list at least:
-- normal cases
-- error cases
-- boundary cases
-- state transitions
+### 2. 既存コンテキストを読む
 
-If test viewpoints cannot be described, the responsibility or contract is still unclear.
+新しいコードを書く前に、次を読む:
 
-### 5. Implement in small units
-- 1 change = 1 responsibility
-- do not ask AI for large multi-responsibility implementation
-- keep contracts stable unless explicitly changing them
-- validate after each small change
+- これから編集するファイル。
+- そのファイルを呼び出している / 呼び出されているファイル。
+- 関連するテスト。
+- 作業対象エリアのディレクトリ構成。
 
-### 6. Validate
-After each change, confirm:
-- import / build / run passes
-- relevant tests pass
-- contract is preserved
-- no speculative code or unnecessary fallback was added
+読んでいないコードを推測で扱わない。
 
-### 7. Fix properly
-For bugs:
-1. identify the symptom
-2. locate the responsible layer
-3. clarify reproduction condition
-4. add or define a regression test
-5. apply a root-cause fix
-6. rerun tests
+### 3. 最小ステップを計画する
 
-## Architecture Rules
-- Separate business logic from IO.
-- Keep dependency direction **outside -> inside** only.
-- Inner layers must not know outer implementation details.
-- Depend on abstractions, not concrete infrastructure.
-- Use constructor injection / DI where appropriate.
+タスクを、次の条件を満たす変更単位に分解する:
 
-### Layer Responsibilities
-- `domain`: entities, value objects, domain rules, domain services
-- `application`: use cases, DTOs, ports, application services
-- `interface`: controllers, presenters, cli/batch entry points, request/response mapping
-- `infrastructure`: DB, API, files, logs, config, framework-specific code
-- `composition`: dependency wiring / composition root
+- 責務が 1 つ。
+- 入力 → 出力の契約が明確。
+- 失敗時の挙動が明確。
+- 動作を検証する手段がある。
 
-### Forbidden
-- Do not put framework or DB details in `domain`.
-- Do not make `application` depend directly on infrastructure concrete classes.
-- Do not mix transformation, decision, persistence, and presentation in one class.
-- Do not add architecture "just in case".
+これらの形で記述できないなら、設計がまだ不明確。実装前に整える。
+自明でないタスクでは、実装前にユーザーに計画を共有する。
 
-## Directory Structure Policy
-Use **layer-first + feature/bounded-context substructure**.
+### 4. 前提を検証する
 
-### Recommended Structure
-```text
-project-root/
-  skills/
-    project-bootstrap/
-      SKILL.md
+外部に依存する行を書く前に、存在を確認する:
 
-  docs/
-  src/
-    domain/
-      <context>/
-    application/
-      <context>/
-    interface/
-      http/
-      cli/
-      batch/
-    infrastructure/
-      persistence/
-      external/
-      filesystem/
-      logging/
-      config/
-    composition/
-  tests/
-    unit/
-    integration/
-    e2e/
-  scripts/
-  tools/
-  data/
-  tmp/
-```
+- **外部ライブラリ呼び出し** → 推測ではなく実際のシグネチャを確認する。
+- **他ファイルからの import** → そのファイルを開き、シンボルが存在するか確認する。
+- **型の形** → 型定義を読む。フィールドを捏造しない。
+- **設定 / 環境変数** → 設定済みか確認するか、意図的に追加する。
 
-### Directory Rules
-- Top level should be organized by **layer**.
-- Inside each layer, organize by **bounded context / feature** if needed.
-- File placement is determined by **responsibility**, not convenience.
-- If unsure, decide the layer first, then the folder.
-- Do not use a mixed "everything for one feature in one folder" structure unless there is a strong reason.
+幻覚（ハルシネーション）による呼び出しは AI バグの最大の発生源。
+このステップは数秒で済むが、数時間のデバッグを防ぐ。
 
-## Test Policy
-### Principles
-- Tests are part of the specification.
-- "It runs" is not enough.
-- A bug fix is not complete without a regression test when practical.
-- In AI-driven development, tests are the main defense against plausible-but-wrong code.
+### 5. 小さく実装する
 
-### Priority
-1. unit tests
-2. integration tests
-3. e2e tests
+- 1 変更 = 1 責務。
+- タスクの主旨でない限り、既存のコードスタイル・構造に合わせる。
+- 将来の仮想ニーズのためのオプション・分岐・抽象を追加しない。
+- 「動かすため」の try/except やフォールバックを追加しない。大声で失敗させる。
+- タスクが契約変更でない限り、公開契約は維持する。
 
-### Test-first targets
-Prefer testing these first:
-- validation
-- transformation
-- branching logic
-- state judgment
-- external IO boundaries
-- code AI tends to break repeatedly
+1 つの変更が複数責務に膨らみ始めたら、止めて分割する。
 
-### Minimum viewpoints
-For each non-trivial change, consider:
-- normal case
-- error case
-- boundary case
-- state transition
+### 6. 実行する
 
-### Forbidden
-- large implementation with no validation strategy
-- fixing bugs only by manual debugging
-- brittle tests tied too closely to implementation details
-- treating "passed once" as sufficient evidence
+ビルドが通ることは完了ではない。型チェックが通ることも完了ではない。
+意味のある変更ごとに、以下のいずれかを行う:
 
-## AI Working Rules
-AI is allowed to:
-- propose small implementations
-- suggest design refinements
-- list test viewpoints
-- draft test code
-- summarize or inspect existing structure
+- 該当範囲をカバーするユニットテストを走らせる。
+- その変更を使う統合フローを走らせる。
+- コマンド実行 / エンドポイントへのリクエスト / ページを開く等、実際の挙動を確認する。
 
-AI must not:
-- invent APIs, classes, files, or behavior without confirming they exist
-- perform unrelated refactors
-- add speculative options, branches, or future-proofing
-- hide problems with fallback logic
-- treat untested code as complete
-- change architecture style without instruction
+環境が実行できない場合は、その旨を明示する。動作したと主張しない。
 
-### Required input when asking AI to implement
-Always specify:
-- purpose
-- target responsibility
-- input/output contract
-- allowed dependencies
-- forbidden dependencies
-- constraints
-- test viewpoints
-- completion criteria
+### 7. バグは根本を修正する
 
-## Implementation Rules
-- One function or method should do one thing.
-- Keep nesting shallow.
-- Avoid unnecessary patterns.
-- Prefer readability over cleverness.
-- Do not rely on comments to explain unclear code; rewrite the code instead.
-- Keep public contracts explicit.
+バグが発生したら:
 
-## Type Rules
-- Use type annotations on all functions.
-- Do not use bare `dict`, `list`, `tuple`, or `set`; specify element types.
-- Use `Any` only to explicitly signal dynamic data, not to escape type checking.
-- Create type aliases only when reused meaningfully.
+1. 再現を確実にする。
+2. 原因のある層 / 責務を特定する。
+3. 実用的な範囲で回帰テストを追加する。
+4. 症状ではなく原因を修正する。
+5. テストと広めのスイートを再実行する。
 
-## Fail-fast Rules
-- Do not add fallback just to "keep it working".
-- Do not swallow unexpected errors.
-- Raise problems early when assumptions are violated.
-- Catch side-effect failures only when the main process should continue safely.
-- Do not replace proper validation with runtime patching.
+症状対応の兆候: 壊れた状態を隠すための sort / filter / retry / fallback の追加、
+エラーを握り潰す catch、共通コードを触らないための処理の複製。
+これらをしている自分に気づいたら、修正すべき場所はおそらく別にある。
 
-## Root-cause Rules
-- Fix causes, not symptoms.
-- Before adding sort, filter, fallback, or retry, verify whether the source or responsibility is wrong.
-- Do not pile conditions onto unclear structure.
-- If a temporary workaround is unavoidable, label it clearly as temporary.
+### 8. 変更をクローズする
 
-## Pre-implementation Checklist
-Before implementing, confirm:
-- purpose is clear
-- scope is clear
-- responsibility is singular
-- layer is clear
-- input/output is explicit
-- failure conditions are explicit
-- directory placement is clear
-- dependency direction is clear
-- test viewpoints are listed
-- completion criteria are clear
+完了を報告する前に:
 
-If any of these are unclear, stop and design first.
+- スコープが依頼と一致している。おまけのリファクタや機能がない。
+- 投機的コード・未使用パラメータ・不要な分岐がない。
+- テストまたは手動検証が存在し、パスしている。
+- アーキテクチャと依存方向が保たれている。
+- バグ修正の場合、実用的な範囲で回帰テストが存在する。
 
-## Post-implementation Checklist
-After implementing, confirm:
-- import / build / run passes
-- type signatures match responsibility
-- no unnecessary branch, fallback, or speculative code was added
-- request scope was respected
-- relevant tests exist
-- relevant tests pass
-- regression test was added for bug fixes when practical
-- architecture and dependency direction remain intact
+## コードルール
 
-## Definition of Done
-A change is done only when:
-- purpose is clear
-- responsibility is clear
-- contract is clear
-- layer placement is correct
-- dependency direction is preserved
-- relevant validation or test exists
-- relevant tests pass
-- no obvious symptom-hiding patch was introduced
-- no speculative AI-generated change was left in place
+### 一般
 
-## Decision Heuristics
-When unsure, decide in this order:
-1. Is this really necessary?
-2. Is the responsibility singular?
-3. Which layer owns it?
-4. Can it be simpler?
-5. Can it be tested?
-6. Can AI do it in a smaller unit?
+- 1 関数 = 1 つの仕事。巧妙な名前より明瞭な短い名前。
+- 浅いネスト、早期 return。
+- 型注釈をサポートする言語では、公開関数に型注釈を付ける。
+- 不明瞭なコードをコメントで補わず、コード自体を書き直す。
+- デッドコード・コメントアウトされたブロック・担当者不明の TODO を残さない。
 
-### Final defaults
-- When in doubt, choose **KISS**.
-- When unclear, go back to **design**.
-- When fragile, define **tests first**.
-- When patch-like, search for the **root cause**.
-- When AI wants to do too much, **split the responsibility further**.
+### Fail-fast
+
+- 「動かし続けるため」だけのフォールバックを追加しない。
+- 想定外のエラーを握り潰さない。
+- 前提が崩れた時点で早く例外を上げる。
+- 主処理を安全に継続させる必要がある場合のみ、副作用系の失敗を catch する。
+
+### Root-cause
+
+- sort / filter / fallback / retry を追加する前に、発生源が間違っていないかを疑う。
+- やむを得ず回避策を入れるときは、一時的である旨と理由を明記する。
+
+## アーキテクチャ指針
+
+アーキテクチャはプロジェクトの複雑さに合わせる。
+正当化されない場所に層構造を強制しない。
+
+- **スクリプト・単目的ツール・小規模プロジェクト**: フラット構成で良い。
+- **UI / ロジック / IO が混ざる中規模以上のアプリ**: ビジネスロジックを IO 境界から分離する。内側のロジックから外側のフレームワークを import しない。
+- **複数コンテキストを持つ複雑なドメイン**: レイヤー主軸の構成（`domain` / `application` / `interface` / `infrastructure` / `composition`）を検討し、中で bounded context に分割する。
+
+規模によらず適用する原則:
+
+- ビジネスロジックはフレームワークや DB の詳細に依存しない。
+- モジュール境界では抽象に依存する。具体的なインフラに直接依存しない。
+- 1 つのユニットに変換・判断・永続化・表示を混ぜない。
+- 「念のため」の層を追加しない。
+
+## テスト方針
+
+- テストはカバレッジ数値を稼ぐためではなく、挙動を検証可能にするために存在する。
+- ロジックはユニットテスト、IO 境界は統合テスト、ユーザーフローは e2e を優先する。
+- AI が間違えやすいものから先にテストする: バリデーション、変換、分岐、状態遷移、境界条件、IO アダプタ。
+- バグ修正は、実用的な範囲で回帰テストを書かない限り未完了。
+- 内部実装ではなく挙動をテストする。実装に密着した壊れやすいテストは、テストがない状態より悪い。
+
+## AI 作業ルール
+
+AI がやってよいこと:
+- 小さな実装の提案。
+- 設計の改善提案。
+- テストおよびテスト観点のドラフト。
+- 既存構造の要約・調査。
+
+AI がやってはいけないこと:
+- 存在確認していない API・クラス・ファイル・挙動を捏造する。
+- タスクと無関係なリファクタを行う。
+- 投機的なオプション・分岐・将来対応を追加する。
+- フォールバックや広すぎる例外 catch で問題を隠す。
+- 未検証のコードを完了扱いする。
+- 指示なしにアーキテクチャ方針を変更する。
+
+AI に実装を依頼するときは以下を明示する:
+**目的 / 責務 / 入出力 / 許可する依存 / テスト観点 / 完了条件**
+
+## 迷ったとき
+
+1. タスクを 1 文で述べられるか? ないなら、明確化する。
+2. 責務は 1 つか? ないなら、分割する。
+3. 結果を検証できるか? できないなら、検証手段を先に定義する。
+4. これは根本原因の修正か? ないなら、もう一段深掘る。
+5. 既存パターンに合わせているか? 外れているなら、理由があるはず。
