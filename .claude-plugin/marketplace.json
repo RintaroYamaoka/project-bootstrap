@@ -1,0 +1,34 @@
+{
+  "name": "rintaro-bootstrap",
+  "owner": {
+    "name": "Rintaro Yamaoka"
+  },
+  "metadata": {
+    "description": "Rintaro Yamaoka の Claude Code プラグイン marketplace。AI 駆動開発のためのプラグインを配布する。",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "project-bootstrap",
+      "source": {
+        "source": "github",
+        "repo": "RintaroYamaoka/project-bootstrap"
+      },
+      "description": "AI 駆動開発の憲法 (SOLID / KISS / YAGNI などの古典原則) と TDD 中心の作業フロー、AI 協働ルール (Subagent 分離・前提検証・Plan-Execute 二段構え) を束ねた Claude Code プラグイン。",
+      "version": "0.1.0",
+      "homepage": "https://github.com/RintaroYamaoka/project-bootstrap",
+      "repository": "https://github.com/RintaroYamaoka/project-bootstrap",
+      "license": "MIT",
+      "keywords": [
+        "ai-driven-development",
+        "tdd",
+        "clean-architecture",
+        "constitution",
+        "solid",
+        "kiss",
+        "yagni"
+      ],
+      "category": "development-workflow"
+    }
+  ]
+}

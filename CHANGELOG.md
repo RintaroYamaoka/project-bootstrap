@@ -14,6 +14,14 @@
 - `agents/implementer.md` — TDD Green フェーズを担うサブエージェント。failing テストを通す最小の実装だけを書く。テストファイルは編集しない。広めのテストスイートで regression がないことまで確認する。
 - `agents/refactorer.md` — TDD Refactor フェーズを担うサブエージェント。テストが pass し続ける範囲で構造改善する。テストは変更しない。
 - `commands/red.md`, `commands/green.md`, `commands/refactor.md` — `/red` / `/green` / `/refactor` slash command。それぞれ対応するサブエージェントを起動する thin wrapper。
+- `.claude-plugin/marketplace.json` — このリポジトリを自己ホスティング marketplace 化する catalog。`rintaro-bootstrap` marketplace として `project-bootstrap` プラグインを listing する (github source は自リポジトリを指す)。
+- `LICENSE` — MIT License。
+- `plugin.json` に `homepage` / `repository` / `license` フィールドを追加。
+
+### Changed
+
+- README の install 手順を更新: `claude --plugin-dir` だけでなく `/plugin marketplace add` 経由の install を案内。
+- README のライセンス節を「未定」から「MIT」に確定。
 
 ## [0.1.0] - 2026-04-25
 

@@ -5,6 +5,9 @@
   "author": {
     "name": "Rintaro Yamaoka"
   },
+  "homepage": "https://github.com/RintaroYamaoka/project-bootstrap",
+  "repository": "https://github.com/RintaroYamaoka/project-bootstrap",
+  "license": "MIT",
   "keywords": [
     "ai-driven-development",
     "tdd",
