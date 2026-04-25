@@ -1,0 +1,43 @@
+{
+  "_comment": "これはテンプレート。各プロジェクトの実情に合わせてコピー＆編集すること。詳細は hooks/README.md を参照。",
+
+  "hooks": {
+    "PreToolUse": [
+      {
+        "_comment_1": "git commit 前にテストを走らせ、fail ならコミットを中断する。test_command を実プロジェクト用に書き換えること。",
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.command' | grep -qE '^git commit\\b' && (npm test || (echo 'Tests failed - blocking commit' >&2; exit 2)) || exit 0"
+          }
+        ]
+      }
+    ],
+
+    "PostToolUse": [
+      {
+        "_comment_2": "実装ファイル (src/) が編集されたとき、テストファイル (tests/) が同セッションで触られていなければ警告。パターンを実プロジェクト用に書き換えること。",
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // .tool_input.path // empty' | grep -qE '^src/' && echo 'Reminder: implementation edited - confirm a corresponding test was added/updated this session.' || exit 0"
+          }
+        ]
+      }
+    ],
+
+    "SessionStart": [
+      {
+        "_comment_3": "セッション開始時に project-bootstrap が有効であることを reminder。noisy なら削除可。",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo 'project-bootstrap loaded. Use /plan before non-trivial work; follow Red -> Green -> Refactor.'"
+          }
+        ]
+      }
+    ]
+  }
+}
