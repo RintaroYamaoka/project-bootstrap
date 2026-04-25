@@ -68,6 +68,7 @@ project-bootstrap/
 │   └── CLAUDE.md
 ├── README.md
 ├── CHANGELOG.md
+├── MAINTENANCE.md
 └── LICENSE
 ```
 
@@ -133,12 +134,12 @@ cp /path/to/project-bootstrap/templates/CLAUDE.md /path/to/your-new-project/CLAU
 | 4 | プラグイン marketplace 配布 | 完了 |
 | 5 | Hooks による規律の機械的強制 (テンプレート提供) | 完了 |
 | 6 | TDD セッションログのサンプル (`examples/` の format & guide) | 完了 |
-| 7 | 進化機構 (定期レビューと更新の運用) | 次 |
+| 7 | 進化機構 (定期レビューと更新の運用) | 完了 |
 
-## バージョン
+## バージョン / 保守
 
 セマンティックバージョニング ([SemVer](https://semver.org/)) に従う。
-変更履歴は [CHANGELOG.md](./CHANGELOG.md) を参照。
+変更履歴は [CHANGELOG.md](./CHANGELOG.md)、リリース手順 / 定期レビュー / 新プリミティブ追加の判断基準は [MAINTENANCE.md](./MAINTENANCE.md) を参照。
 
 ## ライセンス
 
