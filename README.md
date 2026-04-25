@@ -61,14 +61,15 @@ project-bootstrap/
 ├── hooks/
 │   ├── README.md                    # hook テンプレートの運用ガイド
 │   └── hooks.example.json           # コピー & 適応用テンプレート
+├── examples/
+│   ├── README.md                    # TDD セッションログの運用ガイド
+│   └── TEMPLATE.md                  # セッションログ雛形
 ├── templates/
 │   └── CLAUDE.md
 ├── README.md
 ├── CHANGELOG.md
 └── LICENSE
 ```
-
-Phase が進むと `examples/` が追加される。
 
 ## 使い方
 
@@ -131,8 +132,8 @@ cp /path/to/project-bootstrap/templates/CLAUDE.md /path/to/your-new-project/CLAU
 | 3 | TDD subagent 群 + slash command 群 (`test-writer` / `implementer` / `refactorer` / `/red` / `/green` / `/refactor`) | 完了 |
 | 4 | プラグイン marketplace 配布 | 完了 |
 | 5 | Hooks による規律の機械的強制 (テンプレート提供) | 完了 |
-| 6 | TDD セッションログのサンプル (`examples/`) | 次 |
-| 7 | 進化機構 (定期レビューと更新の運用) | 計画中 |
+| 6 | TDD セッションログのサンプル (`examples/` の format & guide) | 完了 |
+| 7 | 進化機構 (定期レビューと更新の運用) | 次 |
 
 ## バージョン
 
