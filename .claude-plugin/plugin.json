@@ -1,6 +1,6 @@
 {
   "name": "project-bootstrap",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "AI 駆動開発の憲法と作業フローを束ねる Claude Code プラグイン。SOLID / KISS / YAGNI などの古典原則を憲法層に置き、TDD の Red-Green-Refactor を軸とする作業フロー、Anthropic / Cursor の実運用に倣った AI 協働ルール (Subagent 分離・明示的 TDD プロンプティング・前提検証) の三層構成で提供する。",
   "author": {
     "name": "Rintaro Yamaoka"
