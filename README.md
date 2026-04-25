@@ -84,8 +84,8 @@ project-bootstrap/
 # marketplace を追加
 /plugin marketplace add RintaroYamaoka/project-bootstrap
 
-# プラグインを install (rintaro-bootstrap = marketplace 名)
-/plugin install project-bootstrap@rintaro-bootstrap
+# プラグインを install (rintaro-yamaoka = marketplace 名)
+/plugin install project-bootstrap@rintaro-yamaoka
 ```
 
 検証用に都度ロードするだけなら:
