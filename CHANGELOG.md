@@ -7,6 +7,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- `skills/plan/SKILL.md` — `/plan` skill (探索 → 計画 → 提示)。自明でないタスクの開始時に呼び出し、`Read` / `Grep` / `Glob` のみで探索し、構造化された計画書を出力する。`Edit` / `Write` は禁止。ユーザー承認後に TDD フロー (Red → Green → Refactor) へ移行する。
+
 ## [0.1.0] - 2026-04-25
 
 ### Added
