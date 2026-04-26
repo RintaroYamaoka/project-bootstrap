@@ -7,6 +7,13 @@
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-04-26
+
+### Added
+
+- `skills/project-bootstrap/SKILL.md` の Part 1 (憲法) に「**環境隔離 — プロジェクト単位で依存を閉じ込める**」原則を追加。グローバルにライブラリをインストールしないこと、CLI ツールは `uv tool install` / `pipx` / `cargo install` 等の isolated tool installer 経由で入れること、`.venv` / `node_modules` 等は必ず `.gitignore` で除外することを規定。Python / Node / Rust / Go / Ruby の言語別具体策を表で添付。
+- `templates/CLAUDE.md` のガイドライン要点リストに環境隔離原則の bullet を 1 行追加。
+
 ## [0.2.0] - 2026-04-26
 
 ### Added

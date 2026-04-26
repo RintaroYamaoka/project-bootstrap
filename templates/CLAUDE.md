@@ -23,6 +23,7 @@
 - **Code is Truth** — 振る舞い仕様はテストで表現する。中間ドキュメント仕様を持たない
 - **TDD 中心** — Red → Green → Refactor を作業の軸にする
 - **古典原則** — SOLID / KISS / YAGNI / DRY (Rule of Three) / Fail-fast / Root-cause
+- **環境隔離** — プロジェクトの import 依存はグローバルに置かず、`.venv` / `node_modules` / `Cargo.toml` 等で隔離する
 - **AI 協働ルール** — 実装より先にテスト / 前提検証を強制 / Subagent でフェーズ分離 / Plan → Execute の二段構え
 
 詳細は `project-bootstrap` プラグインの SKILL.md を参照する。
