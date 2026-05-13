@@ -14,19 +14,17 @@
         "source": "url",
         "url": "https://github.com/RintaroYamaoka/project-bootstrap.git"
       },
-      "description": "AI 駆動開発の憲法 (SOLID / KISS / YAGNI などの古典原則) と TDD 中心の作業フロー、AI 協働ルール (Subagent 分離・前提検証・Plan-Execute 二段構え) を束ねた Claude Code プラグイン。",
-      "version": "0.3.0",
+      "description": "AI 駆動開発の規律を hook で deterministic に強制する Claude Code プラグイン。ルール = AI の default 挙動 + hook 強制。Anthropic 公式 best practice (verification 最高レバレッジ / hooks deterministic / CLAUDE.md prune) 整合。実装ファイル編集前に対応 test の存在を blocking で要求、git commit 前に test 実行で blocking。",
+      "version": "0.4.0",
       "homepage": "https://github.com/RintaroYamaoka/project-bootstrap",
       "repository": "https://github.com/RintaroYamaoka/project-bootstrap",
       "license": "MIT",
       "keywords": [
         "ai-driven-development",
         "tdd",
-        "clean-architecture",
-        "constitution",
-        "solid",
-        "kiss",
-        "yagni"
+        "hooks",
+        "verification",
+        "test-driven"
       ],
       "category": "development-workflow"
     }

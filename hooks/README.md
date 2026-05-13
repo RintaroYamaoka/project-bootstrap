@@ -1,80 +1,46 @@
 # hooks/
 
-このディレクトリは、`project-bootstrap` の原則を **機械的に強制するための hook テンプレート集**。
+`project-bootstrap` の規律を **deterministic に強制する hook 集**。`plugin.json` の `hooks` フィールド経由でデフォルト発火する (= ユーザーが叩かなくても常に動く)。
 
-## なぜテンプレート止まりか
+## 提供する hook
 
-hooks は **プロジェクト固有の値** (テスト実行コマンド、対象ディレクトリ、対象ファイル拡張子など) に強く依存する。1 つの汎用 hook を全プロジェクトに自動適用すると誤発火する。
+### A. PreToolUse on `Edit | Write | MultiEdit` — テスト先行強制
 
-そのため、このディレクトリは:
+実装ファイルを編集しようとした瞬間、対応 test ファイルが無ければ `exit 2` で **blocking**。これで「テスト書かずに実装」が default で構造的に不可能になる (Red phase 強制)。
 
-- **テンプレート** として提供される (`hooks.example.json`)
-- プラグインがインストールされても **自動発火しない** (`plugin.json` の `hooks` フィールドは未設定)
-- 各プロジェクトで適応・有効化する
+- 実装ファイル: `.ts/.tsx/.js/.jsx/.mjs/.cjs/.py/.go/.rs/.rb/.php/.java/.cs/.cpp/.c/.swift/.kt/.scala/.ex/.exs/.clj/.hs/.ml`
+- test ファイル自身 / markdown / config / settings は素通し
+- 対応 test の検出は慣例パターン (`foo.test.ts` / `foo.spec.ts` / `foo_test.go` / `test_foo.py` / `spec/foo_spec.rb` / `tests/` 配下 / `__tests__/` 配下) を順次探索
 
-## 有効化の方法
+スクリプト: [`require-test-companion.sh`](./require-test-companion.sh)
 
-3 通りある。
+### B. PreToolUse on `Bash` — failing test での commit を禁止
 
-### 方法 A: プロジェクトの `.claude/settings.json` に組み込む (推奨)
+`git commit` が呼ばれる直前にプロジェクト慣例のテストコマンドを実行。fail なら `exit 2` で **blocking**。
 
-各プロジェクトの実情に合わせて `hooks.example.json` の内容を `.claude/settings.json` の `hooks` キーに移植し、test command などを書き換える。プロジェクト固有値が含まれるので、ここで管理するのが自然。
+検出する test command:
 
-### 方法 B: このプラグインを fork して `plugin.json` で参照
+| プロジェクトマーカー | 実行 command |
+|---|---|
+| `package.json` (`"test"` script あり) | `npm test --silent` |
+| `pyproject.toml` / `pytest.ini` | `uv run pytest -q` or `pytest -q` |
+| `go.mod` | `go test ./...` |
+| `Cargo.toml` | `cargo test --quiet` |
+| `Gemfile` | `bundle exec rspec` |
 
-```json
-// .claude-plugin/plugin.json
-{
-  ...
-  "hooks": "./hooks/hooks.json"
-}
-```
+検出できない場合は警告だけで素通し。プロジェクト固有の test command がある場合は `.claude/settings.json` で override する。
 
-fork したプラグインの `hooks/hooks.json` を編集する。チームで共有する場合に向く。
+スクリプト: [`block-commit-if-tests-fail.sh`](./block-commit-if-tests-fail.sh)
 
-### 方法 C: `userConfig` 経由で設定値を埋める
+## bypass
 
-プラグインの `plugin.json` に `userConfig` を追加し、test command などを install 時にユーザーから受け取る。hook 内で `${user_config.test_command}` として参照する。汎用配布向きだが、細かい挙動の差異を吸収しきれないので Phase 5 では採用しない。
+特殊事情で hook を一時的に無効化したい場合:
 
-詳細は [Claude Code Hooks ドキュメント](https://code.claude.com/docs/en/hooks) と [Plugin reference - Hooks](https://code.claude.com/docs/en/plugins-reference#hooks) を参照。
+- 個別ツール: Claude Code 内で `/permissions` から該当 hook を deny に変える
+- 全体: `.claude/settings.json` で hook を override
 
-## 用意されているテンプレート
+ただし bypass は **規律を壊す**。bypass する前に「なぜテストを書けないのか」を 1 文で説明できるか確認する。説明できないなら bypass せずテストを書く。
 
-`hooks.example.json` には以下の hook 例が含まれる。各セクションは独立しているので、必要なものだけ抜き出して使う。
+## 公式 docs
 
-### 1. `PreToolUse` on `Bash` — git commit 前にテストを走らせる
-
-`Bash` ツール経由で `git commit` が呼ばれたとき、コミット前にテストを実行し、fail なら exit 2 で **コミットを中断** する。
-
-**カスタマイズが必要な箇所:**
-- テスト実行コマンド (`npm test` / `pytest` / `cargo test` など)
-
-**意図する効果:**
-- failing テストがある状態でのコミットを禁止
-- TDD の Red 状態を残したまま push してしまう事故を防ぐ
-
-### 2. `PostToolUse` on `Write|Edit` — 実装ファイル編集後にテストの companion を確認
-
-実装ファイル (例: `src/`) が編集されたとき、対応するテストファイル (例: `tests/`) が同じセッションで触られているかをチェックし、なければ警告。
-
-**カスタマイズが必要な箇所:**
-- 実装ファイルのパスパターン
-- テストファイルの命名 / 配置規則
-
-**意図する効果:**
-- 「実装だけ書いてテストを書かない」状態を可視化
-- TDD の Red を飛ばして Green に入る習慣を抑制
-
-### 3. `SessionStart` — プラグインがロードされたことを表示
-
-セッション開始時に project-bootstrap の reminder を表示。
-
-**意図する効果:**
-- 開発開始時に原則を意識させる
-- noisy になりがちなので、必要なら無効化
-
-## 注意
-
-- hooks は **AI に対する強制機構** であって、人間の作業フローを縛るものではない。AI が想定外の動きをしないためのガードレールとして使う。
-- 過度に厳しい hooks は AI を行き詰まらせる。**最小限から始めて、実際に困った場面に対応する形で増やす**。
-- hook script の標準入力には Claude Code から JSON が渡される。詳しくは公式ドキュメントを参照。
+[Claude Code Hooks](https://code.claude.com/docs/en/hooks) / [Plugin reference - Hooks](https://code.claude.com/docs/en/plugins-reference#hooks)
