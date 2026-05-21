@@ -10,7 +10,13 @@
 
 - 実装ファイル: `.ts/.tsx/.js/.jsx/.mjs/.cjs/.py/.go/.rs/.rb/.php/.java/.cs/.cpp/.c/.swift/.kt/.scala/.ex/.exs/.clj/.hs/.ml`
 - test ファイル自身 / markdown / config / settings は素通し
+- **`scripts/_*` も素通し** — `scripts/_foo.mjs` のような prefix `_` 付きは ephemeral debug / one-shot recovery script の慣行 namespace。test companion を要求するのは過剰なので除外する
 - 対応 test の検出は慣例パターン (`foo.test.ts` / `foo.spec.ts` / `foo_test.go` / `test_foo.py` / `spec/foo_spec.rb` / `tests/` 配下 / `__tests__/` 配下) を順次探索
+- `tests/` の深い階層 (例: `tests/unit/<layer>/foo.test.ts`) も再帰的に検索する。直下に置かないリポジトリ構造 (= `tests/unit/<source mirror>/<name>.test.<ext>`) でも red test 済みなら素通し
+
+#### Windows path 対応
+
+Claude Code は Windows 環境で `\` 区切り絶対 path を JSON-escape 済 (= literal `\\`) で渡してくる。hook 内で `tr` 経路により forward slash に正規化してから case パターン判定するので、Windows / POSIX どちらでも同じ skip ルールが効く。`sed -e 's|\\|/|g'` は Git Bash の GNU sed で「unterminated `s' command」を吐いて使えないため `tr '\\\\' '/' | tr -s '/'` を採用 (= 0.4.1 で修正)。
 
 スクリプト: [`require-test-companion.sh`](./require-test-companion.sh)
 
