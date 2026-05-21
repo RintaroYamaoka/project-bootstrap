@@ -1,6 +1,6 @@
 {
   "name": "project-bootstrap",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "AI 駆動開発の規律を hook で deterministic に強制する Claude Code プラグイン。ルール = AI の default 挙動 + hook 強制 (Anthropic 公式 best practice 整合)。verification 最高レバレッジ原則、TDD ループ、subagent によるフェーズ分離を提供。実装ファイル編集前に対応 test の存在を blocking で要求 / git commit 前に test 実行 / fail なら blocking。",
   "author": {
     "name": "Rintaro Yamaoka"

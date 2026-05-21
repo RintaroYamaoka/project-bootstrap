@@ -25,11 +25,23 @@ fi
 
 [ -z "$FILE" ] && exit 0
 
+# Windows path 正規化 (= `\` を `/` に置換、case パターン match のため)。
+# Claude Code は Windows 環境で JSON escape 済の backslash 区切り絶対 path を渡してくるが
+# (= hook 内では literal 2 文字 `\\` が保持される)、case `*/scripts/_*` 等のパターンは
+# forward slash 想定なので、正規化しないと素通し判定が効かない。
+# 注意: `sed -e 's|\\|/|g'` は Git Bash の GNU sed で「unterminated `s' command」を吐いて
+# FILE_NORM を空にし全 skip 経路を殺す。`tr` で character-class 単位の確実な置換 +
+# `tr -s '/'` で連続 `/` を 1 つに縮約 (= 重複 `//` 対策) の組み合わせを使う。
+FILE_NORM=$(printf '%s' "$FILE" | tr '\\\\' '/' | tr -s '/')
+
 # test ファイル自身 / config / docs は素通し
-case "$FILE" in
+case "$FILE_NORM" in
   *.test.*|*.spec.*|*_test.*|test_*.py|*/tests/*|*/test/*|*/__tests__/*|*/_test/*) exit 0 ;;
   *.md|*.json|*.yaml|*.yml|*.toml|*.ini|*.cfg|*.lock|*.txt|*.env|*.sh|*.bash|*.zsh|*.fish|*.gitignore|*.dockerignore) exit 0 ;;
   *Dockerfile*|*Makefile*|*.sql) exit 0 ;;
+  # scripts/_* は ephemeral debug namespace (= 一回限りの調査 / recovery script)、test 不要で素通し。
+  # 慣行: `scripts/_foo.mjs` のような prefix `_` で「使い捨て」を示す。
+  */scripts/_*|scripts/_*) exit 0 ;;
 esac
 
 # 実装ファイル拡張子か
@@ -79,6 +91,19 @@ case "$EXT" in
     )
     ;;
 esac
+
+# tests/ 配下の深い階層 (tests/unit/infrastructure/foo.test.ts 等) も拾う。
+# 既存 CANDIDATES は tests/${NAME}.test.${EXT} 直下のみだったため、リポジトリで
+# tests/unit/<layer>/ の構造を採用すると red test 済みでも hook が誤検知していた。
+if [ -d tests ] || [ -d test ]; then
+  while IFS= read -r found; do
+    [ -n "$found" ] && CANDIDATES+=("$found")
+  done < <(find tests test 2>/dev/null -type f \( \
+    -name "${NAME}.test.${EXT}" -o \
+    -name "${NAME}.spec.${EXT}" -o \
+    -name "${NAME}_test.${EXT}" \
+  \))
+fi
 
 for C in "${CANDIDATES[@]}"; do
   if [ -f "$C" ]; then
