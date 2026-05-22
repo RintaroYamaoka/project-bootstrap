@@ -5,7 +5,7 @@
   },
   "metadata": {
     "description": "Rintaro Yamaoka の Claude Code プラグイン marketplace。AI 駆動開発のためのプラグインを配布する。",
-    "version": "0.2.0"
+    "version": "0.4.0"
   },
   "plugins": [
     {
@@ -14,8 +14,8 @@
         "source": "url",
         "url": "https://github.com/RintaroYamaoka/project-bootstrap.git"
       },
-      "description": "AI 駆動開発の規律を hook で deterministic に強制する Claude Code プラグイン。ルール = AI の default 挙動 + hook 強制。Anthropic 公式 best practice (verification 最高レバレッジ / hooks deterministic / CLAUDE.md prune) 整合。実装ファイル編集前に対応 test の存在を blocking で要求、git commit 前に test 実行で blocking。",
-      "version": "0.4.1",
+      "description": "AI 駆動開発の規律を hook で deterministic に強制する Claude Code プラグイン。ルール = AI の default 挙動 + hook 強制。Anthropic 公式 best practice 整合。verification 4 罠 / AI の癖 9 個 / TDD ループ / 並列 Claude 安全運用 / bug fix cohort audit / external memory として docs/ 整備 (handoffs / decisions / incidents) を強制。実装 edit 前に対応 test を blocking、git commit 前に test 実行、destructive git op / bulk-staging / cross-session WIP 混入を blocking。skills 4 個: project-bootstrap / plan / handoff / incident。",
+      "version": "0.6.0",
       "homepage": "https://github.com/RintaroYamaoka/project-bootstrap",
       "repository": "https://github.com/RintaroYamaoka/project-bootstrap",
       "license": "MIT",

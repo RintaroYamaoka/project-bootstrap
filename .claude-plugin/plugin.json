@@ -1,7 +1,7 @@
 {
   "name": "project-bootstrap",
-  "version": "0.4.1",
-  "description": "AI 駆動開発の規律を hook で deterministic に強制する Claude Code プラグイン。ルール = AI の default 挙動 + hook 強制 (Anthropic 公式 best practice 整合)。verification 最高レバレッジ原則、TDD ループ、subagent によるフェーズ分離を提供。実装ファイル編集前に対応 test の存在を blocking で要求 / git commit 前に test 実行 / fail なら blocking。",
+  "version": "0.6.0",
+  "description": "AI 駆動開発の規律を hook で deterministic に強制する Claude Code プラグイン。ルール = AI の default 挙動 + hook 強制 (Anthropic 公式 best practice 整合)。verification 4 罠 / AI の癖 9 個 / TDD ループ / 根本修正 / 並列 Claude 安全運用 / 環境隔離 / bug fix cohort audit / external memory として docs/ 整備 (handoffs / decisions / incidents)。実装ファイル編集前に対応 test を blocking、git commit 前に test 実行、destructive git op / bulk-staging / cross-session WIP 混入を blocking。skills: project-bootstrap (規律本体) / plan (探索→計画→提示) / handoff (session の cold restore) / incident (事故記録 + memory 昇格)。",
   "author": {
     "name": "Rintaro Yamaoka"
   },

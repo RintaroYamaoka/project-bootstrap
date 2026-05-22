@@ -7,6 +7,69 @@
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-05-23
+
+### Added
+
+- **`skills/handoff/SKILL.md` を新規追加** (= session の cold restore を default 挙動化)。session 終了前 / `/clear` 前 / 並走 Claude に context を渡す前に AI が default で呼ぶ。`docs/handoffs/<YYYY-MM-DD>-<topic>.md` を 7 節 (1 行サマリ / 残課題表 / バックグラウンドプロセス / 触ったファイル分類 / memory references / 検証手順 / コピペ起動文) で生成する規律。slash command `/handoff` でも明示呼び出し可能。AI が「次の Claude が cold restore できるか」を 1 回ごとに考える経路を default 化する。
+
+- **`skills/incident/SKILL.md` を新規追加** (= 事故記録 + memory 昇格を default 挙動化)。fix / revert / hotfix commit / user 叱責 / 「やり直し」言及 / 同問題 2 回以上発生 の後に AI が default で呼ぶ。`docs/incidents/<YYYY-MM-DD>-<topic>/README.md` を 4 節 (ミス一覧 / 真因 / 構造的再発防止 / 関連 memory・docs) で生成。**書きっぱなしを禁止**し、memory `feedback_*.md` / `reference_*.md` への昇格まで責務に含める (= incident は session 開始時に load されないが memory は load される、これを欠くと再発抑止しない)。slash command `/incident` でも明示呼び出し可能。
+
+- **`templates/docs/` 雛形を追加**。AI 駆動開発で本当にレバレッジが出る 3 ディレクトリのみ提供:
+  - `templates/docs/README.md` — 採用 3 dir の歩き方、真実の所在表、失敗兆候 4 種 (権威分散 / handoff 重複化 / ADR 未定着 / business 固有名混入)、不採用 5 dir (current / exploring / reference / ops / archive) の理由
+  - `templates/docs/handoffs/TEMPLATE.md` — 7 節 cold restore 骨格 (= 1 行サマリ / 残課題 / バックグラウンドプロセス / 触ったファイル / memory references / 検証手順 / コピペ起動文)
+  - `templates/docs/decisions/TEMPLATE.md` — ADR template (Status / Date / Deciders / References / Context / Decision / Consequences)
+  - `templates/docs/incidents/TEMPLATE.md` — incident template (ミス一覧 / 真因 / 構造的再発防止チェックリスト / 関連 memory)
+
+- **`skills/project-bootstrap/SKILL.md` に新節「external memory として docs/ を整備」を追加**。採用 3 dir / 真実の所在表 / 失敗兆候 4 種 / 関連 skill リンクを規律として記述。CLAUDE.md / コード / memory との二重化を禁じる。
+
+- **「迷ったとき」チェックリストを 8 → 11 項目に拡張**: handoff 書き残し / incident + memory 転記 / ADR 記述 を追加。
+
+### Changed
+
+- **`.claude-plugin/plugin.json` / `marketplace.json` の `description` を更新**: skills 4 個構成 (project-bootstrap / plan / handoff / incident) と「external memory として docs/ 整備」を明示。
+- **`README.md` の「提供物」表を更新**: `skills/handoff/` / `skills/incident/` / `templates/docs/` の 3 行を追加、skill 一覧と install 手順を 4 skill 構成に書き直し。
+- **`README.md` の「使い方」step 2 を更新**: `templates/docs/` のコピー手順を追記、3 dir 採用と 5 dir 不採用の方針を明示。
+
+### Rationale
+
+propagate-ai リポジトリの docs/ 8 ディレクトリ構造 (= current/ exploring/ decisions/ reference/ ops/ handoffs/ incidents/ archive/) を AI 駆動レバレッジ基準で精査した結果、`handoffs/` (= cold restore) と `decisions/` (= ADR) と `incidents/` (= 事故記録 + memory 昇格) の 3 dir が本当に効くと判定。残り 5 dir は CLAUDE.md / コード / memory で代替できるか graveyard 化する典型兆候 (= `archive/` 参照 2 hit / `decisions/` 1 件 / `exploring/` 肥大化 / `current/` と CLAUDE.md 重複) が出ており、雛形に含めないことで失敗を構造的に防ぐ。
+
+handoff / incident は **slash command で起動する advisory 形式ではなく AI default 挙動として書く** ことが本旨 (= ルール = default + hook 強制原則)。skill description で「いつロードするか」を明示し、AI 自身が session 終了前 / 事故後に呼ぶ経路を作る。
+
+## [0.5.0] - 2026-05-23
+
+### Added
+
+- **並列 Claude 安全運用の hook 3 個をデフォルト発火に追加** (= `plugin.json` の `hooks` フィールド経由)。AI 駆動開発で複数ターミナル / 別 session の Claude を並走させる場合に、互いの作業を消す / 巻き込む経路を default で blocking する規律。SKILL.md advisory ではなく hook で deterministic に強制する (= Anthropic 公式「Hooks are deterministic, CLAUDE.md is advisory」整合):
+  - **Hook C** (`hooks/block-dangerous-git-ops.sh`): `PreToolUse on Bash`。destructive git op を `exit 2` で blocking。検出: `git reset --hard` (uncommitted 全消去) / `git push -f` / `--force` (remote の他人 commit 消去、ただし `--force-with-lease` は競合検出付きで素通し) / `git checkout -- .` / `<path>` (unstaged 消去) / `git restore .` / `--staged .` (全 restore) / `git clean -f` / `-fd` / `-fx` (untracked 消去) / `git branch -D` (未 merge branch 強制削除)
+  - **Hook D** (`hooks/block-add-all.sh`): `PreToolUse on Bash`。bulk-staging を `exit 2` で blocking。検出: `git add -A` / `--all` / `.` / `-u` / `--update` (cwd 配下全 stage) / `git commit -a` / `-am` / `--all` (全 tracked auto-stage) / `git stash -u` / `--include-untracked` / `git stash` (path 指定なし、全 modified 退避)。**自分が編集した file を個別 path 指定で add する**規律を強制。`git add path/to/file` は素通し
+  - **Hook E** (`hooks/block-cross-claude-wip.sh`): `PreToolUse on Bash` for `git commit`。当 session で編集していない file が staged にあれば `exit 2` で blocking。仕組み: hook input の `transcript_path` から JSONL を読み、`Edit` / `Write` / `MultiEdit` / `NotebookEdit` の `file_path` / `notebook_path` を抽出して self-edited set を build、`git diff --cached --name-only` の各 file が含まれているか check。`--amend` は対象外。transcript path 取得不能環境では fail-open (= 素通し + warning) で AI 有用性を優先
+
+- **`skills/project-bootstrap/SKILL.md` の verification 章を 4 罠に具体化**。「実体を read-back で検証」だけでは AI が default で踏む 4 つの落とし穴を明示:
+  - **罠 1 — silent failure を「正常」と読む**: ORM/SDK が missing field / drop 済 column を throw せず空返却する設計に依存して 0 件返却を success と読む。`count == expected` を必ず assert、200 OK だけでなく content-type / body 構造まで assert
+  - **罠 2 — 既存リソースの actual capability を表記で推測する**: 資格情報 / token / API key / feature flag / 設定値の現在能力を、コメント / 変数名 / 定数で代用しない。新 code 追加判断の前に actual state を 1 query で確認
+  - **罠 3 — escape 多段を脳内計算する**: shell → JSON → 言語 string → 外部 storage の多段 escape は書込後に必ず read-back し、stored 文字列と入力文字列の完全一致を assert
+  - **罠 4 — pattern を広げる fix の cohort 副作用を測らない**: regex / filter / 集計範囲を拡張する fix は対象 cohort の前後数を取り、想定外の cohort 増加が無いか assert
+
+- **AI の癖を 6 → 9 個に拡張**:
+  - **7. 「ない / 不可能 / 該当なし」を grep の不一致で断定する** — app code grep が hit しない ≠ 機能不在 (= 設定 / 資格情報 / 外部リソース経由で可能なケースが残る)。外部 API の error code を即「権限不足」と一般化しない。不在主張の前に対象リソース自身への diagnostic を最低 1 回叩く
+  - **8. ルール / memory / fix を射程外まで過剰一般化する** — 「X は NG」を文字通り全 X に適用、本来 OK だった subset まで潰す。ルール記述時は「射程: ~ のみ。~ は除外」を必ず添える
+  - **9. 共有環境を独占資源として扱う** — `git add -A` で他 session の WIP を巻き込む、destructive git op で他人の commit / untracked を消す。commit は個別 path 指定 / destructive op は user 明示承認 / 並走は `git worktree add` で物理隔離
+
+- **新節「並列 Claude 安全運用」を SKILL.md に追加**。同一 working tree 共有 vs `git worktree add` 物理隔離の選択表、hook で強制される事項のリスト、hook で強制しきれない手順 (= `git status --porcelain` 確認 / lock file diff 確認 / destructive op 前の user 確認)
+
+- **新節「完遂責任 — bug fix と同 PR で cohort audit」を SKILL.md に追加**。問い合わせ件数は氷山の一角で同根 silent dropout が桁違いに居る前提、fix commit と同 PR に同根 cohort の SQL / grep / log scan 結果を含めることを規定
+
+- **「迷ったとき」チェックリストを 6 → 8 項目に拡張** (= cohort audit / 巻き込み確認を追加)
+
+### Changed
+
+- **`hooks/hooks.json` の `PreToolUse on Bash` matcher 配下に新 hook 3 個を追加**。発火順は `block-add-all.sh` → `block-dangerous-git-ops.sh` → `block-cross-claude-wip.sh` → 既存 `block-commit-if-tests-fail.sh` (= 巻き込み block を test 実行より前に置く)
+- **`.claude-plugin/plugin.json` / `marketplace.json` の `description` を更新**: 並列 Claude 安全運用 / verification 4 罠 / AI 癖 9 個 / cohort audit を明示
+- **`hooks/README.md` を 50 行 → 100 行に拡張**: 新 hook 3 個の検出 pattern 表、発火順、bypass 手順を追記
+- **`README.md` の「何を強制するか」を 4 項目 → 6 項目に拡張**: 並列 Claude 安全運用節、AI 癖 9 個への変更、bug fix 完遂責任を反映
+
 ## [0.4.1] - 2026-05-21
 
 ### Fixed
