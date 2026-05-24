@@ -19,6 +19,8 @@ setup_repo() {
   echo seed > "$REPO/seed.txt"
   git -C "$REPO" add seed.txt
   git -C "$REPO" commit -qm seed
+  # opt-in: the hook only enforces when the project declares protected branches.
+  printf 'main\nmaster\nrelease/*\n' > "$REPO/.bootstrap-protected"
 }
 on_branch() { git -C "$REPO" checkout -q -B "$1"; }
 push_input() { printf '{"tool_name":"Bash","tool_input":{"command":"%s"},"cwd":"%s"}' "$1" "$REPO"; }
@@ -58,6 +60,21 @@ assert_exit 2
 
 test_case "non-push git command passes"
 run_hook block-push-to-protected.sh "$(push_input 'git status')"
+assert_exit 0
+
+# glob entry: release/* is protected -> push to release/1.2 is blocked.
+on_branch feature/x
+test_case "push to a glob-matched protected branch is blocked"
+run_hook block-push-to-protected.sh "$(push_input 'git push origin release/1.2')"
+assert_exit 2
+
+# opt-in: with NO .bootstrap-protected, even a main push is allowed (fail-open).
+setup_repo
+rm "$REPO/.bootstrap-protected"
+git -C "$REPO" checkout -q -B main
+RUN_DIR="$REPO"
+test_case "no .bootstrap-protected: push to main allowed (opt-in / fail-open)"
+run_hook block-push-to-protected.sh "$(push_input 'git push origin main')"
 assert_exit 0
 
 finish

@@ -131,7 +131,7 @@ hook A (`hooks/hooks.json`) が「対応 test 不在の実装ファイル編集�
 - **`git add -A` / `git add .` / `git add -u` / `git commit -a` / `git stash` (path 指定なし)** を blocking (= `hooks/block-add-all.sh`)。**自分が編集した file を個別 path 指定で add する**
 - **`git reset --hard` / `git push -f` (※ `--force-with-lease` は除外) / `git checkout -- .` / `git restore .` / `git clean -fd` / `git branch -D`** を blocking (= `hooks/block-dangerous-git-ops.sh`)
 - **`git commit` 直前に当 session で編集していない file が staged にあれば** blocking (= `hooks/block-cross-claude-wip.sh`)。session transcript と `git diff --cached --name-only` を照合する。**`--amend` も対象** (= 共有 index 構成では amend こそが他 session の staged を最も巻き込む経路。実事故あり)
-- **`main` / `master` への直接 push** を blocking (= `hooks/block-push-to-protected.sh`)。feature branch + 統合 (integrate skill) 経由に矯正し、混入 commit が共有 main に lock-in する事故を塞ぐ
+- **`.bootstrap-protected` で宣言した branch への直接 push** を blocking (= `hooks/block-push-to-protected.sh`)。feature branch + 統合 (integrate skill) 経由に矯正し、混入 commit が共有 branch に lock-in する事故を塞ぐ。**opt-in** — `.bootstrap-protected` が無ければ発火しない (= solo / 個人 repo は妨げない)
 - **自分の worktree の lane (`.bootstrap-lane`) 範囲外の file 編集** を blocking (= `hooks/block-out-of-lane-edit.sh`)。sprint 時のみ発火 (lane file 不在なら素通し)
 
 ### 規律 (手順として)

@@ -13,7 +13,7 @@ AI 駆動開発の規律を **hook で deterministic に強制する** Claude Co
     - `git add -A` / `git commit -a` / `git stash` (path 指定なし) 等の bulk-staging を blocking
     - `git reset --hard` / `git push -f` / `git restore .` / `git clean -fd` / `git branch -D` を blocking (※ `--force-with-lease` は除外)
     - `git commit` 直前に当 session で編集していない file が staged にあれば blocking (`--amend` 含む)
-    - `main` / `master` への直接 push を blocking (feature branch + PR / integrate skill 経由に矯正)
+    - `.bootstrap-protected` で宣言した branch への直接 push を blocking (opt-in、feature branch + PR / integrate skill 経由に矯正)
     - `sprint-plan` で scope 非重複 task に分解 → worktree の `.bootstrap-lane` 範囲外編集を blocking → `integrate` で依存順 merge + 統合 verify
 - **verification 最高レバレッジ**: production-affecting な変更は read-back / live assert で実体確認してから完了とする。silent failure / 既存リソース表記推測 / escape 多段 / pattern 拡張 cohort 副作用の 4 罠を `SKILL.md` で明示
 - **AI の癖を抑止**: 実装先行 / ハルシネーション / スコープ拡大 / 症状隠蔽 / 既存パターン無視 / 抽象用語に逃げる / 不在を grep 断定 / ルール過剰一般化 / 共有環境独占 の 9 癖を `SKILL.md` で明示

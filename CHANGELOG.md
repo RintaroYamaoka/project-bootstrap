@@ -22,7 +22,7 @@
 
 - **並列開発フロー (sprint)** — 1 feature を複数 Claude で安全に分業して統合する generative フロー。scrum の本質は「並列の最大化」でなく WIP 制限:
   - **`hooks/block-out-of-lane-edit.sh`** (Hook G) — 各ワーカーの worktree root の `.bootstrap-lane` (1 行 1 glob) 範囲外の編集を `exit 2`。「1 task = 1 owner = 1 worktree」を物理境界化。lane file 不在なら fail-open
-  - **`hooks/block-push-to-protected.sh`** (Hook F) — `main` / `master` への直接 push を block。feature branch + integrate 経由に矯正
+  - **`hooks/block-push-to-protected.sh`** (Hook F) — `.bootstrap-protected` で宣言した branch への直接 push を block。feature branch + integrate 経由に矯正。**opt-in** (= `.bootstrap-protected` が無ければ発火しない。`.bootstrap-lane` / `.bootstrap-arch` と同じく project-local 宣言で発火する一貫性。solo / 個人 repo は妨げない)。glob 対応 (`release/*` 等)。雛形 `templates/.bootstrap-protected`
   - **`skills/sprint-plan/SKILL.md`** — feature を scope 非重複 task に分解、共有 interface を直列 spine (`depends_on`) に切り出し、`wip_limit` 個まで worktree + lane を用意、ワーカー起動文を出力。並列が得でないなら逐次を勧める
   - **`skills/integrate/SKILL.md`** — 依存順 merge + 統合 verify (全 suite) + claim close + worktree 撤去
   - **`docs/sprint/board.json`** schema + `templates/docs/sprint/` 一式 (board / WIP 制限 / 直列 spine)

@@ -113,11 +113,11 @@ Claude Code は Windows 環境で `\` 区切り絶対 path を JSON-escape 済 (
 
 スクリプト: [`block-cross-claude-wip.sh`](./block-cross-claude-wip.sh)
 
-### Hook F — protected branch への直接 push を block
+### Hook F — protected branch への直接 push を block (opt-in)
 
-`git push` の refspec destination が `main` / `master` のとき、または refspec 無し push で現在 branch が `main` / `master` のとき `exit 2`。feature branch への push は素通し。
+`.bootstrap-protected` (repo root、1 行 1 branch glob) を置いた project だけ発火する。`git push` の refspec destination、または refspec 無し push の現在 branch が宣言 glob に一致すると `exit 2`。**`.bootstrap-protected` が無ければ素通し** (= solo / 個人 repo は妨げない。`.bootstrap-lane` / `.bootstrap-arch` と同じ opt-in 思想)。
 
-並走 session が作った混入 commit が共有 main に lock-in する事故 (実事故: 別 Terminal の staged file 混入 commit が origin/main へ push された) を defense-in-depth で塞ぎ、sprint flow の「task = feature branch → 統合は integrate skill (PR / merge)」を default 化する。solo で意図的に直接 push したいなら `/permissions` で一時 deny。
+並走 session が作った混入 commit が共有 branch に lock-in する事故 (実事故: 別 Terminal の staged file 混入 commit が origin/main へ push された) を defense-in-depth で塞ぎ、sprint flow の「task = feature branch → 統合は integrate skill (PR / merge)」を default 化する。例外的に直接 push したいなら `/permissions` で一時 deny。
 
 スクリプト: [`block-push-to-protected.sh`](./block-push-to-protected.sh)
 
