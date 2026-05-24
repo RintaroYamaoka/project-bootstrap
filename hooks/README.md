@@ -20,6 +20,17 @@ Claude Code は Windows 環境で `\` 区切り絶対 path を JSON-escape 済 (
 
 スクリプト: [`require-test-companion.sh`](./require-test-companion.sh)
 
+### G. PreToolUse on `Edit | Write | MultiEdit` — 並列 lane 強制
+
+並列開発 (sprint) で各ワーカーが自分の git worktree でだけ作業するよう、worktree root の `.bootstrap-lane` (1 行 1 glob、`#` コメント可) が宣言した範囲外の file 編集を `exit 2` で blocking。これで「1 task = 1 owner = 1 worktree」が決定論的な境界になる。
+
+- `.bootstrap-lane` が **無ければ素通し** (= sprint を使っていない通常作業は一切妨げない)
+- glob は bash `[[ ]]` パターン。`*` が `/` も跨ぐので `src/auth/**` も `src/auth/*` も nested path に効く
+- worktree 外の絶対 path は判断不能として fail-open
+- jq 非依存。hook が読むのは worktree-local な `.bootstrap-lane` だけ (= board.json の rich な真実は lead / skill が読み書きする)
+
+スクリプト: [`block-out-of-lane-edit.sh`](./block-out-of-lane-edit.sh)
+
 ### B. PreToolUse on `Bash` — failing test での commit を禁止
 
 `git commit` が呼ばれる直前にプロジェクト慣例のテストコマンドを実行。fail なら `exit 2` で **blocking**。
@@ -87,16 +98,25 @@ Claude Code は Windows 環境で `\` 区切り絶対 path を JSON-escape 済 (
 3. `git diff --cached --name-only` の各 file が self-edited set に含まれているか check
 4. 含まれていない file = 別 session の WIP / 手動 stage / 副作用 artifact なので blocking
 
-`--amend` は対象外 (= 既存 commit 修正は別議論)。transcript path が取れない環境では fail-open (= 素通し + warning) で AI の有用性を優先する。
+`--amend` も対象に含める。共有 index 構成では `git commit --amend` が他 session の staged file を最も巻き込む経路 (実事故: 別 Terminal の staged file が amend で commit に混入し origin/main へ push)。message-only amend (index が clean) は staged file が空なので素通しになり over-block しない。transcript path が取れない環境では fail-open (= 素通し + warning) で AI の有用性を優先する。
 
 スクリプト: [`block-cross-claude-wip.sh`](./block-cross-claude-wip.sh)
+
+### Hook F — protected branch への直接 push を block
+
+`git push` の refspec destination が `main` / `master` のとき、または refspec 無し push で現在 branch が `main` / `master` のとき `exit 2`。feature branch への push は素通し。
+
+並走 session が作った混入 commit が共有 main に lock-in する事故 (実事故: 別 Terminal の staged file 混入 commit が origin/main へ push された) を defense-in-depth で塞ぎ、sprint flow の「task = feature branch → 統合は integrate skill (PR / merge)」を default 化する。solo で意図的に直接 push したいなら `/permissions` で一時 deny。
+
+スクリプト: [`block-push-to-protected.sh`](./block-push-to-protected.sh)
 
 ## 発火順 (PreToolUse on Bash)
 
 1. `block-add-all.sh`               — 個別 add に矯正
 2. `block-dangerous-git-ops.sh`     — 他人の作業を消す op を block
-3. `block-cross-claude-wip.sh`      — commit 直前に巻き込み check
-4. `block-commit-if-tests-fail.sh`  — 最後に test を回す
+3. `block-cross-claude-wip.sh`      — commit 直前に巻き込み check (`--amend` 含む)
+4. `block-push-to-protected.sh`     — main/master への直接 push を block
+5. `block-commit-if-tests-fail.sh`  — 最後に test を回す
 
 block 系を test 実行より前に置くのは、test 実行が成功しても巻き込んだ commit は事故源だから。
 

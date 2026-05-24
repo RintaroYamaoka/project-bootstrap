@@ -1,0 +1,36 @@
+{
+  "sprint": "2026-05-24-hook-test-backfill",
+  "wip_limit": 2,
+  "tasks": [
+    {
+      "id": "T0",
+      "title": "共有テストハーネス (helper.bash / run.sh)",
+      "scope": ["tests/hooks/helper.bash", "tests/hooks/run.sh"],
+      "branch": "feat/T0-test-harness",
+      "worktree": null,
+      "depends_on": [],
+      "status": "done",
+      "claimed_by": null
+    },
+    {
+      "id": "T1",
+      "title": "require-test-companion の bats テスト",
+      "scope": ["tests/hooks/require-test-companion.test.bash"],
+      "branch": "feat/T1-require-test-companion-tests",
+      "worktree": "../wt-T1",
+      "depends_on": ["T0"],
+      "status": "in-progress",
+      "claimed_by": "terminal-A"
+    },
+    {
+      "id": "T2",
+      "title": "block-add-all の bats テスト",
+      "scope": ["tests/hooks/block-add-all.test.bash"],
+      "branch": "feat/T2-block-add-all-tests",
+      "worktree": "../wt-T2",
+      "depends_on": ["T0"],
+      "status": "todo",
+      "claimed_by": null
+    }
+  ]
+}

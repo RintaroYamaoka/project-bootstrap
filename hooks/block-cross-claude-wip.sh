@@ -27,8 +27,10 @@ CMD=$(printf '%s' "$INPUT" | grep -oE '"command"[^,}]*' | head -1 | sed 's/.*"co
 # git commit でなければ素通し (= add / status / log 等は対象外)
 echo "$CMD" | grep -qE '(^|[[:space:]&|;()`]+)git[[:space:]]+commit($|[[:space:]])' || exit 0
 
-# --amend は対象外 (= 既存 commit の修正、別議論)
-echo "$CMD" | grep -qE '(^|[[:space:]])--amend([[:space:]]|$)' && exit 0
+# --amend も対象に含める。共有 index 構成では `git commit --amend` こそが他 session の
+# staged file を最も巻き込む経路 (実事故: 別 Terminal の 14 staged file が amend で commit に
+# 混入し origin/main へ push された)。message-only amend (index が clean) は下の
+# `[ -z "$STAGED" ] && exit 0` で素通しになるので、除外しなくても over-block しない。
 
 # transcript_path を input から抽出
 TRANSCRIPT=$(printf '%s' "$INPUT" | grep -oE '"transcript_path"[^,}]*' | head -1 | sed 's/.*"transcript_path"[[:space:]]*:[[:space:]]*"//; s/"[[:space:]]*$//')
