@@ -1,0 +1,29 @@
+# .bootstrap-arch — dependency-direction contract (project-bootstrap)
+#
+# このファイルを project root にコピーして、自分の layer に合わせて書き換える。
+# block-cross-layer-import.sh (edit 時) と block-arch-violations.sh (commit 時) が
+# これを読んで依存方向違反を blocking する。ファイルが無ければ強制は発火しない。
+#
+# 文法 (1 行 1 directive、# 以降はコメント):
+#   layer NAME = GLOB[, GLOB...]   ファイルの layer = 最長 glob が一致する layer
+#   alias PREFIX => PATH           import 接頭辞 → repo 相対 path (例: @/ => ./ , @/ => src/)
+#   allow FROM -> TO[, TO...]      FROM は TO を import してよい。宣言外の cross-layer は全 deny
+#
+# 同 layer 内 import と、宣言外 path (外部 package 等) への import は常に許可。
+# 対応言語: ts/tsx/js/jsx/mjs/cjs, py (他は順次対応)。
+
+# --- 例: クリーンアーキテクチャ (app → lib → infrastructure → core) ---
+layer app   = app/**, middleware.ts
+layer lib   = lib/**
+layer infra = infrastructure/**
+layer core  = core/**
+
+# path alias (tsconfig paths 等に合わせる)
+alias @/ => ./
+
+# 許可する依存辺 (これ以外の cross-layer は blocking される)
+allow app   -> lib, infra, core
+allow lib   -> infra, core
+allow infra -> core
+# core に allow 行を書かない = core は他 layer を一切 import できない (純 domain)。
+# 内側の機能が要るときは core 側に port (interface) を定義し、外側が実装して依存を反転する。

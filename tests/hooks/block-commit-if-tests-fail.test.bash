@@ -87,4 +87,27 @@ test_case "chained git commit is detected and gated"
 run_hook "$HOOK" "$(input_json 'git add -A && git commit -m x')"
 assert_exit 2
 
+# 8. go.mod / Cargo.toml / Gemfile whose runner is NOT installed -> warn and pass,
+#    never a false block. Earlier these branches set TEST_CMD without a `command -v`
+#    guard (unlike the pyproject branch), so a missing toolchain executed a
+#    non-existent command -> non-zero exit -> the commit was wrongly blocked. Each
+#    assertion runs only when its runner is genuinely absent, keeping the test
+#    deterministic and portable.
+if ! command -v go >/dev/null 2>&1; then
+  fresh_dir
+  printf 'module x\n\ngo 1.21\n' > "$RUN_DIR/go.mod"
+  test_case "go.mod with go absent warns and passes (no false block)"
+  run_hook "$HOOK" "$(input_json 'git commit -m x')"
+  assert_exit 0
+  assert_stderr_contains "no test framework detected"
+fi
+if ! command -v cargo >/dev/null 2>&1; then
+  fresh_dir
+  printf '[package]\nname = "x"\n' > "$RUN_DIR/Cargo.toml"
+  test_case "Cargo.toml with cargo absent warns and passes (no false block)"
+  run_hook "$HOOK" "$(input_json 'git commit -m x')"
+  assert_exit 0
+  assert_stderr_contains "no test framework detected"
+fi
+
 finish

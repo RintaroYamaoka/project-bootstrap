@@ -162,6 +162,44 @@ hook で完全には強制しきれない部分は AI default 経路に組み込
 - 分解 = `skills/sprint-plan/SKILL.md`
 - 統合 = `skills/integrate/SKILL.md`
 
+## 依存方向を強制する (architecture)
+
+大規模化するほど、アーキテクチャの境界 (= layer / 依存方向) が壊れると壊滅的になる。ただし **SOLID やクリーンアーキテクチャを散文で recite しても効かない** (= Claude は既に知っており、毎 session 唱えても挙動は変わらない advisory bloat)。効くのは 2 つを分けること:
+
+| | 仕事 | 手段 |
+|---|---|---|
+| **確立** (establish) | project 開始時に層を切る (一度きり) | 設計判断 / scaffolding |
+| **維持** (preserve) | 境界の侵食を恒常的に防ぐ | **deterministic な gate (hook)** |
+
+advisory (= CLAUDE.md に「core は infra を import するな」と書くだけ) は、疲れた人間 / 並列 Claude が `import { x } from '@/infrastructure/...'` を core に書いた瞬間に**何も止めない**。lint は通常 import 方向を見ない。これが維持の穴。
+
+### 強制の仕組み
+
+依存方向は **project-local** な `.bootstrap-arch` で宣言する (= layer の glob / alias / 許可する依存辺)。本プラグインの hook は汎用で、project 固有ルールは一切持たない (= lane hook が `.bootstrap-lane` を読むのと同思想)。**cross-layer は default-deny**、明示した `allow` 辺だけ通す。
+
+```
+layer app   = app/**, middleware.ts
+layer infra = infrastructure/**
+layer core  = core/**
+alias @/ => ./
+allow app   -> infra, core
+allow infra -> core
+# core に allow 行なし = core は他 layer を import 禁止 (純 domain)
+```
+
+2 層で強制する (TDD 強制の edit+commit と同型):
+
+- **`block-cross-layer-import.sh`** (Edit|Write 時) — 禁止 import を**書いた瞬間** blocking。手戻りを防ぐ
+- **`block-arch-violations.sh`** (commit 時) — 宣言 layer 配下の**全 file を権威検証**。どの commit も契約を満たすことを保証する網
+
+`.bootstrap-arch` が無ければ fail-open (= 非アーキ project は影響なし)。雛形は `templates/.bootstrap-arch`。
+
+### 規律
+
+- **1 不可逆なアーキ判断 = 1 ADR** (`docs/decisions/`) + `.bootstrap-arch` の更新。契約変更は「意図的に」行う (= hook が止めたから黙って allow 辺を足す、は症状隠蔽)
+- 内側の層の機能が要るのに依存方向が許さない → **port (interface) を内側に定義して依存を反転**する。allow 辺を足して済ませない
+- 共有したい型/定数が cross-layer を誘発する → その型の置き場所 (= どの layer の責務か) を問い直す
+
 ## external memory として docs/ を整備
 
 CLAUDE.md / SKILL.md / memory で代替できないものだけを `docs/` に置く。AI 駆動開発の context 経済 (= cold restore / 再発防止 / 不可逆判断の永続化) はここで支える。

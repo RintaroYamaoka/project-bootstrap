@@ -67,11 +67,10 @@ block_case "git stash --include-untracked"    "git stash --include-untracked"
 block_case "git stash push -m (no pathspec)"  "git stash push -m msg"
 block_case "git stash save -m (no pathspec)"  "git stash save -m msg"
 
-# CHARACTERIZATION OF A GAP (see report): the hook blocks `git stash push -m <msg>`
-# even when a `-- <pathspec>` follows, because it only checks for the presence of
-# -m/--message and never re-checks for a trailing pathspec. The task spec says this
-# form SHOULD pass; the implementation blocks it. We pin the ACTUAL behavior here.
-block_case "git stash push -m WITH -- pathspec (blocks; spec wanted pass)" \
+# stash with a message AND an explicit `-- <pathspec>` is a targeted stash, not a
+# full-WIP sweep, so it must pass. (Earlier the hook saw -m and blocked without
+# re-checking for a trailing pathspec — that over-block is fixed.)
+pass_case "git stash push -m WITH -- pathspec passes" \
                                               "git stash push -m msg -- path/to/file"
 
 # Bulk add embedded in a compound command is still caught (leading delimiter regex).

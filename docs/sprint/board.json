@@ -20,7 +20,7 @@
       "branch": "feat/T1-require-test-companion-tests",
       "worktree": "../wt-T1",
       "depends_on": ["T0"],
-      "status": "todo",
+      "status": "done",
       "claimed_by": null
     },
     {
@@ -30,7 +30,7 @@
       "branch": "feat/T2-block-add-all-tests",
       "worktree": "../wt-T2",
       "depends_on": ["T0"],
-      "status": "todo",
+      "status": "done",
       "claimed_by": null
     },
     {
@@ -40,7 +40,7 @@
       "branch": "feat/T3-block-dangerous-git-ops-tests",
       "worktree": "../wt-T3",
       "depends_on": ["T0"],
-      "status": "todo",
+      "status": "done",
       "claimed_by": null
     },
     {
@@ -50,7 +50,7 @@
       "branch": "feat/T4-block-commit-if-tests-fail-tests",
       "worktree": "../wt-T4",
       "depends_on": ["T0"],
-      "status": "todo",
+      "status": "done",
       "claimed_by": null
     }
   ]

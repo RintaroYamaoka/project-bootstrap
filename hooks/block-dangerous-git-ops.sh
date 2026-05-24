@@ -50,8 +50,9 @@ elif match '(^|[[:space:]&|;()`]+)git[[:space:]]+checkout[[:space:]]+--([[:space
 elif match '(^|[[:space:]&|;()`]+)git[[:space:]]+restore([[:space:]]+--staged)?[[:space:]]+(\.|--source=[^ ]+[[:space:]]+\.)([[:space:]]|$)'; then
   REASON="git restore . (全ファイル restore)"
 
-# git clean -f / -fd / -fx / --force
-elif match '(^|[[:space:]&|;()`]+)git[[:space:]]+clean[[:space:]]+(-[A-Za-z]*[fF]|--force)([[:space:]]|$)'; then
+# git clean -f / -fd / -fx / -df / --force。
+# flag cluster の任意位置に f/F があれば block (= 旧 `[fF]` 末尾固定だと `-fd` `-fx` が漏れた)。
+elif match '(^|[[:space:]&|;()`]+)git[[:space:]]+clean[[:space:]]+(-[A-Za-z]*[fF][A-Za-z]*|--force)([[:space:]]|$)'; then
   REASON="git clean -f (untracked 消去)"
 
 # git branch -D / --delete --force

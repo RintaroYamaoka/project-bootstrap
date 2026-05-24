@@ -88,21 +88,17 @@ expect_pass 'git status'
 expect_pass 'ls -la'                    # non-git command short-circuits at exit 0
 
 # ---------------------------------------------------------------------------
-# CLEAN GAP — characterization of a real under-block bug.
-#
-# The clean regex is `(-[A-Za-z]*[fF]|--force)([[:space:]]|$)`: it only matches
-# when the flag cluster ENDS in f/F. So the canonical destructive forms
-# `git clean -fd` / `git clean -fx` (where another flag follows the f) are NOT
-# blocked, even though the hook's own header comment (line 10) claims to block
-# `-fd` / `-fx`. These assertions pin the actual (passing) behavior so the gap
-# is visible and a future fix will turn these red on purpose.
+# clean: any flag cluster CONTAINING f/F is destructive and must block,
+# regardless of where f sits in the cluster. `-fd` (untracked dirs) and `-fx`
+# (ignored + untracked) are the canonical destructive forms and are advertised
+# as blocked in the hook header. Earlier the regex anchored f at the cluster
+# END and let `-fd` / `-fx` slip through — that under-block bug is fixed.
 # ---------------------------------------------------------------------------
-expect_pass 'git clean -fd'   # GAP: destructive (deletes untracked dirs) but slips through
-expect_pass 'git clean -fx'   # GAP: destructive (deletes ignored+untracked) but slips through
-
-# Sanity: reordered clusters that END in f DO block, confirming the gap is purely
-# about flag ordering rather than clean being unguarded.
-expect_block 'git clean -df'
+expect_block 'git clean -fd'   # deletes untracked dirs
+expect_block 'git clean -fx'   # deletes ignored + untracked
+expect_block 'git clean -df'   # f not last in cluster
 expect_block 'git clean --force'
+# `-d` alone (no -f) does not delete anything in git clean, so it stays unblocked.
+expect_pass 'git clean -d'
 
 finish

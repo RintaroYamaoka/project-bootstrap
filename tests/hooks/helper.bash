@@ -51,6 +51,17 @@ assert_stderr_contains() {
   esac
 }
 
+# assert_eq <expected> <actual> — direct value comparison (for engine unit tests).
+assert_eq() {
+  TESTS_RUN=$((TESTS_RUN + 1))
+  if [ "$1" = "$2" ]; then
+    echo "  ok   [$CURRENT_TEST] '$2'"
+  else
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+    echo "  FAIL [$CURRENT_TEST] expected '$1', got '$2'"
+  fi
+}
+
 # finish — print per-file summary and exit non-zero if anything failed.
 finish() {
   echo "  ($TESTS_RUN assertions, $TESTS_FAILED failed)"
