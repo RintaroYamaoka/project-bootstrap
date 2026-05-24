@@ -59,7 +59,11 @@ elif match '(^|[[:space:]&|;()`]+)git[[:space:]]+stash([[:space:]]*$|[[:space:]]
   # ただし -- <pathspec> 付き / -m <msg> 後にメッセージのみ / push -p (patch) は通す。
   # 簡易判定: stash 直後の token が path-like (= path指定あり) なら通す。
   REST=$(echo "$CMD" | sed -E 's/^.*git[[:space:]]+stash([[:space:]]+(push|save))?//')
-  if echo "$REST" | grep -qE '(^|[[:space:]])(-m|--message)[[:space:]]+'; then
+  if echo "$REST" | grep -qE '(^|[[:space:]])--([[:space:]]|$)'; then
+    # `-- <pathspec>` 付き = 対象限定 stash (= 他人の WIP を巻き込まない) なので通す。
+    # `--message` は `--` の後に space/end が来ないのでここに該当しない。
+    :
+  elif echo "$REST" | grep -qE '(^|[[:space:]])(-m|--message)[[:space:]]+'; then
     # message 指定だけで pathspec が無いケースは「全退避」なので block
     REASON="git stash (path 指定なし、全 modified 退避)"
   elif [ -z "$(echo "$REST" | tr -d '[:space:]')" ]; then

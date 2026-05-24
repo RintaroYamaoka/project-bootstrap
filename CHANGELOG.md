@@ -7,6 +7,49 @@
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-05-24
+
+並列開発を「防御 (= ぶつからない)」から「分業して組み戻す generative フロー」へ拡張し、さらに **依存方向 (architecture) の deterministic 強制** を追加。あわせて全 hook に bash テストを整備し、その過程で既存 hook の実バグ 3 件を修正した。
+
+### Added
+
+- **依存方向の強制 (architecture)** — 大規模化で壊滅的になるアーキ境界の侵食を deterministic に防ぐ。SOLID を散文で recite するのではなく、依存辺を hook で強制する (= 0.4.0 で消したのは「散文 advisory」で、これは「維持の gate」。establish と preserve を分離):
+  - **`hooks/lib/arch-check.sh`** — 依存方向エンジン。project-local `.bootstrap-arch` (layer glob / alias / allow 辺) を parse し、layer 判定 / import specifier 解決 / 違反検出を行う。jq 非依存、pure bash。cross-layer は default-deny。対応言語 ts/tsx/js/jsx/mjs/cjs/py
+  - **`hooks/block-cross-layer-import.sh`** (Hook I, Edit|Write|MultiEdit) — 禁止 import を書いた瞬間 `exit 2`。PreToolUse 時は新内容が disk に無いので hook input を unescape して検査
+  - **`hooks/block-arch-violations.sh`** (Hook H, Bash git commit) — commit 時に宣言 layer 配下の全 tracked file を権威検証。どの commit も契約を満たすことを保証
+  - **`templates/.bootstrap-arch`** — 依存方向契約の雛形。`.bootstrap-arch` 不在なら全 arch hook は fail-open
+  - `SKILL.md` に「依存方向を強制する (architecture)」節 (establish vs preserve / port で依存反転 / 1 アーキ判断 = 1 ADR)
+
+- **並列開発フロー (sprint)** — 1 feature を複数 Claude で安全に分業して統合する generative フロー。scrum の本質は「並列の最大化」でなく WIP 制限:
+  - **`hooks/block-out-of-lane-edit.sh`** (Hook G) — 各ワーカーの worktree root の `.bootstrap-lane` (1 行 1 glob) 範囲外の編集を `exit 2`。「1 task = 1 owner = 1 worktree」を物理境界化。lane file 不在なら fail-open
+  - **`hooks/block-push-to-protected.sh`** (Hook F) — `.bootstrap-protected` で宣言した branch への直接 push を block。feature branch + integrate 経由に矯正。**opt-in** (= `.bootstrap-protected` が無ければ発火しない。`.bootstrap-lane` / `.bootstrap-arch` と同じく project-local 宣言で発火する一貫性。solo / 個人 repo は妨げない)。glob 対応 (`release/*` 等)。雛形 `templates/.bootstrap-protected`
+  - **`skills/sprint-plan/SKILL.md`** — feature を scope 非重複 task に分解、共有 interface を直列 spine (`depends_on`) に切り出し、`wip_limit` 個まで worktree + lane を用意、ワーカー起動文を出力。並列が得でないなら逐次を勧める
+  - **`skills/integrate/SKILL.md`** — 依存順 merge + 統合 verify (全 suite) + claim close + worktree 撤去
+  - **`docs/sprint/board.json`** schema + `templates/docs/sprint/` 一式 (board / WIP 制限 / 直列 spine)
+  - `SKILL.md`「並列 Claude 安全運用」に「並列開発フロー (sprint)」節を追加。AI 癖 9 に対応する hook を拡充
+
+- **`tests/hooks/` — 全 hook の bash テスト**。jq 非依存・bats 非依存の自作ハーネス (`helper.bash` / `run.sh`)。10 suite。「TDD を強制するプラグインが自分ではテスト皆無」だった穴を解消 (= 0.4.1 の Windows path 回帰も pin)。並列フローの dogfood (4 hook テストを 4 worktree で並列 backfill → integrate) で実証
+
+### Fixed
+
+- **`block-cross-claude-wip.sh` の `--amend` 丸ごと除外を撤廃**。実事故 (共有 index で別 Terminal の staged 14 file が `git commit --amend` に巻き込まれ origin/main へ push) の真因。共有 index では amend こそ他 session staged を最も巻き込む経路。message-only amend (index clean) は staged 空で素通しになり over-block しない
+- **`block-dangerous-git-ops.sh` が `git clean -fd` / `-fx` を見逃していた**バグ。regex が `f` を flag cluster 末尾に固定していたため、canonical な destructive 形が素通しだった (header コメントは block と謳っており doc が嘘になっていた)。`f` を cluster 内の任意位置で検出するよう修正。**dogfood の特性テストが発見**
+- **`block-add-all.sh` が `git stash push -m msg -- <pathspec>` を過剰 block**。`-m` 検出後に pathspec を再チェックせず block していた。`--` pathspec があれば通すよう修正。**dogfood が発見**
+- **`block-commit-if-tests-fail.sh` の go/Cargo/Gemfile 分岐に `command -v` ガードが無く**、toolchain 不在マシンで存在しないコマンド実行 → 非ゼロ → commit を誤 block していた (pyproject 分岐だけガード有りで非一貫)。全分岐に runner 存在チェックを追加。**dogfood が発見**
+
+### Changed
+
+- **`hooks/hooks.json`**: hook を 5 → 9 に拡張。`Edit|Write|MultiEdit` に lane / 依存方向 edit / test 先行、`Bash` に bulk-stage / destructive / cross-session WIP / 直 push / 依存方向 commit / test の順で登録
+- **`plugin.json` / `marketplace.json`** の `version` を 0.7.0 に、`description` に依存方向強制 / 並列開発フロー / sprint-plan・integrate skill を反映
+- **`README.md`** の「何を強制するか」「提供物」を更新 (依存方向 / 並列フロー / 新 hook 9 個 / arch-check エンジン / tests/ / sprint-plan・integrate)
+- **`hooks/README.md`** に Hook F / G / H / I を追記、発火順を Edit 系 / Bash 系に分けて再掲
+
+### Rationale
+
+propagate-ai の実運用で「共有 index + `--amend` で他 session の WIP が origin/main に混入」する事故が発生。現状の防御 hook は `--amend` を除外しており止められなかった。これを起点に、並列 Claude 支援を防御から **分業/統合フロー** へ拡張。worktree = lane = 1 owner を `.bootstrap-lane` + hook で物理境界化し、共有 index 事故を構造的に不可能にする。
+
+また「大規模化でアーキテクチャが効く」のは確立 (establish) と維持 (preserve) を分けたとき。0.4.0 で SOLID 散文を消したのは正しい (Claude が既知、recite は advisory bloat) が、**依存方向の維持には deterministic な gate が要る**。これを project-local `.bootstrap-arch` + 汎用 hook で実装した (= propagate-ai 専用にせず、全 project が自分の契約を宣言する形)。
+
 ## [0.6.0] - 2026-05-23
 
 ### Added

@@ -1,0 +1,14 @@
+# .bootstrap-protected — 直接 push を禁止する branch (project-bootstrap)
+#
+# このファイルを置いた project だけ block-push-to-protected.sh が発火する (opt-in)。
+# 無ければ何も止めない (= solo / 個人 repo は摩擦ゼロ)。
+# 共有 main を持つチーム / 並列開発の repo にだけ置く。
+#
+# 1 行 1 branch glob (# 以降コメント)。宣言 branch への直接 push を block し、
+# feature branch + PR / integrate skill 経由に矯正する。
+# 例外的に直接 push したいときは /permissions で hook を一時 deny。
+
+main
+master
+# release/*
+# 'release/1.x' のような保護したい release 系統があれば glob で追加する

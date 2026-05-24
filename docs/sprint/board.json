@@ -1,0 +1,57 @@
+{
+  "sprint": "2026-05-24-hook-test-backfill",
+  "wip_limit": 4,
+  "_wip_note": "通常は 2-3。本 sprint は leaf が完全 disjoint (= hook ごとに別テストファイル、共有 interface 無し、唯一の共有依存 helper.bash は spine T0 で完了済) なので統合リスクが ~0。4 lane を許容する。",
+  "tasks": [
+    {
+      "id": "T0",
+      "title": "共有テストハーネス (helper.bash / run.sh)",
+      "scope": ["tests/hooks/helper.bash", "tests/hooks/run.sh"],
+      "branch": "feat/parallel-dev-flow",
+      "worktree": null,
+      "depends_on": [],
+      "status": "done",
+      "claimed_by": null
+    },
+    {
+      "id": "T1",
+      "title": "require-test-companion.sh のテスト",
+      "scope": ["tests/hooks/require-test-companion.test.bash"],
+      "branch": "feat/T1-require-test-companion-tests",
+      "worktree": "../wt-T1",
+      "depends_on": ["T0"],
+      "status": "done",
+      "claimed_by": null
+    },
+    {
+      "id": "T2",
+      "title": "block-add-all.sh のテスト",
+      "scope": ["tests/hooks/block-add-all.test.bash"],
+      "branch": "feat/T2-block-add-all-tests",
+      "worktree": "../wt-T2",
+      "depends_on": ["T0"],
+      "status": "done",
+      "claimed_by": null
+    },
+    {
+      "id": "T3",
+      "title": "block-dangerous-git-ops.sh のテスト",
+      "scope": ["tests/hooks/block-dangerous-git-ops.test.bash"],
+      "branch": "feat/T3-block-dangerous-git-ops-tests",
+      "worktree": "../wt-T3",
+      "depends_on": ["T0"],
+      "status": "done",
+      "claimed_by": null
+    },
+    {
+      "id": "T4",
+      "title": "block-commit-if-tests-fail.sh のテスト",
+      "scope": ["tests/hooks/block-commit-if-tests-fail.test.bash"],
+      "branch": "feat/T4-block-commit-if-tests-fail-tests",
+      "worktree": "../wt-T4",
+      "depends_on": ["T0"],
+      "status": "done",
+      "claimed_by": null
+    }
+  ]
+}

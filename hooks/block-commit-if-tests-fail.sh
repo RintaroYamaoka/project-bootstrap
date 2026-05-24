@@ -22,9 +22,12 @@ CMD=$(printf '%s' "$INPUT" | grep -oE '"command"[^,}]*' | head -1 | sed 's/.*"co
 echo "$CMD" | grep -qE '(^|[[:space:]&|;]+)git[[:space:]]+commit($|[[:space:]])' || exit 0
 
 # テストコマンドを検出
+# marker を検出したら、その runner が PATH にある場合だけ TEST_CMD を立てる。
+# runner 不在で TEST_CMD を立てると、存在しないコマンドの非ゼロ exit を「test fail」と
+# 誤読して commit を誤 block する (= toolchain 未導入マシンで作業不能になる)。
 TEST_CMD=""
 if [ -f "package.json" ]; then
-  if grep -q '"test"' package.json; then
+  if grep -q '"test"' package.json && command -v npm >/dev/null 2>&1; then
     TEST_CMD="npm test --silent"
   fi
 elif [ -f "pyproject.toml" ] || [ -f "pytest.ini" ] || [ -f "setup.cfg" ]; then
@@ -34,11 +37,11 @@ elif [ -f "pyproject.toml" ] || [ -f "pytest.ini" ] || [ -f "setup.cfg" ]; then
     TEST_CMD="pytest -q"
   fi
 elif [ -f "go.mod" ]; then
-  TEST_CMD="go test ./..."
+  command -v go >/dev/null 2>&1 && TEST_CMD="go test ./..."
 elif [ -f "Cargo.toml" ]; then
-  TEST_CMD="cargo test --quiet"
+  command -v cargo >/dev/null 2>&1 && TEST_CMD="cargo test --quiet"
 elif [ -f "Gemfile" ]; then
-  TEST_CMD="bundle exec rspec"
+  command -v bundle >/dev/null 2>&1 && TEST_CMD="bundle exec rspec"
 fi
 
 if [ -z "$TEST_CMD" ]; then

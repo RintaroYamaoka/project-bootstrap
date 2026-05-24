@@ -130,7 +130,9 @@ hook A (`hooks/hooks.json`) が「対応 test 不在の実装ファイル編集�
 
 - **`git add -A` / `git add .` / `git add -u` / `git commit -a` / `git stash` (path 指定なし)** を blocking (= `hooks/block-add-all.sh`)。**自分が編集した file を個別 path 指定で add する**
 - **`git reset --hard` / `git push -f` (※ `--force-with-lease` は除外) / `git checkout -- .` / `git restore .` / `git clean -fd` / `git branch -D`** を blocking (= `hooks/block-dangerous-git-ops.sh`)
-- **`git commit` 直前に当 session で編集していない file が staged にあれば** blocking (= `hooks/block-cross-claude-wip.sh`)。session transcript と `git diff --cached --name-only` を照合する
+- **`git commit` 直前に当 session で編集していない file が staged にあれば** blocking (= `hooks/block-cross-claude-wip.sh`)。session transcript と `git diff --cached --name-only` を照合する。**`--amend` も対象** (= 共有 index 構成では amend こそが他 session の staged を最も巻き込む経路。実事故あり)
+- **`.bootstrap-protected` で宣言した branch への直接 push** を blocking (= `hooks/block-push-to-protected.sh`)。feature branch + 統合 (integrate skill) 経由に矯正し、混入 commit が共有 branch に lock-in する事故を塞ぐ。**opt-in** — `.bootstrap-protected` が無ければ発火しない (= solo / 個人 repo は妨げない)
+- **自分の worktree の lane (`.bootstrap-lane`) 範囲外の file 編集** を blocking (= `hooks/block-out-of-lane-edit.sh`)。sprint 時のみ発火 (lane file 不在なら素通し)
 
 ### 規律 (手順として)
 
@@ -140,6 +142,63 @@ hook で完全には強制しきれない部分は AI default 経路に組み込
 2. **branch を分けるなら `git worktree add`**。`git checkout <branch>` で同一 tree を切り替えると uncommitted を引きずる
 3. **`npm install` / `pip install` 等の lock file 書き換え操作後**は `git diff <lockfile>` を読んでから add (= 並走 session が並行で install した結果と衝突する可能性)
 4. **destructive な必要性がある操作は、user に「~ を実行して良いか」と明示確認**してから /permissions で hook を一時 deny にする
+
+### 並列開発フロー (sprint)
+
+防御 (= ぶつからない) だけでなく、1 feature を複数 Claude で **分業して組み戻す** generative なフロー。scrum の本質は「並列の最大化」でなく **WIP の制限**。
+
+| scrum | 本プラグインでの実体 |
+|---|---|
+| sprint planning | `sprint-plan` skill が feature を **scope 非重複 task** に分解、board.json 生成 |
+| 担当 / commitment | task = 1 worktree = 1 owner。`.bootstrap-lane` が触れる範囲を宣言 |
+| WIP 制限 | `wip_limit` (既定 2-3) 個までしか worktree を作らない (= 構造的に並列度を絞る) |
+| 担当境界 | lane 外編集を `block-out-of-lane-edit.sh` が hard block |
+| Definition of Done | TDD + verification 4 罠 + cohort audit (既存) |
+| integration / review | `integrate` skill が依存順 merge + **統合 verify** + claim close |
+| retrospective | `incident` skill → memory 昇格 (既存) |
+
+**並列は得なときだけ**。scope が disjoint な leaf に割れない / 共有 interface がある / 同時 lane > `wip_limit` なら、無理に並列化せず逐次 (`/plan` → TDD) を選ぶ。共有 interface は `depends_on` の **直列 spine** に切り出し、先に済ませてから下流を並列化する (= Amdahl: 直列部分が speedup の上限)。
+
+- 分解 = `skills/sprint-plan/SKILL.md`
+- 統合 = `skills/integrate/SKILL.md`
+
+## 依存方向を強制する (architecture)
+
+大規模化するほど、アーキテクチャの境界 (= layer / 依存方向) が壊れると壊滅的になる。ただし **SOLID やクリーンアーキテクチャを散文で recite しても効かない** (= Claude は既に知っており、毎 session 唱えても挙動は変わらない advisory bloat)。効くのは 2 つを分けること:
+
+| | 仕事 | 手段 |
+|---|---|---|
+| **確立** (establish) | project 開始時に層を切る (一度きり) | 設計判断 / scaffolding |
+| **維持** (preserve) | 境界の侵食を恒常的に防ぐ | **deterministic な gate (hook)** |
+
+advisory (= CLAUDE.md に「core は infra を import するな」と書くだけ) は、疲れた人間 / 並列 Claude が `import { x } from '@/infrastructure/...'` を core に書いた瞬間に**何も止めない**。lint は通常 import 方向を見ない。これが維持の穴。
+
+### 強制の仕組み
+
+依存方向は **project-local** な `.bootstrap-arch` で宣言する (= layer の glob / alias / 許可する依存辺)。本プラグインの hook は汎用で、project 固有ルールは一切持たない (= lane hook が `.bootstrap-lane` を読むのと同思想)。**cross-layer は default-deny**、明示した `allow` 辺だけ通す。
+
+```
+layer app   = app/**, middleware.ts
+layer infra = infrastructure/**
+layer core  = core/**
+alias @/ => ./
+allow app   -> infra, core
+allow infra -> core
+# core に allow 行なし = core は他 layer を import 禁止 (純 domain)
+```
+
+2 層で強制する (TDD 強制の edit+commit と同型):
+
+- **`block-cross-layer-import.sh`** (Edit|Write 時) — 禁止 import を**書いた瞬間** blocking。手戻りを防ぐ
+- **`block-arch-violations.sh`** (commit 時) — 宣言 layer 配下の**全 file を権威検証**。どの commit も契約を満たすことを保証する網
+
+`.bootstrap-arch` が無ければ fail-open (= 非アーキ project は影響なし)。雛形は `templates/.bootstrap-arch`。
+
+### 規律
+
+- **1 不可逆なアーキ判断 = 1 ADR** (`docs/decisions/`) + `.bootstrap-arch` の更新。契約変更は「意図的に」行う (= hook が止めたから黙って allow 辺を足す、は症状隠蔽)
+- 内側の層の機能が要るのに依存方向が許さない → **port (interface) を内側に定義して依存を反転**する。allow 辺を足して済ませない
+- 共有したい型/定数が cross-layer を誘発する → その型の置き場所 (= どの layer の責務か) を問い直す
 
 ## external memory として docs/ を整備
 
@@ -154,6 +213,8 @@ CLAUDE.md / SKILL.md / memory で代替できないものだけを `docs/` に�
 | `docs/incidents/` | AI / 人間が踏んだ事故と再発防止策。memory `feedback_*` の昇格元 | 永続 |
 
 雛形は `templates/docs/` を参照。`current/` / `exploring/` / `reference/` / `ops/` / `archive/` は **採用しない** (= CLAUDE.md / コード / memory で代替できるか graveyard 化する)。
+
+並列開発をするときだけ `docs/sprint/board.json` を使う (= sprint runtime state。上記 3 dir のような永続 memory ではなく、sprint 終了で archive/破棄する ephemeral な真実)。`sprint-plan` skill が生成・`integrate` skill が消費する。
 
 ### 真実の所在 — docs に書かないもの
 
