@@ -7,6 +7,18 @@
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-05-24
+
+### Added
+
+- **`hooks/block-commit-if-lint-fails.sh`** (Hook J, Bash git commit) — commit 時に project の lint command を実行し fail なら `exit 2`。「綺麗なコード」のうち **linter が見る deterministic な層** (命名規約 / format / 未使用 / 複雑度しきい値) だけを強制する。命名の質・設計のセンスといった taste は対象外 (= metric で縛ると不自然な分割を誘発し逆効果。人間レビュー / `code-review` skill の領分)。プラグインが綺麗さを判断せず project の linter に委ねる (= depcruise を arch で使うのと同思想)
+  - 検出: `package.json` の `"lint"` script (`npm run lint`) / `ruff` / `flake8` / `golangci-lint` / `cargo clippy` / `rubocop`。**全分岐に `command -v` ガード** (= 0.7.0 で踏んだ「runner 不在で誤 block」を最初から回避)。解決できなければ warn して素通し
+  - `tests/hooks/block-commit-if-lint-fails.test.bash` で TDD
+
+### Rationale
+
+「綺麗なコードを書く最強プラグイン」かを精査した結果、命名/分割/可読性の**質 (taste)** は ① Claude が default で外さない ② deterministic に検査できない の両方で gate に不適 (= metric は逆効果) と確認。一方「綺麗さ」のうち **linter が見る層は deterministic で project-local**。test は gate していたのに lint は gate していなかった穴を埋める。taste は引き続き review に委ねる。
+
 ## [0.7.0] - 2026-05-24
 
 並列開発を「防御 (= ぶつからない)」から「分業して組み戻す generative フロー」へ拡張し、さらに **依存方向 (architecture) の deterministic 強制** を追加。あわせて全 hook に bash テストを整備し、その過程で既存 hook の実バグ 3 件を修正した。

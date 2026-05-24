@@ -9,6 +9,7 @@ AI 駆動開発の規律を **hook で deterministic に強制する** Claude Co
 - **テスト先行**: 実装ファイルを編集する瞬間、対応する test ファイルが無ければ blocking (Red phase 強制)
 - **failing test での commit 禁止**: `git commit` 前に test 実行、fail なら blocking
 - **依存方向の強制 (architecture)**: project-local の `.bootstrap-arch` で宣言した layer 依存方向に反する import を blocking。edit 時に早期 block (`block-cross-layer-import.sh`)、commit 時に全 file を権威検証 (`block-arch-violations.sh`)。cross-layer は default-deny。SOLID を散文で recite するのではなく、依存辺を deterministic に強制する
+- **lint gate**: commit 前に project の linter (`npm run lint` / `ruff` / `clippy` / `rubocop` 等) を実行、fail なら blocking (`block-commit-if-lint-fails.sh`)。「綺麗さ」のうち linter が見る deterministic な層 (命名規約 / format / 複雑度) だけ gate し、taste (命名の質・設計のセンス) は review に委ねる
 - **並列 Claude 安全運用 + 並列開発フロー (sprint)**: 防御 (= 作業を消す/巻き込む経路の blocking) に加え、1 feature を複数 Claude で分業して組み戻す generative フロー
     - `git add -A` / `git commit -a` / `git stash` (path 指定なし) 等の bulk-staging を blocking
     - `git reset --hard` / `git push -f` / `git restore .` / `git clean -fd` / `git branch -D` を blocking (※ `--force-with-lease` は除外)
@@ -31,7 +32,7 @@ AI 駆動開発の規律を **hook で deterministic に強制する** Claude Co
 | `skills/sprint-plan/SKILL.md` | `/sprint-plan` — feature を scope 非重複 task に分解し worktree + lane を用意 (並列開発の計画) |
 | `skills/integrate/SKILL.md` | `/integrate` — 並列 branch を依存順 merge + 統合 verify + claim close |
 | `agents/test-writer.md` `implementer.md` `refactorer.md` | TDD Red / Green / Refactor を担う subagent |
-| `hooks/hooks.json` | 9 hook を `plugin.json` 経由でデフォルト発火 (test 先行 / commit 前 test / destructive git op / bulk-stage / cross-session WIP / 直 push / lane 外編集 / 依存方向 edit+commit) |
+| `hooks/hooks.json` | 10 hook を `plugin.json` 経由でデフォルト発火 (test 先行 / commit 前 lint+test / destructive git op / bulk-stage / cross-session WIP / 宣言 branch 直 push / lane 外編集 / 依存方向 edit+commit) |
 | `hooks/lib/arch-check.sh` | 依存方向強制エンジン (`.bootstrap-arch` parse / layer 判定 / import 解決)。jq 非依存 |
 | `tests/hooks/` | 全 hook の bash テスト (jq 非依存ハーネス、TDD で自己検証) |
 | `templates/CLAUDE.md` | 新規プロジェクト用 CLAUDE.md 雛形 (Anthropic exclude 表で prune 済) |

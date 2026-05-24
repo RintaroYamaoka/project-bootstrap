@@ -60,6 +60,22 @@ Claude Code は Windows 環境で `\` 区切り絶対 path を JSON-escape 済 (
 
 スクリプト: [`block-commit-if-tests-fail.sh`](./block-commit-if-tests-fail.sh)
 
+### J. PreToolUse on `Bash` — failing lint での commit を禁止
+
+`git commit` 直前に project の lint command を実行し、fail なら `exit 2`。「綺麗なコード」のうち **linter が見る deterministic な層** (命名規約 / format / 未使用 / 複雑度しきい値) だけを強制する。命名の質・設計のセンスといった taste は対象外 (= 人間レビュー / `code-review` skill の領分)。プラグインが綺麗さを判断せず project の linter に委ねる。
+
+| マーカー | 実行 command (runner が PATH にある場合のみ) |
+|---|---|
+| `package.json` (`"lint"` script あり) | `npm run lint --silent` |
+| `pyproject.toml` / `.ruff.toml` / `.flake8` | `ruff check .` or `flake8` |
+| `go.mod` | `golangci-lint run` |
+| `Cargo.toml` | `cargo clippy -- -D warnings` |
+| `Gemfile` | `rubocop` |
+
+linter が解決できない (script 無し / runner 不在) 場合は warn して素通し。**全分岐に `command -v` ガード**があり、toolchain 不在マシンで誤 block しない。
+
+スクリプト: [`block-commit-if-lint-fails.sh`](./block-commit-if-lint-fails.sh)
+
 ### C. PreToolUse on `Bash` — destructive git op を blocking
 
 並走している別 Claude / 別ターミナル / IDE の作業を消す destructive な git 操作を `exit 2` で **blocking**。
@@ -140,9 +156,10 @@ Claude Code は Windows 環境で `\` 区切り絶対 path を JSON-escape 済 (
 1. `block-add-all.sh`               — 個別 add に矯正
 2. `block-dangerous-git-ops.sh`     — 他人の作業を消す op を block
 3. `block-cross-claude-wip.sh`      — commit 直前に巻き込み check (`--amend` 含む)
-4. `block-push-to-protected.sh`     — main/master への直接 push を block
+4. `block-push-to-protected.sh`     — 宣言 branch への直接 push を block (opt-in)
 5. `block-arch-violations.sh`       — commit 時に依存方向を権威検証
-6. `block-commit-if-tests-fail.sh`  — 最後に test を回す
+6. `block-commit-if-lint-fails.sh`  — commit 時に lint を回す
+7. `block-commit-if-tests-fail.sh`  — 最後に test を回す
 
 block 系を test 実行より前に置くのは、test 実行が成功しても巻き込んだ commit / 契約違反は事故源だから。
 
