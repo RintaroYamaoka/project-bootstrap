@@ -7,6 +7,12 @@
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-05-25
+
+### Fixed
+
+- **`plugin.json` の `"hooks": "./hooks/hooks.json"` を削除**。Claude Code (native 2.1.x) は標準パス `hooks/hooks.json` を**自動ロード**するため、`manifest.hooks` で同じファイルを明示参照すると二重ロードで `Hook load failed: Duplicate hooks file detected` エラーになる (`/doctor` で検出)。`manifest.hooks` は標準パス以外の追加 hook ファイル専用。標準パスは記述しなくても自動発火する。0.4.0 以降潜在していたが、CC が標準パス自動ロードに対応して顕在化した。
+
 ## [0.8.0] - 2026-05-24
 
 ### Added
