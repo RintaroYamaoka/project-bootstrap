@@ -61,4 +61,28 @@ test_case "non-commit command passes"
 run_hook block-arch-violations.sh "$(printf '{"tool_name":"Bash","tool_input":{"command":"git status"},"cwd":"%s"}' "$REPO")"
 assert_exit 0
 
+# 5. Pre-existing committed violation (NOT staged in this commit) does NOT block.
+#    The gate checks only STAGED files (git diff --cached) — correct pre-commit
+#    semantics — so a repo can adopt .bootstrap-arch with existing debt without
+#    every unrelated commit being blocked. Only newly staged/touched violations block.
+setup_archrepo
+addf "core/legacy.ts"      "import { db } from '@/infrastructure/db';"
+addf "infrastructure/db.ts" "export const db = 1;"
+git -C "$REPO" commit -qm "pre-existing debt" >/dev/null 2>&1
+printf 'export const ok = 1;' > "$REPO/core/clean.ts"   # unrelated, clean
+git -C "$REPO" add core/clean.ts
+RUN_DIR="$REPO"
+test_case "committed (unstaged) violation does not block; only staged files checked"
+run_hook block-arch-violations.sh "$(commit_input)"
+assert_exit 0
+
+# 6. A newly STAGED violation IS blocked (the gate still catches what you commit).
+setup_archrepo
+addf "infrastructure/db.ts" "export const db = 1;"
+addf "core/new.ts"          "import { db } from '@/infrastructure/db';"
+RUN_DIR="$REPO"
+test_case "newly staged violation is blocked"
+run_hook block-arch-violations.sh "$(commit_input)"
+assert_exit 2
+
 finish

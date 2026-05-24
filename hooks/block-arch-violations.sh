@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Hook H — PreToolUse on Bash for `git commit`
-# commit 時の権威ゲート。`.bootstrap-arch` で宣言された layer 配下の全 file の import を
-# 検証し、依存方向の違反があれば exit 2 で commit を blocking する。これで「どの commit も
-# アーキテクチャ契約を満たす」ことを deterministic に保証する (= 散文の advisory ではなく gate)。
+# commit 時のゲート。`.bootstrap-arch` で宣言された依存方向に反する import を `staged file` の
+# 中から検出し、あれば exit 2 で commit を blocking する (= 散文の advisory ではなく gate)。
+# staged のみ検査するので、既存 debt のあるリポでも adopt でき、新規/変更分の違反だけ捕まえる
+# (全 repo 網羅 scan は CI の領分)。edit 時の早期 gate は block-cross-layer-import.sh。
 #
 # `.bootstrap-arch` が無ければ fail-open (= 非アーキ project は一切影響しない)。
 # ルールは project-local。本 hook は汎用で、project 固有のルールは一切持たない。
@@ -28,7 +29,10 @@ MANIFEST="$TOP/.bootstrap-arch"
 . "$(dirname "$0")/lib/arch-check.sh"
 arch_load_manifest "$MANIFEST" || exit 0
 
-# 宣言 layer に属する tracked file を全部検証する
+# この commit で staged な file だけ検証する (= 正しい pre-commit セマンティクス)。
+# 全 tracked を scan すると既存 debt のあるリポで無関係な commit まで全ブロックされ adopt 不能。
+# staged-only なら「触ったものだけ gate」になり、既存 debt は止めず新規違反だけ捕まえる
+# (全 repo の網羅 scan は CI の領分)。
 VIOLATIONS=""
 while IFS= read -r f; do
   [ -z "$f" ] && continue
@@ -37,7 +41,7 @@ while IFS= read -r f; do
   out="$(arch_check_imports "$f" "${f##*.}" < "$TOP/$f")"
   [ -n "$out" ] && VIOLATIONS="${VIOLATIONS}${out}
 "
-done < <(git ls-files)
+done < <(git diff --cached --name-only)
 
 [ -z "$(printf '%s' "$VIOLATIONS" | tr -d '[:space:]')" ] && exit 0
 

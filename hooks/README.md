@@ -60,9 +60,11 @@ Claude Code は Windows 環境で `\` 区切り絶対 path を JSON-escape 済 (
 
 スクリプト: [`block-commit-if-tests-fail.sh`](./block-commit-if-tests-fail.sh)
 
-### J. PreToolUse on `Bash` — failing lint での commit を禁止
+### J. PreToolUse on `Bash` — failing lint での commit を禁止 (opt-in)
 
-`git commit` 直前に project の lint command を実行し、fail なら `exit 2`。「綺麗なコード」のうち **linter が見る deterministic な層** (命名規約 / format / 未使用 / 複雑度しきい値) だけを強制する。命名の質・設計のセンスといった taste は対象外 (= 人間レビュー / `code-review` skill の領分)。プラグインが綺麗さを判断せず project の linter に委ねる。
+repo root に `.bootstrap-lint` を置いた project だけ発火する。`git commit` 直前に project の lint command を実行し、fail なら `exit 2`。「綺麗なコード」のうち **linter が見る deterministic な層** (命名規約 / format / 未使用 / 複雑度しきい値) だけを強制する。命名の質・設計のセンスといった taste は対象外 (= 人間レビュー / `code-review` skill の領分)。プラグインが綺麗さを判断せず project の linter に委ねる。
+
+**`.bootstrap-lint` が無ければ素通し** (= 既定 opt-out)。lint は project ごとに設定が違い、未設定 (例: `next lint` が ESLint 未設定で対話プロンプトに落ち exit 1) のリポを always-on で巻き込むと commit を壊すため、明示宣言で opt-in する (`.bootstrap-arch` / `.bootstrap-lane` / `.bootstrap-protected` と同じ思想)。
 
 | マーカー | 実行 command (runner が PATH にある場合のみ) |
 |---|---|
@@ -137,9 +139,9 @@ linter が解決できない (script 無し / runner 不在) 場合は warn し�
 
 スクリプト: [`block-push-to-protected.sh`](./block-push-to-protected.sh)
 
-### H. PreToolUse on `Bash` — commit 時の依存方向の権威検証
+### H. PreToolUse on `Bash` — commit 時の依存方向検証 (staged のみ)
 
-`git commit` 直前に、`.bootstrap-arch` で宣言された layer 配下の **tracked file を全部検証**し、依存方向違反があれば `exit 2` で blocking。edit 時の早期 gate (Hook I) が取りこぼしても、ここで「どの commit も契約を満たす」ことを保証する。`.bootstrap-arch` 不在なら fail-open。エンジンは [`lib/arch-check.sh`](./lib/arch-check.sh) を共有。
+`git commit` 直前に、`.bootstrap-arch` で宣言された依存方向違反を **staged file の中から検出**し、あれば `exit 2` で blocking。staged のみ検査するので (= 正しい pre-commit セマンティクス)、既存 debt のあるリポでも adopt でき、新規/変更分の違反だけ捕まえる (全 repo 網羅 scan は CI の領分)。edit 時の早期 gate は Hook I。`.bootstrap-arch` 不在なら fail-open。エンジンは [`lib/arch-check.sh`](./lib/arch-check.sh) を共有。
 
 スクリプト: [`block-arch-violations.sh`](./block-arch-violations.sh)
 

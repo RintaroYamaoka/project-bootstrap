@@ -85,7 +85,7 @@ Red → Green → Refactor を作業の軸とする。
 - **Green**: failing test を通す最小実装だけ書く。要求されていない機能を加えない。`agents/implementer.md` の subagent が担う
 - **Refactor**: テストが pass している状態で構造を改善する。テストは変更しない。`agents/refactorer.md` の subagent が担う
 
-hook A (`hooks/hooks.json`) が「対応 test 不在の実装ファイル編集」を default で blocking する。slash command で起動する形式は採用しない (= 規律ではなく option になるため)。commit 時には project の lint (`block-commit-if-lint-fails.sh`) と test (`block-commit-if-tests-fail.sh`) を hook が回す。**綺麗さは linter が見る deterministic な層 (命名規約 / format / 複雑度) だけ gate する** — 命名の質・設計のセンスは taste なので gate にせず人間レビュー / `code-review` skill に委ねる (= metric で縛ると不自然な分割を誘発し逆効果)。
+hook A (`hooks/hooks.json`) が「対応 test 不在の実装ファイル編集」を default で blocking する。slash command で起動する形式は採用しない (= 規律ではなく option になるため)。commit 時には test (`block-commit-if-tests-fail.sh`) を hook が回す。lint (`block-commit-if-lint-fails.sh`) は `.bootstrap-lint` を置いた project だけ opt-in で回す。**綺麗さは linter が見る deterministic な層 (命名規約 / format / 複雑度) だけ gate する** — 命名の質・設計のセンスは taste なので gate にせず人間レビュー / `code-review` skill に委ねる (= metric で縛ると不自然な分割を誘発し逆効果)。
 
 書くテストの順序:
 

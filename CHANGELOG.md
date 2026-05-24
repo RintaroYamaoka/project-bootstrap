@@ -7,6 +7,17 @@
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-05-25
+
+### Changed
+
+- **lint gate (`block-commit-if-lint-fails.sh`) を opt-in 化** (`.bootstrap-lint` マーカー)。always-on だと、lint script はあるが linter が未設定なリポ (例: `next lint` が ESLint 未設定で対話プロンプト→exit 1) を巻き込んで commit を壊す。`.bootstrap-arch` / `.bootstrap-lane` / `.bootstrap-protected` と同じ「project が明示宣言したら効く」思想に統一。雛形 `templates/.bootstrap-lint`。
+- **arch commit gate (`block-arch-violations.sh`) を staged file のみ検査に変更**。従来は全 tracked file を scan していたため、既存の依存方向 debt があるリポでは無関係な commit まで全ブロックされ adopt 不能だった。`git diff --cached --name-only` の staged file だけ検査する正しい pre-commit セマンティクスにし、既存 debt は止めず新規/変更分の違反だけ捕まえる (全 repo 網羅 scan は CI の領分)。edit 時の早期 gate (`block-cross-layer-import.sh`) は従来どおり。
+
+### Rationale
+
+propagate-ai (運用中リポ) への 0.8.x 適用を検証する中で 2 つの adoption 阻害を発見: (1) lint gate が always-on で、ESLint 未設定の `next lint` を回して commit をブロックしてしまう。(2) arch commit gate が全 tracked を scan するため、既存 debt 13 件のあるリポでは全 commit がブロックされる。どちらも「既存リポに後から安全に adopt できない」問題で、opt-in 化 + staged-only で解消。プラグインの一貫した原則 (project-local 宣言で opt-in / 触ったものだけ gate) に揃えた。
+
 ## [0.8.1] - 2026-05-25
 
 ### Fixed
