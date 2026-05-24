@@ -2,7 +2,7 @@
 
 ## 1 行で言うと
 
-project-bootstrap を v0.8.2 まで進め (lint opt-in 化 + arch staged-only 化)、propagate-ai へ適用する **PR #17 を作成** (未マージ)。本番ツリーは一切触れていない。
+project-bootstrap を v0.8.2 まで進め (lint opt-in 化 + arch staged-only 化)、propagate-ai へ適用する **PR #17 を merge-ready 状態に** (tsc=0 検証済み・マージしても壊れない)。安全に直せる違反 (infra→lib 契約是正 + serializeError→core) は修正、残 6 件は本番アーキ判断が要るため非破壊 debt として PR に明記。本番作業ツリーは終始無傷 (worktree で作業 → 撤去)。
 
 ## ⚠️ 起きたら最初にやること (URGENT)
 
@@ -17,11 +17,10 @@ project-bootstrap を v0.8.2 まで進め (lint opt-in 化 + arch staged-only �
 
 | 識別子 | 状況 | 対応案 |
 |---|---|---|
-| plugin 更新 | v0.8.1 が稼働中 (lint gate が live リポを壊す) | 上記 2 コマンドで v0.8.2 へ |
-| propagate-ai PR #17 | 作成済み・未マージ | triage 確認後マージ。下記違反を先に処理 |
-| core→infra/lib 6件 | 明確な debt (port が実装 import = DI 逆転含む) | 別 PR で依存反転 / 純 util は core 内へ |
-| lib→app 1件 | `lib/cron/authAndGate`→app | app へ移すか引数渡し |
-| infra→lib 8件 | 要判断 (`withDeadline` 等 util) | `allow infra -> lib` 追加 or lib 分割 |
+| plugin 更新 | v0.8.1 が稼働中 (lint gate が live リポを壊す) | 上記 2 コマンドで v0.8.2 へ (PR マージ前に必須) |
+| propagate-ai PR #17 | **tsc=0 検証済み・マージしても壊れない**状態 | レビューしてマージするだけ |
+| 解消済み: infra→lib 8 + serializeError 1 | 契約是正 + core/shared へ移動 | 済 (PR #17 に含む) |
+| 残 debt: core→infra LLM 4 + email 1 + cron 1 | port 化等の本番設計判断要・staged-only で非破壊 | 別 PR (PR #17 本文に推奨修正を明記) |
 | arch go/rust/ruby extractor | 未対応 (v1 は ts/js/py) | 次回 |
 
 ## バックグラウンドプロセス
