@@ -94,3 +94,21 @@ PR #17 に追加 push (bf76b69)。CI arch-check green。worktree 2 本 (cron/llm
 - arch-check が `import type` を runtime import と同列に flag
 
 **ローカル残**: feat/sprint2-cron / feat/sprint2-llm (内容は origin/feat/bootstrap-adoption に取り込み済み、`-D` は hook が block するので残置・無害)
+
+---
+
+## Sprint 2 完了 (6/6 違反解消・全検証 pass)
+
+残 3 件も runtime しない期間に refactor 完遂。PR #17 (commit 4d8e36a) に統合。
+
+- ✅ generateRecommendations: extractExistingCtas / mergeStickyCtas / evaluateProposalQuality を **GenerateDeps 注入 (DI port)** 化。signature 型 (StickyCtaInput / QualityCheckContext / QualityResult) を core/domain へ移動 (zod schema は infra に残す = core 外部依存ゼロ維持)。container / scripts / tests に real 実装を配線
+- ✅ notifyDeployedRecs: newDeploymentNoticeEmail を **renderDeploymentNotice 注入**化
+
+**最終検証 (全部 green)**:
+- tsc --noEmit = 0 errors
+- **arch full scan: 違反ファイル数 0** (repo 全体)
+- **full vitest: 2150 passed / 1 skip / 0 failed** (挙動完全保存)
+- PR #17 arch-check CI = pass
+
+main working tree は終始無傷 (全作業 worktree 隔離、refactor ファイルは main に不在を grep 確認)。
+PR #17 = Sprint1 (CI net) + Sprint2 (6/6) で、レビューしてマージするだけ。
