@@ -73,3 +73,24 @@ docs/handoffs/2026-05-25-propagate-ai-adoption.md を読んで、まず plugin �
 ### Sprint 2 (未実施・runtime-sensitive なので意図的に保留)
 propagate-ai の残 6 違反のうち core→infra LLM (4) / email (1) / cron (1) は **port 化・cron 移動など runtime 挙動に影響する本番リファクタ**。CI は依存方向を検証するが **runtime 挙動は検証しない**ため、subagent で夜間に blind-ship すると customer-facing LLM/cron pipeline を壊すリスク。**vitest で挙動を gate + port 設計を一目見てから**実施するのが安全。ネット (CI) は完成したので、次は安全に着手できる。
 - 安全分 (`ExistingCta` 型→core、runtime 影響ゼロ) だけ先に片付けるのも可
+
+---
+
+## Sprint 2 結果 (スクラム並列、runtime しない期間前提で実施)
+
+PR #17 に追加 push (bf76b69)。CI arch-check green。worktree 2 本 (cron/llm) を junction + tsc gate で並列実行。
+
+**6 違反中 3 件を検証付きで解消** (tsc=0 + arch-check + vitest):
+- ✅ ExistingCta 型 → `core/domain/proposals/existingCta.ts` (validateProposal / llmAnalyzer の core→infra 型違反 2件)
+- ✅ `lib/cron/authAndGate` → `app/api/cron/_shared/` (lib→app、subagent、importer 11 更新、vitest 5/5)
+
+**残 3 件 (意図的に保留、approach 明確)**:
+- generateRecommendations の `extractExistingCtas`/`mergeStickyCtas`/`evaluateProposalQuality` 直呼び (core→infra 2件): **DI port 化** = `GenerateDeps` interface (既存 DI pattern) に注入依存として足し container で配線。ただし signature が infra 型 (StickyCtaInput / QualityResult / QualityCheckContext) を引くため **型 cascade** (それらも core へ) + zod LLM schema を core に置くか判断が要る → session 末で rush せず保留
+- email (notifyDeployedRecs → lib/email/templates、core→lib 1件): email 整形は通知 adapter 寄り。templates が trackedLink を cascade 依存
+
+**dogfood で判明した bootstrap の粗** (roadmap):
+- require-test-companion が **type-only .ts を block** (existingCta.ts 作成時)。type-only skip ルールが要る
+- block-dangerous-git-ops が、別ブランチに merge 済みの local branch の `-D` も block (正しく安全側、ただし cleanup 摩擦)
+- arch-check が `import type` を runtime import と同列に flag
+
+**ローカル残**: feat/sprint2-cron / feat/sprint2-llm (内容は origin/feat/bootstrap-adoption に取り込み済み、`-D` は hook が block するので残置・無害)
