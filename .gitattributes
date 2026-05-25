@@ -1,0 +1,18 @@
+# project-bootstrap is a cross-platform harness (WSL / Windows / macOS).
+# Shell hooks are invoked by `bash`; CRLF line endings make bash on Linux/macOS
+# fail with `$'\r': command not found`. Force LF everywhere so a checkout on
+# Windows (even with core.autocrlf=true) still produces runnable scripts.
+* text=auto eol=lf
+
+# Be explicit for the executable surface (defensive — overrides any local config).
+*.sh                       text eol=lf
+*.bash                     text eol=lf
+templates/hooks/pre-commit text eol=lf
+
+# Binaries must never be normalized.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
