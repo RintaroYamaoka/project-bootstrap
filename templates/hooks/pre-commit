@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# project-bootstrap dependency-direction pre-commit hook.
+# Claude を介さない人間のローカル commit も捕捉する (PreToolUse hook は Claude のみ)。
+#
+# Install (どちらか):
+#   cp templates/hooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+#   # husky 派は .husky/pre-commit から `bash scripts/arch-check.sh` を呼ぶ
+#
+# staged file だけ検査する (引数なし = git diff --cached)。違反で commit 中断。
+# 例外的に通すなら git commit --no-verify。
+exec bash "$(git rev-parse --show-toplevel)/scripts/arch-check.sh"

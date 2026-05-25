@@ -7,6 +7,19 @@
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-05-25
+
+### Added
+
+- **`scripts/arch-check.sh` — 依存方向の独立 CLI (Claude 非依存)**。`hooks/lib/arch-check.sh` エンジンを共有し、引数の file 群 (or staged) に `.bootstrap-arch` 契約を検査、違反で exit 1。Claude Code の PreToolUse hook は **Claude のセッションでしか発火しない**ため、人間の直 commit / plugin 未ロードのセッション / 別ツールでは強制が静かに消える。この CLI を CI と git-hook から呼ぶことで、同じ契約を「誰がどう変更しても通る場所」で強制する。`tests/hooks/arch-check-cli.test.bash` で TDD。
+- **`templates/ci/bootstrap-arch.yml` — GitHub Actions workflow テンプレ**。PR の変更ファイルに arch-check を回す **bypass 不可のマージ gate**。PreToolUse 強制が環境事故で消えても CI は server 側で必ず効く「最終砦」。変更ファイルのみ検査するので既存 debt のあるリポにも段階導入できる。
+- **`templates/hooks/pre-commit` — git native pre-commit hook テンプレ**。staged file に arch-check を回し、Claude を介さない人間のローカル commit も捕捉する。
+- **`templates/ci/README.md`** — 3 層強制 (PreToolUse / pre-commit / CI) の解説と consumer repo への vendor 手順。
+
+### Rationale
+
+「クリーンアーキを本気で守りたい、二度と drift させたくない」という要件に対し、PreToolUse hook だけでは **Claude-scoped** で穴がある (環境依存で静かに消える)。同じ `.bootstrap-arch` 契約を CLI 化して **CI (bypass 不可の最終砦) + git pre-commit (ローカル全員) + PreToolUse (即時)** の 3 層で強制する。これで「Claude 経由でも人間経由でも、宣言した依存方向に反したら必ず止まる」状態を作る。
+
 ## [0.8.2] - 2026-05-25
 
 ### Changed

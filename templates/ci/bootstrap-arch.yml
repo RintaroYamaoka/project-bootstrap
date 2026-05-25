@@ -1,0 +1,31 @@
+# .github/workflows/bootstrap-arch.yml にコピーする。
+# PR の変更ファイルに依存方向 (.bootstrap-arch) を強制する「bypass 不可の最終 gate」。
+# Claude PreToolUse hook が環境依存で消えても、CI は server 側で必ず効く。
+#
+# 前提 (consumer repo への vendor):
+#   - scripts/arch-check.sh        (本リポ scripts/arch-check.sh をコピー)
+#   - scripts/arch-check-engine.sh (本リポ hooks/lib/arch-check.sh をこの名前でコピー)
+#   - .bootstrap-arch              (依存方向契約)
+name: bootstrap-arch
+on:
+  pull_request:
+
+jobs:
+  arch-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: dependency-direction check (changed files)
+        run: |
+          set -euo pipefail
+          BASE="${{ github.base_ref }}"
+          git fetch origin "$BASE" --depth=1
+          CHANGED="$(git diff --name-only "origin/$BASE...HEAD")"
+          if [ -z "$CHANGED" ]; then
+            echo "no changed files"; exit 0
+          fi
+          echo "checking:"; echo "$CHANGED" | sed 's/^/  /'
+          # shellcheck disable=SC2086
+          bash scripts/arch-check.sh $CHANGED
