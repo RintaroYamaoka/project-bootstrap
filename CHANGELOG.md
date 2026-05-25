@@ -7,6 +7,14 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **hook の JSON コマンド解析を fail-open から fail-closed へ**。7 つの hook (`block-add-all` / `block-arch-violations` / `block-commit-if-lint-fails` / `block-commit-if-tests-fail` / `block-cross-claude-wip` / `block-dangerous-git-ops` / `block-push-to-protected`) がコピペ共有していた `grep -oE '"command"[^,}]*'` は**最初の `,` / `}` でコマンド文字列を切る**ため、`git commit -m "fix, bug" && git add -A` のような入力で後続の危険 op が解析対象から消え、gate が検出失敗時に**素通し (fail-open)** していた。解析を `hooks/lib/parse-command.sh` の共通関数 `parse_command` に集約 (末尾の未エスケープ `"` まで読み、`\" \\ \n \t` 等を 1 段デコード、jq 非依存)。各 hook は解析不能時に `exit 2` で**安全側に block (fail-closed)** する。`tests/hooks/parse-command.test.bash` で TDD、各 hook テストにコンマ/エスケープ regression を追加。
+
+### Added
+
+- **`.github/workflows/test.yml` — self-CI**。push / PR で `tests/hooks/*.test.bash` 全 suite を ubuntu-latest で実行。SKILL.md の唱える「最終砦 = server 側 gate」を harness 自身にも適用し、上記のような fail-open regression を二度とマージさせない。
+
 ## [0.9.0] - 2026-05-25
 
 ### Added

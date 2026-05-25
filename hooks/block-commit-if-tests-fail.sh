@@ -16,7 +16,12 @@
 set -u
 
 INPUT=$(cat)
-CMD=$(printf '%s' "$INPUT" | grep -oE '"command"[^,}]*' | head -1 | sed 's/.*"command"[[:space:]]*:[[:space:]]*"//; s/"[[:space:]]*$//')
+# shellcheck source=lib/parse-command.sh
+. "$(dirname "$0")/lib/parse-command.sh"
+if ! CMD="$(printf '%s' "$INPUT" | parse_command)"; then
+  echo "project-bootstrap: could not parse the tool command from hook input — blocking to fail safe (fail-closed). If this is a false positive, disable this hook via /permissions." >&2
+  exit 2
+fi
 
 # git commit でなければ素通し
 echo "$CMD" | grep -qE '(^|[[:space:]&|;]+)git[[:space:]]+commit($|[[:space:]])' || exit 0

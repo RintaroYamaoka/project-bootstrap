@@ -1,0 +1,18 @@
+name: test
+
+# The harness's last line of defence — applied to the harness itself. Every push
+# and PR runs the pure-bash hook suite (tests/hooks/*.test.bash) so a fail-open
+# regression like the `"command"[^,}]*` truncation bug can't merge again.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  hooks:
+    # bash + GNU coreutils are required; ubuntu provides them out of the box.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run hook test suite
+        run: bash tests/hooks/run.sh

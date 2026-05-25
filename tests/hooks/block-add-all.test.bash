@@ -102,7 +102,19 @@ pass_case "npm test passes (non-git)"         "npm test"
 # Read-only git command — matches git but no bulk-stage pattern.
 pass_case "git status passes"                 "git status"
 
-# Empty command (no command extractable) -> early exit 0.
+# Empty command value -> early exit 0 (harmless, key present but empty).
 pass_case "empty command passes"              ""
+
+# Regression (the fail-OPEN bug this lib fixes): a comma inside the quoted -m
+# message used to truncate the parse at the comma, dropping the trailing
+# `git add -A` so this gate silently passed exactly what it exists to block.
+test_case "comma in -m message does not hide a trailing git add -A"
+run_hook block-add-all.sh '{"tool_name":"Bash","tool_input":{"command":"git commit -m \"fix, bug\" && git add -A"}}'
+assert_exit 2
+
+# Fail-CLOSED: an unparseable payload (no command key) must block, not pass.
+test_case "malformed payload with no command key is blocked (fail-closed)"
+run_hook block-add-all.sh '{"tool_name":"Bash","tool_input":{"foo":"bar"}}'
+assert_exit 2
 
 finish

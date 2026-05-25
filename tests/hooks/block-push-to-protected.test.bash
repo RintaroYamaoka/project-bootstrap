@@ -68,6 +68,15 @@ test_case "push to a glob-matched protected branch is blocked"
 run_hook block-push-to-protected.sh "$(push_input 'git push origin release/1.2')"
 assert_exit 2
 
+# Regression (the fail-OPEN bug this lib fixes): a comma inside the quoted -m
+# message used to truncate the parse at the comma, hiding the trailing
+# `git push origin main` so the protected-branch push slipped through.
+on_branch feature/x
+test_case "comma in -m message does not hide a trailing push to protected main"
+push_regress_json='{"tool_name":"Bash","tool_input":{"command":"git commit -m \"x, y\" && git push origin main"},"cwd":"'"$REPO"'"}'
+run_hook block-push-to-protected.sh "$push_regress_json"
+assert_exit 2
+
 # opt-in: with NO .bootstrap-protected, even a main push is allowed (fail-open).
 setup_repo
 rm "$REPO/.bootstrap-protected"

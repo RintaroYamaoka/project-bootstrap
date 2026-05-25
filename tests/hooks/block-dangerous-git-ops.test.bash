@@ -101,4 +101,15 @@ expect_block 'git clean --force'
 # `-d` alone (no -f) does not delete anything in git clean, so it stays unblocked.
 expect_pass 'git clean -d'
 
+# Regression (the fail-OPEN bug this lib fixes): a comma inside the quoted -m
+# message used to truncate the parse, hiding the trailing destructive op.
+test_case "comma in -m message does not hide a trailing git reset --hard"
+run_hook block-dangerous-git-ops.sh '{"tool_name":"Bash","tool_input":{"command":"git commit -m \"x, y\" && git reset --hard"}}'
+assert_exit 2
+
+# Fail-CLOSED: an unparseable payload (no command key) must block, not pass.
+test_case "malformed payload with no command key is blocked (fail-closed)"
+run_hook block-dangerous-git-ops.sh '{"tool_name":"Bash","tool_input":{"foo":"bar"}}'
+assert_exit 2
+
 finish

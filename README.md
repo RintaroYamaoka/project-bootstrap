@@ -34,7 +34,8 @@ AI 駆動開発の規律を **hook で deterministic に強制する** Claude Co
 | `agents/test-writer.md` `implementer.md` `refactorer.md` | TDD Red / Green / Refactor を担う subagent |
 | `hooks/hooks.json` | 10 hook を `plugin.json` 経由でデフォルト発火 (test 先行 / commit 前 lint+test / destructive git op / bulk-stage / cross-session WIP / 宣言 branch 直 push / lane 外編集 / 依存方向 edit+commit) |
 | `hooks/lib/arch-check.sh` | 依存方向強制エンジン (`.bootstrap-arch` parse / layer 判定 / import 解決)。jq 非依存 |
-| `tests/hooks/` | 全 hook の bash テスト (jq 非依存ハーネス、TDD で自己検証) |
+| `hooks/lib/parse-command.sh` | Bash tool の `command` 値を JSON から取り出す共通 parser。コンマ/エスケープで切れない、解析不能時は呼び出し側が fail-closed に倒せる。jq 非依存 |
+| `tests/hooks/` | 全 hook の bash テスト (jq 非依存ハーネス、TDD で自己検証)。`.github/workflows/test.yml` が push / PR で全 suite を回す (self-CI) |
 | `templates/CLAUDE.md` | 新規プロジェクト用 CLAUDE.md 雛形 (Anthropic exclude 表で prune 済) |
 | `templates/.bootstrap-arch` | 依存方向契約の雛形 (layer / alias / allow 辺) |
 | `templates/docs/` | 採用 dir (handoffs / decisions / incidents / sprint) の README + TEMPLATE 一式 |
