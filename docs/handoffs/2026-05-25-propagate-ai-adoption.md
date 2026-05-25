@@ -59,3 +59,17 @@ gh pr view 17 -R propagate-infra/propagate-ai      # OPEN, 未マージ
 docs/handoffs/2026-05-25-propagate-ai-adoption.md を読んで、まず plugin を v0.8.2 に更新。
 その後 propagate-ai PR #17 の triage (core→infra の DI 逆転 6件) を一緒に処理するか判断したい。
 ```
+
+---
+
+## 続報 (0.9.0 — team-wide 強制ネット完成)
+
+「本気で守る/二度と drift させない」要件に対し、PreToolUse hook (Claude-scoped、環境依存で消えうる) の穴を埋める **3 層強制**を実装:
+
+- **project-bootstrap v0.9.0** (main, tag): `scripts/arch-check.sh` (Claude 非依存 CLI) + `templates/ci/bootstrap-arch.yml` (PR の bypass 不可 gate) + `templates/hooks/pre-commit`。12 test suite green
+- **propagate-ai PR #17**: CI ネットを vendor + 配線。**arch-check CI = pass (8s)**、PR は MERGEABLE。serializeError→core + infra→lib 契約是正済み。tsc=0 検証済み
+  - Vercel check fail = commit author の deploy 権限問題 (コード無関係、user 操作で解決)
+
+### Sprint 2 (未実施・runtime-sensitive なので意図的に保留)
+propagate-ai の残 6 違反のうち core→infra LLM (4) / email (1) / cron (1) は **port 化・cron 移動など runtime 挙動に影響する本番リファクタ**。CI は依存方向を検証するが **runtime 挙動は検証しない**ため、subagent で夜間に blind-ship すると customer-facing LLM/cron pipeline を壊すリスク。**vitest で挙動を gate + port 設計を一目見てから**実施するのが安全。ネット (CI) は完成したので、次は安全に着手できる。
+- 安全分 (`ExistingCta` 型→core、runtime 影響ゼロ) だけ先に片付けるのも可
