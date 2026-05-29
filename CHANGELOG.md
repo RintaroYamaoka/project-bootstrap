@@ -7,6 +7,8 @@
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-05-29
+
 ### Added
 
 - **`hooks/sprint-trigger-reminder.sh` (UserPromptSubmit) — sprint 自動分解の「判定し忘れ」を deterministic に塞ぐ**。sprint 自動分解は SKILL.md の advisory (= Claude が探索結果から自分で判定して `sprint-plan` をロードする) だったが、`hooks.json` には `PreToolUse` しか無く SessionStart も無いため、SKILL が context から抜ける / 長い会話で忘れられると判定そのものが走らず「全然起動しない」状態になっていた。これはプラグインが他所で否定する「advisory は忘れられる」失敗モードそのもの。sprint を hook で起動することはできない (worktree 起動は人間、判定は Claude) が、feature 実装っぽい user prompt のとき発火判定の 3 条件 checklist (① feature か ② scope 非重複 leaf 2 個以上か ③ ≤wip_limit) を毎ターン `additionalContext` に注入することで、判定の実行だけは deterministic に保証する。非該当 prompt では無音。over-trigger しても reminder 1 つで安く、3 条件 gate が bugfix/単一 file を弾くため害にならない (= false negative より false positive を許す設計)。`tests/hooks/sprint-trigger-reminder.test.bash` で TDD、`helper.bash` に stdout キャプチャ (`assert_stdout_contains` / `assert_stdout_empty`) を追加。
