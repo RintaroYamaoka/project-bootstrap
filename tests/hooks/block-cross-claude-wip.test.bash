@@ -26,15 +26,36 @@ setup_repo() {
   git -C "$REPO" commit -qm seed
 }
 
-# make_transcript <self-edited-path>... — a JSONL transcript whose Edit tool_use
-# entries declare exactly the given files as edited by "this session".
+# make_transcript <self-edited-path>... — the CURRENT session's JSONL transcript,
+# placed in a fresh per-test transcript dir that mirrors ~/.claude/projects/<hash>/.
+# Sibling session transcripts (= other terminals sharing this working tree) go in the
+# SAME dir via make_foreign_transcript. Edit tool_use entries declare the given files
+# as edited by "this session".
+FOREIGN_N=0
 make_transcript() {
-  TRANSCRIPT="$(mktemp)"
+  TS_DIR="$(mktemp -d)"
+  FOREIGN_N=0
+  TRANSCRIPT="$TS_DIR/current.jsonl"
   : > "$TRANSCRIPT"
   local p
   for p in "$@"; do
     printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"%s"}}]}}\n' "$p" >> "$TRANSCRIPT"
   done
+}
+
+# make_foreign_transcript <edited-path>... — a sibling session transcript in the SAME
+# projects dir, modeling another Claude terminal that shares this working tree (= shared
+# .git/index). Its declared files are what the new hook treats as "foreign-edited".
+# Returns the path so callers can backdate its mtime (recency-window tests).
+make_foreign_transcript() {
+  FOREIGN_N=$((FOREIGN_N + 1))
+  local f="$TS_DIR/foreign-$FOREIGN_N.jsonl"
+  : > "$f"
+  local p
+  for p in "$@"; do
+    printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Edit","input":{"file_path":"%s"}}]}}\n' "$p" >> "$f"
+  done
+  printf '%s\n' "$f"
 }
 
 # input_json <command> <transcript-path> <cwd>
@@ -43,10 +64,12 @@ input_json() {
 }
 
 # 1. The incident itself: --amend with a foreign file in the shared index must block.
+#    "Foreign" now means: a sibling session (another terminal sharing this tree) edited it.
 setup_repo
 echo foreign > "$REPO/foreign.txt"
 git -C "$REPO" add foreign.txt          # staged by "another session", NOT self-edited
 make_transcript "$REPO/mine.txt"         # this session only touched mine.txt
+make_foreign_transcript "$REPO/foreign.txt" >/dev/null   # the other terminal edited foreign.txt
 RUN_DIR="$REPO"
 test_case "amend with foreign staged file is blocked"
 run_hook block-cross-claude-wip.sh "$(input_json 'git commit --amend -m x' "$TRANSCRIPT" "$REPO")"
@@ -65,6 +88,7 @@ setup_repo
 echo foreign > "$REPO/foreign.txt"
 git -C "$REPO" add foreign.txt
 make_transcript "$REPO/mine.txt"
+make_foreign_transcript "$REPO/foreign.txt" >/dev/null
 RUN_DIR="$REPO"
 test_case "plain commit with foreign staged file is blocked"
 run_hook block-cross-claude-wip.sh "$(input_json 'git commit -m x' "$TRANSCRIPT" "$REPO")"
@@ -79,5 +103,55 @@ RUN_DIR="$REPO"
 test_case "commit of only self-edited file passes"
 run_hook block-cross-claude-wip.sh "$(input_json 'git commit -m x' "$TRANSCRIPT" "$REPO")"
 assert_exit 0
+
+# 5. BUG FIX regression: a same-session Bash artifact (e.g. npm install's lockfile) is
+#    staged but appears in NO session's edit-tool set. The old impl flagged it as an
+#    intruder (Bash leaves no file_path); the fix must let it through — there is no
+#    evidence another session touched it.
+setup_repo
+echo '{}' > "$REPO/package-lock.json"   # produced by `npm install` via the Bash tool
+git -C "$REPO" add package-lock.json
+make_transcript "$REPO/src/index.ts"     # this session only Edit'd source, never the lockfile
+RUN_DIR="$REPO"
+test_case "same-session Bash artifact (lockfile) passes"
+run_hook block-cross-claude-wip.sh "$(input_json 'git commit -m x' "$TRANSCRIPT" "$REPO")"
+assert_exit 0
+
+# 6. fail-open: a staged file not attributable to any session (no sibling transcripts at
+#    all) passes. Absence of evidence is not treated as guilt.
+setup_repo
+echo gen > "$REPO/generated.txt"         # output of a generator script run via Bash
+git -C "$REPO" add generated.txt
+make_transcript "$REPO/mine.txt"
+RUN_DIR="$REPO"
+test_case "staged file with no owning session (no siblings) passes (fail-open)"
+run_hook block-cross-claude-wip.sh "$(input_json 'git commit -m x' "$TRANSCRIPT" "$REPO")"
+assert_exit 0
+
+# 7. Recency window: a sibling transcript older than the window is ignored, so a file it
+#    edited is not blocked (avoids stale-session false positives).
+setup_repo
+echo foreign > "$REPO/foreign.txt"
+git -C "$REPO" add foreign.txt
+make_transcript "$REPO/mine.txt"
+STALE="$(make_foreign_transcript "$REPO/foreign.txt")"
+touch -t 202001010000 "$STALE"           # backdate well outside the default 24h window
+RUN_DIR="$REPO"
+test_case "stale sibling beyond window is ignored (file passes)"
+run_hook block-cross-claude-wip.sh "$(input_json 'git commit -m x' "$TRANSCRIPT" "$REPO")"
+assert_exit 0
+
+# 8. Window disabled: with BOOTSTRAP_WIP_WINDOW_HOURS=0 even an old sibling counts, so the
+#    same stale-sibling file blocks again. Pins the env override.
+setup_repo
+echo foreign > "$REPO/foreign.txt"
+git -C "$REPO" add foreign.txt
+make_transcript "$REPO/mine.txt"
+STALE="$(make_foreign_transcript "$REPO/foreign.txt")"
+touch -t 202001010000 "$STALE"
+RUN_DIR="$REPO"
+test_case "window disabled (=0) counts stale sibling, file blocks"
+BOOTSTRAP_WIP_WINDOW_HOURS=0 run_hook block-cross-claude-wip.sh "$(input_json 'git commit -m x' "$TRANSCRIPT" "$REPO")"
+assert_exit 2
 
 finish

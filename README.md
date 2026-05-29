@@ -13,7 +13,7 @@ AI 駆動開発の規律を **hook で deterministic に強制する** Claude Co
 - **並列 Claude 安全運用 + 並列開発フロー (sprint)**: 防御 (= 作業を消す/巻き込む経路の blocking) に加え、1 feature を複数 Claude で分業して組み戻す generative フロー
     - `git add -A` / `git commit -a` / `git stash` (path 指定なし) 等の bulk-staging を blocking
     - `git reset --hard` / `git push -f` / `git restore .` / `git clean -fd` / `git branch -D` を blocking (※ `--force-with-lease` は除外)
-    - `git commit` 直前に当 session で編集していない file が staged にあれば blocking (`--amend` 含む)
+    - `git commit` 直前に **他 session (= 同一 working tree を共有する別ターミナル) が編集した** file が staged にあれば blocking (`--amend` 含む)。判定は同一 projects dir の sibling transcript を根拠にするので、worktree 隔離下の別 session や同一 session の Bash 生成物 (lockfile / generated) は誤 block しない
     - `.bootstrap-protected` で宣言した branch への直接 push を blocking (opt-in、feature branch + PR / integrate skill 経由に矯正)
     - `sprint-plan` で scope 非重複 task に分解 → worktree の `.bootstrap-lane` 範囲外編集を blocking → `integrate` で依存順 merge + 統合 verify
 - **verification 最高レバレッジ**: production-affecting な変更は read-back / live assert で実体確認してから完了とする。silent failure / 既存リソース表記推測 / escape 多段 / pattern 拡張 cohort 副作用の 4 罠を `SKILL.md` で明示
