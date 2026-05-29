@@ -1,6 +1,6 @@
 ---
 name: sprint-plan
-description: 1 つの feature を複数 Claude で安全に並列開発するための sprint 計画 skill。feature を scope 非重複 (= 触る file glob が重ならない) の task に分解し、共有 interface/型は直列 spine (depends_on) に切り出し、各 task に worktree + .bootstrap-lane を用意して、ワーカー起動文を吐く。並列が本当に得かを WIP 上限と disjoint 性で判定し、得でないなら逐次を勧める。実装はしない (= 計画と worktree 準備まで)。「並列で」「チーム/スクラムで」「複数ターミナルで」と言われたとき、または非自明な feature を複数レーンに割れると判断したときにロードする。統合は integrate skill が担う。
+description: 1 つの feature を複数 Claude で安全に並列開発するための sprint 計画 skill。feature を scope 非重複 (= 触る file glob が重ならない) の task に分解し、共有 interface/型は直列 spine (depends_on) に切り出し、各 task に worktree + .bootstrap-lane を用意して、ワーカー起動文を吐く。並列が本当に得かを WIP 上限と disjoint 性で判定し、得でないなら逐次を勧める。実装はしない (= 計画と worktree 準備まで)。これは default 挙動として自動でロードする: feature の実装に着手し、探索の結果 scope 非重複の leaf が 2 個以上 (≤ wip_limit) に割れると判断したら、「並列で」「チーム/スクラムで」と言われなくても自動で起動する (= 明示呼び出し待ちにしない)。bug fix / refactor / 単一 file / 自明な小変更には起動しない。「並列で」「チーム/スクラムで」「複数ターミナルで」と明示されたときも当然ロードする。統合は integrate skill が担う。
 ---
 
 # /sprint-plan — feature を安全に並列分解する

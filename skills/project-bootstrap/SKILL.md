@@ -1,6 +1,6 @@
 ---
 name: project-bootstrap
-description: AI 駆動開発の規律。ルール = AI の default 挙動 + hook 強制。Anthropic 公式 best practice (verification 最高レバレッジ / hooks deterministic / CLAUDE.md advisory) に整合する。verification 4 罠 / AI の癖 9 個 / TDD ループ / 根本修正 / 並列 Claude 安全運用 / 環境隔離 / external memory として docs/ 整備 (handoffs / decisions / incidents)。新機能・バグ修正・リファクタ・調査など、あらゆるコーディング作業で常にロードする。
+description: AI 駆動開発の規律。ルール = AI の default 挙動 + hook 強制。Anthropic 公式 best practice (verification 最高レバレッジ / hooks deterministic / CLAUDE.md advisory) に整合する。verification 4 罠 / AI の癖 9 個 / TDD ループ / 根本修正 / 並列 Claude 安全運用 / subagent は read-only (mutation は main session、hook が subagent で効かないため) / 環境隔離 / external memory として docs/ 整備 (handoffs / decisions / incidents)。新機能・バグ修正・リファクタ・調査など、あらゆるコーディング作業で常にロードする。
 ---
 
 # AI 駆動開発の規律
@@ -79,11 +79,11 @@ AI コーディングエージェントは放っておくと以下をやる。�
 
 ## TDD は default 挙動
 
-Red → Green → Refactor を作業の軸とする。
+Red → Green → Refactor を作業の軸とする。**この 3 フェーズは main session が直接行う** (= subagent に委譲しない。理由は次節)。
 
-- **Red**: 振る舞いを failing test として書く。pass してしまうテストは「まだその時期ではない」。`agents/test-writer.md` の subagent が担う
-- **Green**: failing test を通す最小実装だけ書く。要求されていない機能を加えない。`agents/implementer.md` の subagent が担う
-- **Refactor**: テストが pass している状態で構造を改善する。テストは変更しない。`agents/refactorer.md` の subagent が担う
+- **Red**: 振る舞いを failing test として書く。pass してしまうテストは「まだその時期ではない」
+- **Green**: failing test を通す最小実装だけ書く。要求されていない機能を加えない
+- **Refactor**: テストが pass している状態で構造を改善する。テストは変更しない
 
 hook A (`hooks/hooks.json`) が「対応 test 不在の実装ファイル編集」を default で blocking する。slash command で起動する形式は採用しない (= 規律ではなく option になるため)。commit 時には test (`block-commit-if-tests-fail.sh`) を hook が回す。lint (`block-commit-if-lint-fails.sh`) は `.bootstrap-lint` を置いた project だけ opt-in で回す。**綺麗さは linter が見る deterministic な層 (命名規約 / format / 複雑度) だけ gate する** — 命名の質・設計のセンスは taste なので gate にせず人間レビュー / `code-review` skill に委ねる (= metric で縛ると不自然な分割を誘発し逆効果)。
 
@@ -93,6 +93,17 @@ hook A (`hooks/hooks.json`) が「対応 test 不在の実装ファイル編集�
 2. 境界条件 (空 / null / 最小 / 最大 / 上限)
 3. 失敗パス (不正入力でどう fail するか)
 4. **Verification observation** — production-affecting なら read-back / live assert を含むテスト
+
+## subagent は read-only — 強制が効かない場所で mutate しない
+
+**PreToolUse hook は subagent (= Task / Agent ツールで起動する子エージェント) の tool 呼び出しでは発火しない。** これは Claude Code の未修正の既知問題 (upstream `anthropics/claude-code#21460`「[SECURITY] PreToolUse hooks not enforced on subagent tool calls」OPEN) で、伝播オプションの追加も却下済 (`#27533` not planned)。plugin が配る subagent では frontmatter の `hooks:` も**無視される** (公式: "plugin subagents do not support the `hooks` ... field")。一次ソース検証は `docs/decisions/0001-subagent-hooks-not-enforced.md`。
+
+帰結として本プラグインは「強制 = hook」を貫くため、**実体を書き換える作業 (Edit / Write / git commit) を subagent に委譲しない**:
+
+- **subagent は read-only 探索専用**。`Read` / `Grep` / `Glob` での調査・要約・計画の下書きに使う (= context を節約しつつ gate すべき操作が存在しない)
+- **mutation はすべて main session が行う** (= TDD の Red/Green/Refactor、bug fix、refactor)。ここでだけ hook が test 先行 / lane / 依存方向 / commit gate を deterministic に強制できる
+- **並列開発は subagent ではなく別 session の worker** で行う。`sprint-plan` が吐く worker 起動文を**人間が別ターミナル / 別 worktree に貼って起動**する (= 各 worker はそれ自身が main session なので hook が普通に効く)。1 session 内で subagent を並列に走らせて実装させる方式は、gate が消えるため**採らない**
+- 最終砦として、subagent や人間の直 commit など hook を経由しない経路も `scripts/arch-check.sh` + CI + git pre-commit (server 側 net) が捕まえる
 
 ## バグは根本を修正する
 
@@ -157,7 +168,16 @@ hook で完全には強制しきれない部分は AI default 経路に組み込
 | integration / review | `integrate` skill が依存順 merge + **統合 verify** + claim close |
 | retrospective | `incident` skill → memory 昇格 (既存) |
 
-**並列は得なときだけ**。scope が disjoint な leaf に割れない / 共有 interface がある / 同時 lane > `wip_limit` なら、無理に並列化せず逐次 (`/plan` → TDD) を選ぶ。共有 interface は `depends_on` の **直列 spine** に切り出し、先に済ませてから下流を並列化する (= Amdahl: 直列部分が speedup の上限)。
+**sprint 分解は default 挙動 (= 指示待ちにしない)**。単一タスクで `/plan` を default で回すのと同じく、並列が得な feature では `/sprint-plan` や「並列で」「スクラムで」を**言われるのを待たず**、探索 (`/plan` 相当の read-only) の直後に自動で sprint 分解 (`sprint-plan` skill をロード) を起動する。advisory な明示呼び出しは忘れられる (= プラグインの不採用方針)。判定はあくまで Claude が探索結果から下す。
+
+**自動分解の発火条件 (= 全部満たすときだけ)**:
+1. 作業が **feature** (= 新規/拡張の実装)。bug fix / refactor / 単一 file / 自明な小変更は対象外 → 逐次 (`/plan` → TDD)
+2. **scope 非重複の leaf が 2 個以上**に割れる (= 各 task の owned file glob が重ならない)
+3. 同時 lane 数 ≤ `wip_limit` (既定 2-3)。超えるなら lane を減らすか逐次
+
+**1 つでも欠けたら自動分解しない**。共有 interface / 型 / 契約があるなら、それを `depends_on` の **直列 spine** に切り出して先に 1 レーンで済ませ、その後に下流 leaf を並列化する (= Amdahl: 直列部分が speedup の上限)。disjoint に割れない feature は無理に刻まず逐次でやる (= 協調コストが利得を食う)。並列の収益は凹型で変曲点は低い (ソロで実質 2-3)。
+
+自動分解した結果は**人間に提示する** (board.json + 各 lane の worker 起動文)。worker Claude の起動は人間が行う (= task = 1 worktree = 1 owner、レビューは人間で直列。1 session 内での subagent 並列実行は別物で、ここでは採らない)。
 
 - 分解 = `skills/sprint-plan/SKILL.md`
 - 統合 = `skills/integrate/SKILL.md`

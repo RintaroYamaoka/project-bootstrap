@@ -25,13 +25,13 @@ AI 駆動開発の規律を **hook で deterministic に強制する** Claude Co
 
 | 提供物 | 内容 |
 |---|---|
-| `skills/project-bootstrap/SKILL.md` | 規律本体 (ルール = default 挙動 / verification 4 罠 / TDD / AI 癖 9 個 / バグ根本修正 / 依存方向の強制 / 並列開発フロー / 環境隔離 / docs 整備 / cohort audit) |
+| `skills/project-bootstrap/SKILL.md` | 規律本体 (ルール = default 挙動 / verification 4 罠 / TDD / AI 癖 9 個 / バグ根本修正 / 依存方向の強制 / 並列開発フロー / **subagent は read-only** / 環境隔離 / docs 整備 / cohort audit) |
 | `skills/plan/SKILL.md` | `/plan` — 探索 → 計画 → 提示。実装前に計画書を出力 |
 | `skills/handoff/SKILL.md` | `/handoff` — session の cold restore に必要な状態を `docs/handoffs/` に書き残す |
 | `skills/incident/SKILL.md` | `/incident` — 事故を `docs/incidents/` に記録し、memory `feedback_*` / `reference_*` に昇格させる |
-| `skills/sprint-plan/SKILL.md` | `/sprint-plan` — feature を scope 非重複 task に分解し worktree + lane を用意 (並列開発の計画) |
+| `skills/sprint-plan/SKILL.md` | `/sprint-plan` — feature を scope 非重複 task に分解し worktree + lane を用意 (並列開発の計画)。**default 発火**: feature が scope 非重複の leaf 2 個以上 (≤ `wip_limit`) に割れると判断したら、明示呼び出しを待たず自動で分解する (= advisory 不採用方針の徹底)。bug fix / refactor / 単一 file / 自明な変更には発火しない |
 | `skills/integrate/SKILL.md` | `/integrate` — 並列 branch を依存順 merge + 統合 verify + claim close |
-| `agents/test-writer.md` `implementer.md` `refactorer.md` | TDD Red / Green / Refactor を担う subagent |
+| `docs/decisions/0001-subagent-hooks-not-enforced.md` | ADR — hook が subagent で発火しない事実 (upstream `#21460` OPEN) と「subagent は read-only / mutation は main session / 並列は別 session の worker」doctrine の一次ソース検証 |
 | `hooks/hooks.json` | 10 hook を `plugin.json` 経由でデフォルト発火 (test 先行 / commit 前 lint+test / destructive git op / bulk-stage / cross-session WIP / 宣言 branch 直 push / lane 外編集 / 依存方向 edit+commit) |
 | `hooks/lib/arch-check.sh` | 依存方向強制エンジン (`.bootstrap-arch` parse / layer 判定 / import 解決)。jq 非依存 |
 | `hooks/lib/parse-command.sh` | Bash tool の `command` 値を JSON から取り出す共通 parser。コンマ/エスケープで切れない、解析不能時は呼び出し側が fail-closed に倒せる。jq 非依存 |

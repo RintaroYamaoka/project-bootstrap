@@ -15,7 +15,7 @@
         "url": "https://github.com/RintaroYamaoka/project-bootstrap.git"
       },
       "description": "AI 駆動開発の規律を hook で deterministic に強制する Claude Code プラグイン。ルール = AI の default 挙動 + hook 強制。Anthropic 公式 best practice 整合。verification 4 罠 / AI の癖 9 個 / TDD / 依存方向の強制 (architecture) / 並列開発フロー (sprint) / lint gate / cohort audit / external memory として docs/ 整備。10 hook: 実装 edit 前に対応 test / 依存方向 import / lane 外編集を blocking、commit 前に test + staged の依存方向検証、destructive git op / bulk-staging / cross-session WIP (--amend 含む) を blocking。lint / arch / lane / 宣言 branch 直 push は .bootstrap-* marker で opt-in。skills 6 個: project-bootstrap / plan / handoff / incident / sprint-plan / integrate。",
-      "version": "0.9.1",
+      "version": "0.10.0",
       "homepage": "https://github.com/RintaroYamaoka/project-bootstrap",
       "repository": "https://github.com/RintaroYamaoka/project-bootstrap",
       "license": "MIT",

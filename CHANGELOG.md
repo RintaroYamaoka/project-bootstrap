@@ -7,6 +7,17 @@
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-05-29
+
+### Changed
+
+- **sprint 分解を default 挙動に格上げ (= 明示呼び出し待ちにしない)**。従来 `/sprint-plan` という slash command (= advisory) を起点にしていたが、これはプラグインの「advisory は忘れられるから不採用」方針と矛盾していた。`skills/project-bootstrap/SKILL.md` の並列開発フロー節に発火条件を明示し、feature の実装着手時に探索結果が「scope 非重複の leaf 2 個以上 (≤ `wip_limit`) に割れる」を満たしたら、「並列で」「スクラムで」と言われなくても自動で sprint 分解を起動する。bug fix / refactor / 単一 file / 自明な小変更には発火しない (= 逐次)。worker Claude の起動は従来どおり人間が行う (task = 1 worktree = 1 owner モデルは不変。1 session 内 subagent 並列実行は採らない)。`skills/sprint-plan/SKILL.md` の description を auto-load 寄りに更新、README も追従。
+- **subagent を read-only 専用にし、TDD の mutation を main session に戻した**。一次ソース検証で「PreToolUse hook は subagent の tool 呼び出しでは発火しない」(upstream `#21460` OPEN・SECURITY、伝播 `#27533` は not_planned、plugin subagent では frontmatter `hooks:` も無視) と確定。従来 SKILL は TDD の Red/Green/Refactor を mutating subagent に委譲しており、**プラグインが推奨する経路で hook (test 先行 / lane / 依存方向 / commit gate) が静かに無効化**されていた。SKILL に「subagent は read-only 探索専用 / mutation はすべて main session / 並列は subagent でなく別 session の worker (各 worker が main session なので hook が効く)」を明文化。判断の一次ソースと採用しなかった代替案 (案B = 1 session 内 subagent 並列実行 等) は `docs/decisions/0001-subagent-hooks-not-enforced.md` に ADR 化。
+
+### Removed
+
+- **`agents/test-writer.md` / `implementer.md` / `refactorer.md` を削除**。これらは mutating subagent (テスト / 実装 / リファクタを書く) だが、subagent では hook が発火しないため「強制 = hook」を貫けない。TDD の Red/Green/Refactor は main session が直接担う設計に変更 (上記 Changed 参照)。
+
 ## [0.9.1] - 2026-05-29
 
 ### Fixed
