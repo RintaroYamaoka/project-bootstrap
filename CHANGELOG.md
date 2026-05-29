@@ -7,6 +7,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- **`hooks/sprint-trigger-reminder.sh` (UserPromptSubmit) — sprint 自動分解の「判定し忘れ」を deterministic に塞ぐ**。sprint 自動分解は SKILL.md の advisory (= Claude が探索結果から自分で判定して `sprint-plan` をロードする) だったが、`hooks.json` には `PreToolUse` しか無く SessionStart も無いため、SKILL が context から抜ける / 長い会話で忘れられると判定そのものが走らず「全然起動しない」状態になっていた。これはプラグインが他所で否定する「advisory は忘れられる」失敗モードそのもの。sprint を hook で起動することはできない (worktree 起動は人間、判定は Claude) が、feature 実装っぽい user prompt のとき発火判定の 3 条件 checklist (① feature か ② scope 非重複 leaf 2 個以上か ③ ≤wip_limit) を毎ターン `additionalContext` に注入することで、判定の実行だけは deterministic に保証する。非該当 prompt では無音。over-trigger しても reminder 1 つで安く、3 条件 gate が bugfix/単一 file を弾くため害にならない (= false negative より false positive を許す設計)。`tests/hooks/sprint-trigger-reminder.test.bash` で TDD、`helper.bash` に stdout キャプチャ (`assert_stdout_contains` / `assert_stdout_empty`) を追加。
+
 ### Fixed
 
 - **`block-cross-claude-wip.sh` の誤検知を根治 (信号を「他 session が編集したか」に反転)**。旧実装は self-edited set (= Edit/Write/MultiEdit/NotebookEdit の `file_path`) に**無い** staged file をすべて intruder としていた。しかし Bash tool は `file_path` を transcript に残さないため、`npm install` (package-lock.json) / generator / `sed -i` / `cp` / `mv` 等、当 session が正規に生成・変更した file がことごとく誤 block されていた。誤検知は「lockfile を gitignore」「migration SQL を untrack」といった**有害な回避策**や hook 無効化を誘発し、本来防ぎたい巻き込みすら防げなくなる (cry-wolf → 逆効果)。修正後は、同一 projects dir の *他* session transcript (= 同一 working tree を共有する別ターミナル) が編集した file だけを foreign-edited として識別し、staged file がそこに**ある**ものだけを block する。projects dir の hash は cwd 由来なので worktree 隔離下の別 session は sibling に現れず誤 block しない (= incident `2026-05-24-shared-index-amend-mixing` で確立した「worktree = lane = 1 index」と構造的に一致)。他 session の編集証拠が無い file は素通し (= fail-open。`.bootstrap-{protected,arch,lane}` 不在時の素通しと同じ「根拠が無ければ通す」原則)。コマンド解析不能時の fail-closed は不変。sibling の鮮度窓は `BOOTSTRAP_WIP_WINDOW_HOURS` (default 24h、`0` で無効化) で調整可。block メッセージから「artifact なら .gitignore」の有害な助言を削除し「lockfile / migration は commit すべき file。隠さず正規手順で対処」に差し替え。`tests/hooks/block-cross-claude-wip.test.bash` に誤検知回帰 (lockfile / no-sibling fail-open / 鮮度窓) を pin。

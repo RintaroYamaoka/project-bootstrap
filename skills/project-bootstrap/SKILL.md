@@ -179,8 +179,11 @@ hook で完全には強制しきれない部分は AI default 経路に組み込
 
 自動分解した結果は**人間に提示する** (board.json + 各 lane の worker 起動文)。worker Claude の起動は人間が行う (= task = 1 worktree = 1 owner、レビューは人間で直列。1 session 内での subagent 並列実行は別物で、ここでは採らない)。
 
+> **この判定が「忘れられない」ための補助 = `hooks/sprint-trigger-reminder.sh` (UserPromptSubmit)**。sprint 自体は hook で起動できない (worktree 起動は人間、判定は Claude) が、feature 実装っぽい prompt のとき上記 3 条件 checklist を毎ターン context に注入し、「SKILL が context から抜けて判定し忘れる」(= advisory の穴) を deterministic に塞ぐ。最終判断は依然 Claude が下す。
+
 - 分解 = `skills/sprint-plan/SKILL.md`
 - 統合 = `skills/integrate/SKILL.md`
+- 判定 reminder = `hooks/sprint-trigger-reminder.sh`
 
 ## 依存方向を強制する (architecture)
 

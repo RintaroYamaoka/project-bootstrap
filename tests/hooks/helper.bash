@@ -13,20 +13,23 @@ CURRENT_TEST=""
 
 HOOK_EXIT=0
 HOOK_STDERR=""
+HOOK_STDOUT=""
 
 # test_case <name> — label the assertions that follow.
 test_case() { CURRENT_TEST="$1"; }
 
 # run_hook <script-name> <stdin-json>
 # Runs hooks/<script-name> with the JSON piped on stdin. If RUN_DIR is set, runs
-# with that as cwd (hooks resolve git context from cwd). Captures exit code + stderr.
+# with that as cwd (hooks resolve git context from cwd). Captures exit code, stderr,
+# and stdout (stdout matters for context-injecting hooks like UserPromptSubmit).
 run_hook() {
   local script="$1" input="$2"
-  local errf; errf="$(mktemp)"
-  ( cd "${RUN_DIR:-$PWD}" && printf '%s' "$input" | bash "$HOOKS_DIR/$script" ) 2>"$errf"
+  local errf outf; errf="$(mktemp)"; outf="$(mktemp)"
+  ( cd "${RUN_DIR:-$PWD}" && printf '%s' "$input" | bash "$HOOKS_DIR/$script" ) >"$outf" 2>"$errf"
   HOOK_EXIT=$?
   HOOK_STDERR="$(cat "$errf")"
-  rm -f "$errf"
+  HOOK_STDOUT="$(cat "$outf")"
+  rm -f "$errf" "$outf"
 }
 
 assert_exit() {
@@ -49,6 +52,27 @@ assert_stderr_contains() {
       echo "  FAIL [$CURRENT_TEST] stderr missing '$1'"
       ;;
   esac
+}
+
+assert_stdout_contains() {
+  TESTS_RUN=$((TESTS_RUN + 1))
+  case "$HOOK_STDOUT" in
+    *"$1"*) echo "  ok   [$CURRENT_TEST] stdout contains '$1'" ;;
+    *)
+      TESTS_FAILED=$((TESTS_FAILED + 1))
+      echo "  FAIL [$CURRENT_TEST] stdout missing '$1'"
+      ;;
+  esac
+}
+
+assert_stdout_empty() {
+  TESTS_RUN=$((TESTS_RUN + 1))
+  if [ -z "$HOOK_STDOUT" ]; then
+    echo "  ok   [$CURRENT_TEST] stdout empty"
+  else
+    TESTS_FAILED=$((TESTS_FAILED + 1))
+    echo "  FAIL [$CURRENT_TEST] expected empty stdout, got: $(printf '%s' "$HOOK_STDOUT" | head -1)"
+  fi
 }
 
 # assert_eq <expected> <actual> — direct value comparison (for engine unit tests).
