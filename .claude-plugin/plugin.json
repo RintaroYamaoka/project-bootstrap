@@ -1,7 +1,7 @@
 {
   "name": "project-bootstrap",
-  "version": "0.11.0",
-  "description": "AI 駆動開発の規律を hook で deterministic に強制する Claude Code プラグイン。ルール = AI の default 挙動 + hook 強制 (Anthropic 公式 best practice 整合)。verification 4 罠 / AI の癖 9 個 / TDD ループ / 根本修正 / 依存方向の強制 (architecture) / 並列開発フロー (sprint) / lint gate / 環境隔離 / cohort audit / external memory として docs/ 整備。11 hook がデフォルト発火: 実装編集前に対応 test / 依存方向違反 import / 並列 lane 外編集を blocking、git commit 前に test 実行 + staged の依存方向検証、destructive git op / bulk-staging / cross-session WIP (--amend 含む) を blocking、feature 実装っぽい prompt で sprint 発火判定を context 注入。lint gate / arch / lane / 宣言 branch 直 push は project-local marker (.bootstrap-*) で opt-in。綺麗さは linter が見る層だけ gate し taste は review に委ねる。skills: project-bootstrap / plan / handoff / incident / sprint-plan / integrate。",
+  "version": "0.12.0",
+  "description": "AI 駆動開発の規律を hook で deterministic に強制する Claude Code プラグイン。ルール = AI の default 挙動 + hook 強制 (Anthropic 公式 best practice 整合)。verification 4 罠 / AI の癖 9 個 / TDD ループ / 根本修正 / 依存方向の強制 (architecture) / 並列開発フロー (sprint) / lint gate / 環境隔離 / cohort audit / external memory として docs/ 整備。12 hook がデフォルト発火: 実装編集前に対応 test / 依存方向違反 import / 並列 lane 外編集を blocking、新規 source 面を sprint 発火判定なしで作るのを fail-closed で blocking、git commit 前に test 実行 + staged の依存方向検証、destructive git op / bulk-staging / cross-session WIP (--amend 含む) を blocking。lint gate / arch / lane / sprint gate / 宣言 branch 直 push は project-local marker (.bootstrap-* / docs/sprint/) で opt-in。綺麗さは linter が見る層だけ gate し taste は review に委ねる。skills: project-bootstrap / plan / handoff / incident / sprint-plan / integrate。",
   "author": {
     "name": "Rintaro Yamaoka"
   },

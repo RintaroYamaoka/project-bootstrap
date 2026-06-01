@@ -31,6 +31,18 @@ Claude Code は Windows 環境で `\` 区切り絶対 path を JSON-escape 済 (
 
 スクリプト: [`block-out-of-lane-edit.sh`](./block-out-of-lane-edit.sh)
 
+### K. PreToolUse on `Edit | Write | MultiEdit` — sprint 発火判定を fail-closed 強制
+
+**新規 source file を作ろうとした瞬間**、sprint 自動分解の発火判定が記録されていなければ `exit 2` で blocking。かつて sprint 発火は `sprint-trigger-reminder.sh` (UserPromptSubmit) の **advisory** だけで担保され、判定も実行もモデル任せだった (= 長い会話で忘れられ一度も発火しない実事故あり: [`docs/incidents/2026-05-31-sprint-advisory-silent/`](../docs/incidents/2026-05-31-sprint-advisory-silent/README.md))。本 hook は TDD/lane/arch と同型に、その判定を precondition として強制する。
+
+- **信号は prompt の語彙ではなく「新規 source file を作る行為そのもの」**。語彙 regex は proxy で自然言語の言い回しに穴があったが、行為信号は言い方に依存しない
+- hook は **sprint を起動しない** (worktree 起動=人間 / disjoint 判定=モデル。ADR 0001 の既約な残余)。「gate 判定を済ませた」ことだけを強制する
+- **opt-in**: `docs/sprint/` が在る project でのみ発火 (= `.bootstrap-arch`/`-lane`/`-protected` と同じ採用宣言)。無ければ fail-open
+- **fail-open (根拠不在)**: file_path 不在 / 非 git / 既存 file の編集・上書き / test・config・doc / 非 source 拡張子 / `scripts/_*`。bug fix / refactor は一切 trip しない
+- gate を通す記録 = `docs/sprint/.gate` (gitignore, ephemeral)。各行 `<scope-glob>  <理由>` (1 列目が glob)。記録 scope 内の新規 source は素通し、scope 外は再 block (= 新しい disjoint 面 → 再判定)。進行中 sprint (`board.json` 非空) なら lane hook が scope を握るので素通し
+
+スクリプト: [`block-unplanned-feature-build.sh`](./block-unplanned-feature-build.sh)
+
 ### I. PreToolUse on `Edit | Write | MultiEdit` — 依存方向の早期強制
 
 編集が `.bootstrap-arch` の依存方向に反する import を導入しようとした瞬間に `exit 2` で blocking (= 書いた瞬間に止め手戻りを防ぐ)。PreToolUse なので新内容はまだ disk に無く、hook input JSON を最小 unescape して新内容中の import specifier を抽出・検査する。
@@ -149,9 +161,10 @@ linter が解決できない (script 無し / runner 不在) 場合は warn し�
 
 **PreToolUse on `Edit | Write | MultiEdit`**:
 
-1. `block-out-of-lane-edit.sh`      — 並列 lane 外編集を block
-2. `block-cross-layer-import.sh`    — 依存方向違反 import を早期 block
-3. `require-test-companion.sh`      — 対応 test なき実装編集を block
+1. `block-out-of-lane-edit.sh`         — 並列 lane 外編集を block
+2. `block-unplanned-feature-build.sh`  — 新規 source 面を sprint 判定なしで作るのを block (opt-in)
+3. `block-cross-layer-import.sh`       — 依存方向違反 import を早期 block
+4. `require-test-companion.sh`         — 対応 test なき実装編集を block
 
 **PreToolUse on `Bash`**:
 
