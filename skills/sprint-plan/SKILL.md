@@ -17,6 +17,8 @@ description: 1 つの feature を複数 Claude で安全に並列開発するた
 
 判定の結果「並列にする価値が薄い」なら、**正直にそう言って逐次 (/plan → TDD) を勧める**。
 
+> **この skill のロード自体が gate で強制される**。`docs/sprint/` を採用した project では `hooks/block-unplanned-feature-build.sh` が、新規 source file を作ろうとした瞬間に「sprint 判定の記録があるか」を見て fail-closed で blocking する。だから feature の実装に入る前に必ずこの判定を通る。並列にすると決めたら board.json を作れば gate は通る。逐次にすると決めたら、その scope と理由を `docs/sprint/.gate` に 1 行記録する (`<scope-glob>  sequential: <理由>`)。`.gate` は ephemeral なので各 worktree / repo の `.gitignore` に入れる (commit しない)。
+
 ## ワークフロー
 
 ### Step 1: 探索 (read-only)

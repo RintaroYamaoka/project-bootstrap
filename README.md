@@ -32,8 +32,9 @@ AI 駆動開発の規律を **hook で deterministic に強制する** Claude Co
 | `skills/sprint-plan/SKILL.md` | `/sprint-plan` — feature を scope 非重複 task に分解し worktree + lane を用意 (並列開発の計画)。**default 発火**: feature が scope 非重複の leaf 2 個以上 (≤ `wip_limit`) に割れると判断したら、明示呼び出しを待たず自動で分解する (= advisory 不採用方針の徹底)。bug fix / refactor / 単一 file / 自明な変更には発火しない |
 | `skills/integrate/SKILL.md` | `/integrate` — 並列 branch を依存順 merge + 統合 verify + claim close |
 | `docs/decisions/0001-subagent-hooks-not-enforced.md` | ADR — hook が subagent で発火しない事実 (upstream `#21460` OPEN) と「subagent は read-only / mutation は main session / 並列は別 session の worker」doctrine の一次ソース検証 |
-| `hooks/hooks.json` | 11 hook を `plugin.json` 経由でデフォルト発火 (test 先行 / commit 前 lint+test / destructive git op / bulk-stage / cross-session WIP / 宣言 branch 直 push / lane 外編集 / 依存方向 edit+commit / sprint 発火判定 reminder) |
-| `hooks/sprint-trigger-reminder.sh` | UserPromptSubmit hook。feature 実装っぽい prompt のとき sprint 自動分解の発火判定 (feature か / disjoint leaf 2個以上か / ≤wip_limit) を context 注入し、「SKILL が context から抜けて判定し忘れる」advisory の穴を deterministic に塞ぐ。sprint 自体の起動はしない (判定 reminder のみ) |
+| `hooks/hooks.json` | 12 hook を `plugin.json` 経由でデフォルト発火 (test 先行 / commit 前 lint+test / destructive git op / bulk-stage / cross-session WIP / 宣言 branch 直 push / lane 外編集 / 依存方向 edit+commit / sprint 発火判定 gate + reminder) |
+| `hooks/block-unplanned-feature-build.sh` | PreToolUse hook (opt-in: `docs/sprint/` 採用 project)。**新規 source file を作ろうとした瞬間** (= feature 面を作る行為そのものを信号にする)、sprint 発火判定の記録 (`docs/sprint/.gate`) も進行中 sprint (`board.json`) も無ければ `exit 2`。sprint を起動はせず「判定を済ませた precondition」だけを fail-closed で強制する (TDD hook と同型)。advisory な語彙 reminder の穴を根治する |
+| `hooks/sprint-trigger-reminder.sh` | UserPromptSubmit hook。feature 実装っぽい prompt のとき sprint 発火判定 3 条件を context 注入する**早期ヒント**。強制本体は上記 gate なので、語彙 regex の取りこぼしは致命的でない |
 | `hooks/lib/arch-check.sh` | 依存方向強制エンジン (`.bootstrap-arch` parse / layer 判定 / import 解決)。jq 非依存 |
 | `hooks/lib/parse-command.sh` | Bash tool の `command` 値を JSON から取り出す共通 parser。コンマ/エスケープで切れない、解析不能時は呼び出し側が fail-closed に倒せる。jq 非依存 |
 | `tests/hooks/` | 全 hook の bash テスト (jq 非依存ハーネス、TDD で自己検証)。`.github/workflows/test.yml` が push / PR で全 suite を回す (self-CI) |

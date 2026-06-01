@@ -7,6 +7,16 @@
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-05-31
+
+### Added
+
+- **`hooks/block-unplanned-feature-build.sh` (PreToolUse) — sprint 発火判定を advisory リマインダから fail-closed gate に作り替え**。0.11.0 で足した `sprint-trigger-reminder.sh` は checklist を context 注入する**だけ**で、判定も分解も逐次の決定もモデル任せ = advisory のままだった。しかも発火信号が判定対象 (feature 面を作る) の proxy である「user prompt の語彙 regex」で、登録外の言い回し (統合 / 移行 / 完成 / やれ) で沈黙する穴があり、実アプリ開発で sprint 分解が一度も発火せず事故になった (`docs/incidents/2026-05-31-sprint-advisory-silent`)。これはプラグインが他所で否定する「advisory は忘れられる」失敗モードが、唯一の例外箇所で的中したもの。新 hook は TDD/lane/arch と同型: hook は意味的な仕事 (正しい分解) を代行できないが**前進行為の precondition は強制できる**ため、**新規 source file を作ろうとした瞬間** (= 判定対象そのものを信号にする。語彙ではない) に、判定の記録 (`docs/sprint/.gate`) も進行中 sprint (`board.json`) も無ければ `exit 2` で blocking する。sprint を起動はしない (worktree 起動=人間 / disjoint 判定=モデルは ADR 0001 の既約な残余) —「判定を済ませた precondition」だけを強制する。`docs/sprint/` を採用した project でのみ発火 (opt-in)。既存 file 編集 / test / config / doc / 非 source / 非 git は fail-open (= 根拠不在は通す。bug fix / refactor は trip しない)。`.gate` 記録 scope 外の新規 source は再 block (= mid-session の新しい disjoint 面で再判定)。設計転換は `docs/decisions/0002-sprint-gate-fail-closed.md` に ADR 化、`tests/hooks/block-unplanned-feature-build.test.bash` で TDD。
+
+### Changed
+
+- **`sprint-trigger-reminder.sh` を強制本体から早期ヒントに降格**。強制は上記 gate が担うため、UserPromptSubmit リマインダの語彙 regex 取りこぼしはもう致命的でない (= 行為信号が最終的に必ず捕まえる)。`skills/project-bootstrap/SKILL.md` の並列開発フロー節 / `skills/sprint-plan/SKILL.md` / README / `templates/docs/sprint/README.md` を gate 中心に更新。memory `feedback_gate_signal_and_failmode` に「反 advisory 系の中の advisory 残置が穴。前進行為に precondition を課して fail-closed 化する」を昇格。
+
 ## [0.11.0] - 2026-05-29
 
 ### Added
