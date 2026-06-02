@@ -157,7 +157,23 @@ linter が解決できない (script 無し / runner 不在) 場合は warn し�
 
 スクリプト: [`block-arch-violations.sh`](./block-arch-violations.sh)
 
+### L. SessionStart — 採用状態の audit (可視化 net)
+
+session を開いた瞬間に `scripts/doctor.sh` で project-bootstrap の採用状態を判定し、**actionable な状態のときだけ** context に注入する。規律 gate は消費先 repo でその hook が現行版で走って初めて効くが、「採用したのに gate が届いていない (partial)」「採用も提案もされない (unadopted)」状態は無音で成立し誰も気づけなかった (実事故: [`docs/incidents/2026-06-02-coverage-drift-silent/`](../docs/incidents/2026-06-02-coverage-drift-silent/README.md))。とりわけ sprint 発火 gate は build 前の判断で CI 後追いができず PreToolUse hook 以外に backstop を持てない (ADR 0002) ため、配備漏れが致命的になる。
+
+- **強制ではない** (advisory)。採用は consent 必須なので hook で強制できない。enforcement の本体は per-action gate。本 hook は状態を**可視化する**だけ
+- **unadopted** → 導入するかを user に一度だけ尋ねる (勝手に採用ファイルを作らない)。望まなければ `.bootstrap-declined` を置いて以後黙る
+- **partial** → 整合しない点を警告。中核は **vendored-coverage gap** (= `.claude/hooks/` で vendoring しているのに採用機能に必要な hook が物理的に欠落 = 宣言したのに gate が不在)
+- **ok / declined / 非 git** → 無音 (= advisory bloat を増やさない)
+- 射程の穴: 本 hook は **plugin が在る session でしか発火しない**。plugin を入れず vendored hook だけの repo は救えない → その穴は CI template (`templates/ci/bootstrap-doctor.yml`) が plugin 非依存で塞ぐ。doctor は両者で共有する単一エンジン
+
+スクリプト: [`bootstrap-session-doctor.sh`](./bootstrap-session-doctor.sh) / エンジン: [`scripts/doctor.sh`](../scripts/doctor.sh)
+
 ## 発火順
+
+**SessionStart**:
+
+1. `bootstrap-session-doctor.sh` — 採用状態を audit し unadopted/partial のとき可視化
 
 **PreToolUse on `Edit | Write | MultiEdit`**:
 

@@ -20,3 +20,12 @@ Claude Code の PreToolUse hook (`block-cross-layer-import.sh` / `block-arch-vio
 4. (任意) ローカル: `templates/hooks/pre-commit` を `.git/hooks/pre-commit` に
 
 CI は **PR の変更ファイルのみ検査**するので、既存 debt があるリポでも全 PR を止めず、新規/変更分の違反だけ gate する (= 既存リポに段階導入できる)。
+
+## 採用状態そのものを検証する (bootstrap-doctor)
+
+依存方向だけでなく **「採用したのに gate が物理的に届いているか」** も CI で検証する。`bootstrap-session-doctor.sh` (SessionStart) の採用 audit は **plugin が在る Claude session でしか発火しない** ため、plugin を入れず `.claude/hooks/` に subset だけ vendoring した repo (= 実際の事故) では session audit がそもそも走らない。CI なら plugin 非依存で必ず通る。
+
+1. `scripts/doctor.sh` を repo に vendor する
+2. `templates/ci/bootstrap-doctor.yml` を `.github/workflows/` にコピー
+
+doctor は採用済みなのに必要 hook が欠けている `partial` 状態を `exit 2` で返し、CI がそれを bypass 不可で fail にする。未採用 (`unadopted`) は fail させない (= 採用を強制しない)。

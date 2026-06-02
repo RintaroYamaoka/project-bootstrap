@@ -7,6 +7,13 @@
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-06-02
+
+### Added
+
+- **`scripts/doctor.sh` + `hooks/bootstrap-session-doctor.sh` (SessionStart) — 採用状態を audit し配備漏れの無音を破る**。ADR 0002 で sprint 発火を fail-closed gate に作り替えたが、その gate は消費先 repo で **その hook が現行版で実際に走っている** ことに全面依存する。gate を「team-wide net の有無」で見ると非対称があり、arch は CI net (`arch-check.sh` + `bootstrap-arch.yml`) が後追いで拾うが、**sprint 発火 gate は build *前* の分解判断ゆえ commit-time / CI で後追いできず、PreToolUse hook 以外に backstop を持てない唯一の gate** (ADR 0002 で commit-time を却下済)。実際に事故になった (`docs/incidents/2026-06-02-coverage-drift-silent`): sprint flow 採用済みの repo に `block-unplanned-feature-build.sh` が未配備で (`.claude/hooks/` に 2 本だけ vendoring・settings 配線も無し)、advisory リマインダをモデルが無視した判断ミスを止める fail-closed の裏が物理的に存在しなかった。設計修正 (0002) は「現行 hook を走らせている repo」しか守らず、partial / stale な採用が無音で成立することが残った真因。`scripts/doctor.sh` は採用状態を `skip/unadopted/declined/partial/ok` に判定する単一エンジン (exit: partial=2、他=0)。partial の中核は **vendored-coverage gap** (= `.claude/hooks/` で vendoring しているのに採用機能に必要な hook が欠落 = incident そのものを repo 内から検証)。`bootstrap-session-doctor.sh` は session 起動時に doctor を回し、**actionable な状態のときだけ** context に注入する: `unadopted` → 導入を user に一度だけ尋ねる (勝手に作らない / 望まなければ `.bootstrap-declined` で黙る)、`partial` → 配備漏れを警告、`ok/declined/非 git` → 無音。これは advisory (= 強制ではない。採用は consent 必須) だが、本プラグインが否定する advisory は「強制すべき判定を逃がすこと」であって「強制不能な判定を**可視化する**こと」ではない (enforcement の本体は per-action gate のまま。0001/0002 の系)。設計は `docs/decisions/0003-sessionstart-adoption-doctor.md` に ADR 化、`tests/hooks/doctor.test.bash` + `tests/hooks/bootstrap-session-doctor.test.bash` で TDD。13 hook。
+- **`templates/ci/bootstrap-doctor.yml` — plugin 非依存の採用 audit CI net**。SessionStart の採用 audit は **plugin が在る Claude session でしか発火しない** ため、plugin を入れず `.claude/hooks/` に subset だけ vendoring した repo (= まさに incident の repo) では session audit がそもそも走らない。CI なら plugin 非依存で必ず通り、partial を `exit 2` → bypass 不可で fail にする (未採用は fail させない = 採用を強制しない)。doctor は SessionStart / CI / 手動で共有する単一エンジン。`templates/ci/README.md` に導入手順を追記。
+
 ## [0.12.0] - 2026-05-31
 
 ### Added

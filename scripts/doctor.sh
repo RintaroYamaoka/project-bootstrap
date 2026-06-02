@@ -1,0 +1,129 @@
+#!/usr/bin/env bash
+# scripts/doctor.sh — project-bootstrap 採用状態の self-audit (Claude 非依存 CLI)。
+#
+# 背景: 規律 gate (TDD 先行 / 依存方向 / 並列 lane / sprint 発火 / protected push / commit test)
+# は、その hook が消費先 repo で **実際に現行版で走っている** ことに全面依存する。arch は CI net
+# (scripts/arch-check.sh) が後追いで拾うが、sprint 発火 gate は build *前* の分解判断なので
+# commit-time / CI で後追いできず、PreToolUse hook 以外に backstop を持てない (ADR 0002)。
+# つまり「採用したのに gate が届いていない」状態が無音で成立すると、誰も止められない。実際に
+# 起きた: sprint flow 採用済みの repo に block-unplanned-feature-build.sh が未配備で、判断ミスを
+# 止める裏が無かった (会話: 2026-06-02 / docs/incidents/2026-06-02-coverage-drift-silent)。
+#
+# 本 script は repo の採用状態を 1 つの verdict に判定する。SessionStart hook (session 起動時に
+# 可視化) と CI template (plugin 非依存の team-wide net) の両方が同じエンジンを呼ぶ。
+#
+# verdict (STATUS 行 = 1 行目、machine-readable):
+#   skip      — 非 git。adoption は git repo 単位なので判断基盤なし → 何もしない (fail-open)。
+#   unadopted — .bootstrap-* / docs/{sprint,decisions,...} いずれも無い。導入を提案する余地。
+#   declined  — unadopted だが .bootstrap-declined が在る → 提案を抑止 (nag しない)。
+#   partial   — 採用済みだが整合しない。中核は vendored-coverage gap (= .claude/hooks/ で
+#               vendoring しているのに採用機能に必要な hook が物理的に欠落 = propagate-ai 型の穴)。
+#   ok        — 採用済み・整合。
+#
+# exit: ok/unadopted/declined/skip = 0、partial = 2 (CI が fail にできる契約)。
+# fail-mode (memory feedback_gate_signal_and_failmode 準拠): 根拠不在 (非 git / plugin 経由で
+# repo から版検証不能) は fail-open。jq 非依存。
+#
+# usage: bash scripts/doctor.sh [repo_root]   (省略時 cwd)
+
+set -u
+
+REPO="${1:-$PWD}"
+
+# git root 解決。非 git は判断基盤が無い → skip (fail-open)。
+GITTOP=""
+if command -v git >/dev/null 2>&1; then
+  GITTOP=$(git -C "$REPO" rev-parse --show-toplevel 2>/dev/null | tr '\\' '/' | tr -s '/')
+fi
+if [ -z "$GITTOP" ]; then
+  echo "STATUS: skip"
+  echo "non-git directory ($REPO) — adoption は git repo 単位。判断基盤なし → 何もしない。"
+  exit 0
+fi
+REPO="$GITTOP"
+
+have() { [ -e "$REPO/$1" ]; }
+
+# --- 採用 marker の検出 ---
+ARCH=0; PROT=0; LINT=0; LANE=0; SPRINT=0; MEM=0
+have .bootstrap-arch       && ARCH=1
+have .bootstrap-protected  && PROT=1
+have .bootstrap-lint       && LINT=1
+have .bootstrap-lane       && LANE=1
+[ -d "$REPO/docs/sprint" ] && SPRINT=1
+{ [ -d "$REPO/docs/decisions" ] || [ -d "$REPO/docs/handoffs" ] || [ -d "$REPO/docs/incidents" ]; } && MEM=1
+
+ADOPTED=0
+[ $((ARCH + PROT + LINT + LANE + SPRINT + MEM)) -gt 0 ] && ADOPTED=1
+
+# --- unadopted 分岐 ---
+if [ "$ADOPTED" = 0 ]; then
+  if have .bootstrap-declined; then
+    echo "STATUS: declined"
+    echo "未採用だが .bootstrap-declined が在る → 導入提案を抑止 (nag しない)。"
+    exit 0
+  fi
+  echo "STATUS: unadopted"
+  cat <<'EOF'
+この repo は project-bootstrap を採用していない (.bootstrap-* / docs/{sprint,decisions,handoffs,incidents} いずれも無い)。
+規律 gate (TDD 先行 / 依存方向 / 並列 lane / sprint 発火 / protected push / commit test) は marker を置くまで何も効かない。
+
+→ 導入するかを user に **一度だけ尋ねる**。勝手に採用ファイルを作らない。導入するなら最低限:
+  - docs/{decisions,handoffs,incidents}/  (external memory)
+  - 必要に応じ .bootstrap-arch (依存方向) / .bootstrap-protected (push 保護) / docs/sprint/ (並列開発) / .bootstrap-lint
+導入を望まないと言われたら、この提案を以後黙らせるため repo root に空の .bootstrap-declined を置く。
+EOF
+  exit 0
+fi
+
+# --- 採用済み: 整合チェック (partial の検出) ---
+ISSUES=()
+
+# 1) 宣言したのに中身が空 = 宣言だけで何も強制しない silent no-op。
+if [ "$ARCH" = 1 ] && ! grep -qE '^[[:space:]]*layer[[:space:]]' "$REPO/.bootstrap-arch" 2>/dev/null; then
+  ISSUES+=(".bootstrap-arch は在るが layer 宣言が 1 行も無い → 依存方向 gate は実質 no-op")
+fi
+if [ "$PROT" = 1 ] && ! grep -qE '^[[:space:]]*[^#[:space:]]' "$REPO/.bootstrap-protected" 2>/dev/null; then
+  ISSUES+=(".bootstrap-protected は在るが branch 行が無い → push 保護は実質 no-op")
+fi
+
+# 2) vendored-coverage gap (= 本 incident の中核): .claude/hooks/ で vendoring しているのに、
+#    採用機能に必要な hook が物理的に欠けている。「宣言したのに gate が不在」の silent な穴。
+VHOOKS="$REPO/.claude/hooks"
+VENDORED=no
+if [ -d "$VHOOKS" ]; then
+  VENDORED=yes
+  REQ=(require-test-companion.sh block-commit-if-tests-fail.sh block-add-all.sh block-dangerous-git-ops.sh block-cross-claude-wip.sh)
+  [ "$SPRINT" = 1 ] && REQ+=(block-unplanned-feature-build.sh block-out-of-lane-edit.sh)
+  [ "$ARCH"   = 1 ] && REQ+=(block-cross-layer-import.sh block-arch-violations.sh)
+  [ "$PROT"   = 1 ] && REQ+=(block-push-to-protected.sh)
+  [ "$LINT"   = 1 ] && REQ+=(block-commit-if-lint-fails.sh)
+  MISSING=""
+  for h in "${REQ[@]}"; do
+    [ -f "$VHOOKS/$h" ] || MISSING="$MISSING $h"
+  done
+  if [ -n "$MISSING" ]; then
+    ISSUES+=(".claude/hooks/ で vendoring しているが採用機能に必要な hook が欠落:$MISSING")
+    ISSUES+=("  → 宣言したのに gate が物理的に不在 (propagate-ai 型の silent 穴)。欠落 hook を vendor し直し、.claude/settings.json に配線する。")
+  fi
+fi
+
+SUM="arch=$ARCH protected=$PROT lint=$LINT lane=$LANE sprint=$SPRINT memory=$MEM vendored=$VENDORED"
+
+if [ "${#ISSUES[@]}" -gt 0 ]; then
+  echo "STATUS: partial"
+  echo "project-bootstrap 採用済みだが整合しない点がある ($SUM):"
+  for i in "${ISSUES[@]}"; do echo "  - $i"; done
+  if [ "$VENDORED" = no ]; then
+    echo "(plugin 経由採用は plugin の install/版を repo から検証不能。team-wide に強制するなら .claude/hooks/ への vendoring か templates/ci/bootstrap-doctor.yml を CI に置く)"
+  fi
+  exit 2
+fi
+
+echo "STATUS: ok"
+echo "project-bootstrap 採用済み・整合 ($SUM)。"
+if [ "$VENDORED" = no ]; then
+  echo "注: hook は plugin 経由 (repo に vendoring 無し)。plugin が未 install / 旧版の環境では gate が静かに効かない —"
+  echo "    team-wide net には .claude/hooks/ への vendoring か templates/ci/bootstrap-doctor.yml (plugin 非依存) を検討。"
+fi
+exit 0
