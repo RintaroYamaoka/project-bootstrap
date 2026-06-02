@@ -14,6 +14,8 @@ description: AI 駆動開発の規律。ルール = AI の default 挙動 + hook
 > Anthropic 公式 (https://code.claude.com/docs/en/best-practices):
 > "Hooks are deterministic and guarantee the action happens. Unlike CLAUDE.md instructions which are advisory."
 
+**ただし hook は消費先 repo で現行版が実際に走って初めて効く**。設計が正しい gate も、未配備 / 部分 vendoring の repo では無音で効果ゼロになる (実事故: `docs/incidents/2026-06-02-coverage-drift-silent`。とりわけ sprint 発火 gate は build 前の判断ゆえ CI 後追いができず PreToolUse hook 以外に backstop が無い)。そこで SessionStart hook (`hooks/bootstrap-session-doctor.sh`) が session 起動時に採用状態を audit し、**未採用なら導入を一度だけ尋ね / 採用済みで gate 配備漏れ (partial) なら警告**する (= 採用は consent ゆえ強制不能だが「状態を可視化する」ことはできる。enforcement の本体は per-action gate)。plugin 非依存の team-wide net は `templates/ci/bootstrap-doctor.yml`。判定エンジンは `scripts/doctor.sh` (ADR 0003)。
+
 ## 最高レバレッジ — verification を必ず与える
 
 Production-affecting な変更 (= 外部 API write / DB write / repo push / 設定書込 / 公開サイトへの影響) を含む実装は、return / commit の前に **実体を read-back で検証** してから完了とする。これを欠くと「return value が success だが live は反映されていない」事故が起きる。
