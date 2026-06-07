@@ -152,4 +152,25 @@ test_case "docs/decisions alone counts as adopted"
 run_doctor "$REPO"
 assert_doctor_status ok
 
+# 11. .bootstrap-wip が在るのに整数が読めない → partial (宣言したのに無音で無視される class)。
+#     hook 側 (resolve-wip-limit.sh) は表示なので fail-open に既定へ落ちるが、その「落ちた」事実
+#     は宣言者に届かない — doctor がここで可視化する。
+setup_repo
+mkdir -p "$REPO/docs/sprint"
+printf 'four lanes\n' > "$REPO/.bootstrap-wip"
+test_case "unparseable .bootstrap-wip is partial"
+run_doctor "$REPO"
+assert_doctor_status partial
+assert_doctor_exit 2
+assert_out_contains ".bootstrap-wip"
+
+# 12. .bootstrap-wip が整数で読める → ok (警告なし)。
+setup_repo
+mkdir -p "$REPO/docs/sprint"
+printf '4\n' > "$REPO/.bootstrap-wip"
+test_case "valid .bootstrap-wip stays ok"
+run_doctor "$REPO"
+assert_doctor_status ok
+assert_doctor_exit 0
+
 finish

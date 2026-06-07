@@ -1,0 +1,4 @@
+# .bootstrap-wip — この project の wip_limit 既定 (同時並列 lane 数の上限) の宣言。
+# repo root に置く。最初の非コメント行に整数のみを書く (それ以外は無視され既定 2-3 に落ちる。
+# doctor が警告する)。sprint ごとの逸脱は board.json の wip_limit + _wip_note で行う。
+3

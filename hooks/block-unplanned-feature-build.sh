@@ -93,6 +93,11 @@ if [ -f "$GATE" ]; then
   done < "$GATE"
 fi
 
+# wip_limit の表示値: project が .bootstrap-wip で宣言していればその値、なければ「既定 2-3」。
+# shellcheck source=lib/resolve-wip-limit.sh
+. "$(dirname "$0")/lib/resolve-wip-limit.sh"
+WIP_DISPLAY=$(resolve_wip_limit)
+
 cat >&2 <<EOF
 project-bootstrap: blocking creation of new source file "$REL" — sprint gate not run.
 
@@ -100,7 +105,7 @@ project-bootstrap: blocking creation of new source file "$REL" — sprint gate n
 コードに触れる前に sprint 自動分解の発火判定を行うこと:
   ① feature (新規/拡張) か? — bug fix / refactor / 単一 file / 自明な小変更なら逐次
   ② scope 非重複の leaf が 2 個以上に割れるか? (各 task の owned file glob が重ならない)
-  ③ 同時 lane ≤ wip_limit (既定 2-3) か?
+  ③ 同時 lane ≤ wip_limit [$WIP_DISPLAY] か?
 
 3 つ全部満たすなら sprint-plan skill をロードして board.json + 各 lane の worker 起動文を提示する
 (= 分解後は board.json の存在でこの gate は通る)。

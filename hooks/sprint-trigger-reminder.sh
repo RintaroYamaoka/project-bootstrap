@@ -26,9 +26,15 @@ FEATURE_RE='実装|機能|feature|追加してほしい|追加して|作って|�
 # パスや ID なので上記キーワードに当たらない。raw INPUT を grep すれば十分 (完全な JSON 解析不要)。
 printf '%s' "$INPUT" | grep -qiE "$FEATURE_RE" || exit 0
 
+# wip_limit の表示値: project が .bootstrap-wip で宣言していればその値、なければ「既定 2-3」。
+# 出力は数字 + 固定文字列のみ (= " や \ を含まない) なので、そのまま JSON に埋められる。
+# shellcheck source=lib/resolve-wip-limit.sh
+. "$(dirname "$0")/lib/resolve-wip-limit.sh"
+WIP_DISPLAY=$(resolve_wip_limit)
+
 # additionalContext に載せる reminder。content には " や \ を含めず、改行は JSON の \n
 # (= backslash + n) で表現する。これで pure-bash のまま valid JSON を組める (jq 非依存)。
-CONTEXT='[project-bootstrap] feature 実装の可能性。コードに触れる前に sprint 自動分解の発火判定を必ず行うこと:\n  ① feature (新規/拡張) か? — bug fix / refactor / 単一 file / 自明な小変更なら逐次 (/plan -> TDD)\n  ② read-only 探索の結果、scope 非重複の leaf が 2 個以上に割れるか? (各 task の owned file glob が重ならない)\n  ③ 同時 lane <= wip_limit (既定 2-3) か?\n3 つ全部満たすなら、言われる前に sprint-plan skill をロードして board.json + 各 lane の worker 起動文を提示する。1 つでも欠けたら逐次。共有 interface/型/契約は直列 spine (depends_on) に切り出してから下流 leaf を並列化する。'
+CONTEXT='[project-bootstrap] feature 実装の可能性。コードに触れる前に sprint 自動分解の発火判定を必ず行うこと:\n  ① feature (新規/拡張) か? — bug fix / refactor / 単一 file / 自明な小変更なら逐次 (/plan -> TDD)\n  ② read-only 探索の結果、scope 非重複の leaf が 2 個以上に割れるか? (各 task の owned file glob が重ならない)\n  ③ 同時 lane <= wip_limit ['"$WIP_DISPLAY"'] か?\n3 つ全部満たすなら、言われる前に sprint-plan skill をロードして board.json + 各 lane の worker 起動文を提示する。1 つでも欠けたら逐次。共有 interface/型/契約は直列 spine (depends_on) に切り出してから下流 leaf を並列化する。'
 
 printf '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"%s"}}\n' "$CONTEXT"
 exit 0

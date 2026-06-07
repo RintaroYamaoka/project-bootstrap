@@ -164,7 +164,7 @@ hook で完全には強制しきれない部分は AI default 経路に組み込
 |---|---|
 | sprint planning | `sprint-plan` skill が feature を **scope 非重複 task** に分解、board.json 生成 |
 | 担当 / commitment | task = 1 worktree = 1 owner。`.bootstrap-lane` が触れる範囲を宣言 |
-| WIP 制限 | `wip_limit` (既定 2-3) 個までしか worktree を作らない (= 構造的に並列度を絞る) |
+| WIP 制限 | `wip_limit` 個までしか worktree を作らない (= 構造的に並列度を絞る)。既定は `.bootstrap-wip` (repo root、整数 1 行、opt-in) > 2-3 |
 | 担当境界 | lane 外編集を `block-out-of-lane-edit.sh` が hard block |
 | Definition of Done | TDD + verification 4 罠 + cohort audit (既存) |
 | integration / review | `integrate` skill が依存順 merge + **統合 verify** + claim close |
@@ -175,7 +175,7 @@ hook で完全には強制しきれない部分は AI default 経路に組み込
 **自動分解の発火条件 (= 全部満たすときだけ)**:
 1. 作業が **feature** (= 新規/拡張の実装)。bug fix / refactor / 単一 file / 自明な小変更は対象外 → 逐次 (`/plan` → TDD)
 2. **scope 非重複の leaf が 2 個以上**に割れる (= 各 task の owned file glob が重ならない)
-3. 同時 lane 数 ≤ `wip_limit` (既定 2-3)。超えるなら lane を減らすか逐次
+3. 同時 lane 数 ≤ `wip_limit` (= `.bootstrap-wip` が在ればその値、なければ 2-3)。超えるなら lane を減らすか逐次
 
 **1 つでも欠けたら自動分解しない**。共有 interface / 型 / 契約があるなら、それを `depends_on` の **直列 spine** に切り出して先に 1 レーンで済ませ、その後に下流 leaf を並列化する (= Amdahl: 直列部分が speedup の上限)。disjoint に割れない feature は無理に刻まず逐次でやる (= 協調コストが利得を食う)。並列の収益は凹型で変曲点は低い (ソロで実質 2-3)。
 

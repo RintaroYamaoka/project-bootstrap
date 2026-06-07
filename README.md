@@ -38,9 +38,11 @@ AI 駆動開発の規律を **hook で deterministic に強制する** Claude Co
 | `hooks/sprint-trigger-reminder.sh` | UserPromptSubmit hook。feature 実装っぽい prompt のとき sprint 発火判定 3 条件を context 注入する**早期ヒント**。強制本体は上記 gate なので、語彙 regex の取りこぼしは致命的でない |
 | `hooks/lib/arch-check.sh` | 依存方向強制エンジン (`.bootstrap-arch` parse / layer 判定 / import 解決)。jq 非依存 |
 | `hooks/lib/parse-command.sh` | Bash tool の `command` 値を JSON から取り出す共通 parser。コンマ/エスケープで切れない、解析不能時は呼び出し側が fail-closed に倒せる。jq 非依存 |
+| `hooks/lib/resolve-wip-limit.sh` | `wip_limit` 表示値の共通 resolver。repo root の `.bootstrap-wip` (整数 1 行、opt-in) を読んで sprint 系 hook の checklist を実値化、不在/解析不能は「既定 2-3」に fail-open (解析不能の可視化は doctor)。board.json は per-sprint ephemeral なので既定の正本にしない。jq 非依存 |
 | `tests/hooks/` | 全 hook の bash テスト (jq 非依存ハーネス、TDD で自己検証)。`.github/workflows/test.yml` が push / PR で全 suite を回す (self-CI) |
 | `templates/CLAUDE.md` | 新規プロジェクト用 CLAUDE.md 雛形 (Anthropic exclude 表で prune 済) |
 | `templates/.bootstrap-arch` | 依存方向契約の雛形 (layer / alias / allow 辺) |
+| `templates/.bootstrap-wip` | project 既定 `wip_limit` 宣言の雛形 (整数 1 行) |
 | `templates/docs/` | 採用 dir (handoffs / decisions / incidents / sprint) の README + TEMPLATE 一式 |
 
 ## 使い方

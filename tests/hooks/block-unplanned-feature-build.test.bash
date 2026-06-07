@@ -126,7 +126,26 @@ test_case "non-git dir is fail-open"
 run_hook "$HOOK" "$(printf '{"tool_name":"Write","tool_input":{"file_path":"%s/src/x.ts","content":"y"},"cwd":"%s"}' "$NOGIT" "$NOGIT")"
 assert_exit 0
 
-# 12. Comment/blank lines in .gate are ignored; a later glob still matches.
+# 12. Block message shows the project-declared wip_limit (.bootstrap-wip), not a hardcoded default.
+setup_repo
+enable_sprint
+printf '4\n' > "$REPO/.bootstrap-wip"
+RUN_DIR="$REPO"
+test_case "block message surfaces declared .bootstrap-wip value"
+run_hook "$HOOK" "$(write_input "$REPO/src/foo.ts")"
+assert_exit 2
+assert_stderr_contains '4 (.bootstrap-wip)'
+
+# 13. Without a declaration the block message falls back to the default wording.
+setup_repo
+enable_sprint
+RUN_DIR="$REPO"
+test_case "block message falls back to 既定 2-3 without declaration"
+run_hook "$HOOK" "$(write_input "$REPO/src/foo.ts")"
+assert_exit 2
+assert_stderr_contains '既定 2-3'
+
+# 14. Comment/blank lines in .gate are ignored; a later glob still matches.
 setup_repo
 enable_sprint
 printf '# decisions\n\nsrc/**  sequential: x\n' > "$REPO/docs/sprint/.gate"

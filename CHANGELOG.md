@@ -7,6 +7,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- **`.bootstrap-wip` + `hooks/lib/resolve-wip-limit.sh` — wip_limit 既定のハードコードを project-local 宣言に追従させる**。「既定 2-3」が advisory テキストとして 6 箇所 (`sprint-trigger-reminder.sh` / `block-unplanned-feature-build.sh` / SKILL.md ×2 / README ×2) にハードコードされており、lane 数を上げる実験をする project は board.json の `wip_limit` を変えても **hook が毎ターン「既定 2-3」を注入し続けて宣言と喧嘩する** 状態だった。正本を board.json にしなかったのは、board が per-sprint の **ephemeral state** で、`wip_limit` は sprint 固有の逸脱値 (`_wip_note` 参照) を含み、sprint 終了後は stale になるため (= 実際にこの repo の board は完了済み sprint の `wip_limit: 4` を保持していた)。project 既定は repo root の **`.bootstrap-wip`** (最初の非コメント行に整数 1 行) で宣言する — `.bootstrap-arch` / `-lane` / `-protected` / `-lint` と同じ opt-in idiom。両 hook は共有エンジン `lib/resolve-wip-limit.sh` (jq 非依存) で表示を実値化し、不在・解析不能は「既定 2-3」に fail-open (= この値は checklist の**表示**であって gate の blocking 信号ではない。gate は従来通り `.gate`/`board.json` の有無で判定)。「宣言したのに解析不能で無音で無視される」は `scripts/doctor.sh` が partial (exit 2) として可視化する (= 配備漏れ無音化の class に追従)。sprint ごとの逸脱は従来通り board.json の `wip_limit` + `_wip_note` (理由必須) で行う — 逸脱は per-sprint の判断であって新しい既定ではない。`tests/hooks/resolve-wip-limit.test.bash` 新設 + 両 hook / doctor のテスト拡張で TDD。`templates/.bootstrap-wip` 追加。
+
 ## [0.13.0] - 2026-06-02
 
 ### Added

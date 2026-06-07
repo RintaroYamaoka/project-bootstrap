@@ -1,0 +1,3 @@
+# この repo の wip_limit 既定 (同時並列 lane 数の上限)。
+# sprint 固有の逸脱は board.json の wip_limit + _wip_note で行う。
+3

@@ -86,6 +86,17 @@ fi
 if [ "$PROT" = 1 ] && ! grep -qE '^[[:space:]]*[^#[:space:]]' "$REPO/.bootstrap-protected" 2>/dev/null; then
   ISSUES+=(".bootstrap-protected は在るが branch 行が無い → push 保護は実質 no-op")
 fi
+# .bootstrap-wip: 宣言が在るのに整数として解析できないと、hook 側 (resolve-wip-limit.sh) は
+# 表示値ゆえ fail-open に「既定 2-3」へ落ちる — が、その「落ちた」事実は宣言者に届かない。
+# 判定は hook と同じエンジンを source して単一権威に保つ (lib 不在の異常配置では skip = fail-open)。
+WIPLIB="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd)/hooks/lib/resolve-wip-limit.sh"
+if have .bootstrap-wip && [ -f "$WIPLIB" ]; then
+  # shellcheck source=../hooks/lib/resolve-wip-limit.sh
+  . "$WIPLIB"
+  if [ "$( (cd "$REPO" && resolve_wip_limit) )" = "既定 2-3" ]; then
+    ISSUES+=(".bootstrap-wip は在るが整数が読めない → wip_limit 宣言は無音で無視され「既定 2-3」表示に落ちる (1 行目に整数のみを書く)")
+  fi
+fi
 
 # 2) vendored-coverage gap (= 本 incident の中核): .claude/hooks/ で vendoring しているのに、
 #    採用機能に必要な hook が物理的に欠けている。「宣言したのに gate が不在」の silent な穴。

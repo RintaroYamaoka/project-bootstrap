@@ -13,7 +13,7 @@ description: 1 つの feature を複数 Claude で安全に並列開発するた
 
 - feature が **scope 非重複の leaf** に割れるか? 割れないなら逐次でやる (= 無理に刻むと協調コストが利得を食う)
 - 共有 interface / 型 / 契約 があるか? あるなら **それを先に作る直列 spine** が要る。spine 完了前に下流を並列化しない
-- 同時 lane 数 ≤ `wip_limit` (既定 2-3) か? 超えるなら lane を減らす。レビューは人間 1 人で直列なので throughput は増えない
+- 同時 lane 数 ≤ `wip_limit` か? 超えるなら lane を減らす。レビューは人間 1 人で直列なので throughput は増えない。**wip_limit の既定は repo root の `.bootstrap-wip` (整数 1 行、opt-in) を `Read` してその値、不在なら 2-3**
 
 判定の結果「並列にする価値が薄い」なら、**正直にそう言って逐次 (/plan → TDD) を勧める**。
 
@@ -34,6 +34,8 @@ description: 1 つの feature を複数 Claude で安全に並列開発するた
 ### Step 3: board.json を書く
 
 `docs/sprint/board.json` を生成する (雛形 `templates/docs/sprint/board.example.json`)。`sprint` / `wip_limit` / 各 task の `id` `title` `scope` `branch` `depends_on` `status: todo` `worktree: null` `claimed_by: null`。
+
+`wip_limit` の値は **`.bootstrap-wip` (在れば) > 既定 2-3** の順で決める。sprint 固有の事情でそこから逸脱する (= leaf が完全 disjoint なので 1 つ増やす等) なら、`_wip_note` field に理由を必ず書く — 逸脱は per-sprint の判断であって新しい既定ではない。
 
 ### Step 4: 並列可能な leaf だけ worktree を用意
 

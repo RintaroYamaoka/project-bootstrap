@@ -40,6 +40,7 @@ Claude Code は Windows 環境で `\` 区切り絶対 path を JSON-escape 済 (
 - **opt-in**: `docs/sprint/` が在る project でのみ発火 (= `.bootstrap-arch`/`-lane`/`-protected` と同じ採用宣言)。無ければ fail-open
 - **fail-open (根拠不在)**: file_path 不在 / 非 git / 既存 file の編集・上書き / test・config・doc / 非 source 拡張子 / `scripts/_*`。bug fix / refactor は一切 trip しない
 - gate を通す記録 = `docs/sprint/.gate` (gitignore, ephemeral)。各行 `<scope-glob>  <理由>` (1 列目が glob)。記録 scope 内の新規 source は素通し、scope 外は再 block (= 新しい disjoint 面 → 再判定)。進行中 sprint (`board.json` 非空) なら lane hook が scope を握るので素通し
+- checklist の `wip_limit` 表示は repo root の **`.bootstrap-wip`** (整数 1 行、opt-in) を読んで実値化する (エンジン = [`lib/resolve-wip-limit.sh`](./lib/resolve-wip-limit.sh)、`sprint-trigger-reminder.sh` と共有)。不在・解析不能なら「既定 2-3」に fail-open (= 表示であって blocking 信号ではない。解析不能の可視化は `scripts/doctor.sh` が担う)。board.json の `wip_limit` を読まないのは、board が per-sprint の ephemeral state で逸脱値 (`_wip_note`) を含み、sprint 終了後に stale になるため
 
 スクリプト: [`block-unplanned-feature-build.sh`](./block-unplanned-feature-build.sh)
 

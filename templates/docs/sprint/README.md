@@ -9,7 +9,7 @@ feature を **scope 非重複の task** に分解した状態を持つ。`board.
 | field | 意味 |
 |---|---|
 | `sprint` | `<YYYY-MM-DD>-<feature-topic>` |
-| `wip_limit` | 同時 in-progress 上限 (= 既定 2-3、これ以上 worktree を作らない) |
+| `wip_limit` | 同時 in-progress 上限 (これ以上 worktree を作らない)。既定は repo root の `.bootstrap-wip` (整数 1 行、opt-in) > 2-3。sprint 固有に逸脱するなら `_wip_note` に理由を書く |
 | `tasks[].id` | `T0` / `T1` … |
 | `tasks[].scope` | この task が所有する file glob 群。**task 間で重複させない** (= 並列の不変条件) |
 | `tasks[].branch` | `feat/<id>-<topic>` |
