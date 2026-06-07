@@ -103,7 +103,7 @@ cat >&2 <<EOF
 project-bootstrap: blocking merge of "$BRANCH" — no completed review record.
 
 活性 sprint の task branch を、AI レビューの記録なしに統合しようとした。
-統合の前提条件 (integrate skill Step 1.5):
+統合の前提条件 (integrate skill Step 2):
   1. read-only の adversarial レビュー agent でこの branch の diff を審査する
   2. 結果を $REVIEW に書く — 必須行: "verdict: approve" または "verdict: reject" + 指摘一覧
   3. approve なら merge は通る。reject なら worker lane で修正してから re-review

@@ -7,6 +7,12 @@
 
 ## [Unreleased]
 
+## [0.15.1] - 2026-06-07
+
+### Fixed
+
+- block-unreviewed-merge.sh の block message が integrate skill の旧採番 (Step 1.5) を参照していたのを Step 2 に修正 (= 権威の分散の解消、cosmetic)。
+
 ## [0.15.0] - 2026-06-07
 
 ### Added
