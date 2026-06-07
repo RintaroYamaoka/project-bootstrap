@@ -42,7 +42,7 @@ git worktree remove ../wt-<id>
 git branch -d feat/<id>-<topic>   # merge 済を確認してから
 ```
 
-board の全 task が done になったら sprint 終了。board.json は次 sprint まで残すか archive する。
+board の全 task が done になったら sprint 終了。**board.json を必ず `docs/sprint/archive/<sprint>.json` へ移す** (= sprint 終了の定義に board の終端処理を含める。残置は任意ではない)。ephemeral state の残置は権威の分散そのもので、実際に完了済み board の残置が sprint 発火 gate を 2 週間無音バイパスさせた (`docs/incidents/2026-06-07-stale-board-gate-bypass`)。gate 側も信号を「board の存在」から「未完了 task の有無 (活性)」に直してあるが、archive は防御の二重化ではなく lifecycle の責務 — 次の sprint-plan が古い board と衝突しないための正本整理。
 
 ## やってはいけないこと
 

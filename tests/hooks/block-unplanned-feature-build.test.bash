@@ -29,7 +29,11 @@ setup_repo() {
 }
 enable_sprint() { mkdir -p "$REPO/docs/sprint"; }
 write_gate() { printf '%s\n' "$@" > "$REPO/docs/sprint/.gate"; }
-write_board() { printf '%s' '{"sprint":"s1","wip_limit":2}' > "$REPO/docs/sprint/board.json"; }
+# 「進行中 sprint」の素通し信号は board の**存在**ではなく**活性** (= 未完了 task の有無)。
+# 完了済み board の残置が gate を無音バイパスさせた実事故:
+# docs/incidents/2026-06-07-stale-board-gate-bypass
+write_active_board() { printf '%s' '{"sprint":"s1","wip_limit":2,"tasks":[{"id":"T0","status":"done"},{"id":"T1","status":"todo"}]}' > "$REPO/docs/sprint/board.json"; }
+write_done_board()   { printf '%s' '{"sprint":"s1","wip_limit":2,"tasks":[{"id":"T0","status":"done"},{"id":"T1","status":"done"}]}' > "$REPO/docs/sprint/board.json"; }
 touch_file() { mkdir -p "$(dirname "$REPO/$1")"; : > "$REPO/$1"; }
 
 write_input() { printf '{"tool_name":"Write","tool_input":{"file_path":"%s","content":"x"},"cwd":"%s"}' "$1" "$REPO"; }
@@ -60,14 +64,53 @@ test_case "new source within recorded .gate scope passes"
 run_hook "$HOOK" "$(write_input "$REPO/src/foo.ts")"
 assert_exit 0
 
-# 4. Active sprint (board.json present) => passes (lane hook owns scope).
+# 4. Active sprint (board.json with an unfinished task) => passes (lane hook owns scope).
 setup_repo
 enable_sprint
-write_board
+write_active_board
 RUN_DIR="$REPO"
-test_case "active sprint (board.json) passes"
+test_case "active sprint (unfinished task in board.json) passes"
 run_hook "$HOOK" "$(write_input "$REPO/src/new.ts")"
 assert_exit 0
+
+# 4b. ALL-DONE board (= finished sprint left unarchived) must NOT bypass the gate.
+#     The stale board is exactly the state that silently disarmed this gate for 2 weeks.
+setup_repo
+enable_sprint
+write_done_board
+RUN_DIR="$REPO"
+test_case "stale all-done board does not bypass: new source is blocked"
+run_hook "$HOOK" "$(write_input "$REPO/src/new.ts")"
+assert_exit 2
+
+# 4c. All-done board + a covering .gate record => passes (the judgment was made anew).
+setup_repo
+enable_sprint
+write_done_board
+write_gate 'src/**  sequential: post-sprint follow-up, single module'
+RUN_DIR="$REPO"
+test_case "all-done board with covering .gate record passes"
+run_hook "$HOOK" "$(write_input "$REPO/src/new.ts")"
+assert_exit 0
+
+# 4d. in-review is still unfinished => active, passes.
+setup_repo
+enable_sprint
+printf '%s' '{"sprint":"s1","wip_limit":2,"tasks":[{"id":"T1","status":"in-review"}]}' > "$REPO/docs/sprint/board.json"
+RUN_DIR="$REPO"
+test_case "in-review task counts as active sprint"
+run_hook "$HOOK" "$(write_input "$REPO/src/new.ts")"
+assert_exit 0
+
+# 4e. Board with no tasks / no status keys carries no liveness evidence => no bypass.
+#     (解析不能を素通し側に倒さない — fail toward requiring the judgment.)
+setup_repo
+enable_sprint
+printf '%s' '{"sprint":"s1","wip_limit":2}' > "$REPO/docs/sprint/board.json"
+RUN_DIR="$REPO"
+test_case "taskless board does not bypass: new source is blocked"
+run_hook "$HOOK" "$(write_input "$REPO/src/new.ts")"
+assert_exit 2
 
 # 5. Editing an EXISTING source file is not new surface => fail-open.
 setup_repo

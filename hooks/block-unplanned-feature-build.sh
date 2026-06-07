@@ -73,8 +73,14 @@ case "$EXT" in
   *) exit 0 ;;
 esac
 
-# 進行中の sprint (board.json が非空) なら lane hook が scope を握る → 素通し。
-[ -s "$TOP/docs/sprint/board.json" ] && exit 0
+# 進行中の sprint なら lane hook が scope を握る → 素通し。「進行中」は board の**存在**では
+# なく**活性** (= 未完了 task の有無) で判定する。全 task done / task 無し / status 不在の board
+# は sprint 終了後の残置 (stale) でありうるため素通しの根拠にしない — 存在を信号にすると state
+# の lifecycle 終端で gate が無音で fail-open する (実事故: docs/incidents/2026-06-07-stale-board-gate-bypass)。
+BOARD="$TOP/docs/sprint/board.json"
+if [ -s "$BOARD" ] && grep -oE '"status"[[:space:]]*:[[:space:]]*"[^"]*"' "$BOARD" | grep -qv '"done"'; then
+  exit 0
+fi
 
 # .gate に記録された scope glob のどれかに REL が一致すれば、判定済みの feature 面 → 素通し。
 # 形式: 各行 `<scope-glob>  <free-text rationale>` (1 列目が glob)。# / 空行は無視。
