@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+# scripts/velocity.sh — 週次 throughput / defect rate の横断計測 CLI (Claude 非依存)。
+#
+# 背景: レビューを trust ladder で薄くする (= AI レビュー層に一次レビューを移す、Stage 2)
+# とき、「薄くしても壊れていない」ことを判定する唯一の客観データが defect rate (= fix/revert
+# 率) の推移。倍率 (throughput) も感覚でなく数字で追う。user は複数プロジェクトを並行担当
+# するため、計測は単一 repo でなく **複数 repo 横断** で集計する。
+#
+# usage: bash scripts/velocity.sh [repo ...]   (省略時 cwd)
+#
+# 出力 (TSV, machine-greppable):
+#   <repo>\tw<weeks-ago>\t<commits>\t<merges>\t<fixrev>     # repo × 週 (直近 4 週、w0=今週)
+#   TOTAL\tw<weeks-ago>\t...                                # 週ごとの横断合算
+#   TOTAL\t4w\t<commits>\t<merges>\t<fixrev>\tdefect=<pct>% # 4 週合算 + defect 率
+#
+# 定義:
+#   commits = 非 merge commit 数 / merges = merge commit 数
+#   fixrev  = subject が fix:/hotfix/revert (大文字小文字無視) で始まる非 merge commit 数
+#   defect% = fixrev / commits (4 週合算、commits=0 なら 0%)
+#
+# 非 git path は警告してスキップ。有効 repo が 1 つも無ければ exit 1。jq 非依存。
+
+set -u
+
+REPOS=("$@")
+[ ${#REPOS[@]} -eq 0 ] && REPOS=("$PWD")
+
+NOW=$(date +%s)
+WEEK=604800
+
+# 集計領域: 添字 = weeks_ago (0..3)
+declare -a T_COMMITS=(0 0 0 0) T_MERGES=(0 0 0 0) T_FIXREV=(0 0 0 0)
+VALID=0
+
+for repo in "${REPOS[@]}"; do
+  if ! git -C "$repo" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    echo "velocity: skip non-git path: $repo" >&2
+    continue
+  fi
+  VALID=$((VALID + 1))
+  declare -a R_COMMITS=(0 0 0 0) R_MERGES=(0 0 0 0) R_FIXREV=(0 0 0 0)
+
+  # 非 merge commit: epoch + subject。`%p` の parent 解析は採らない — root commit で %p が
+  # 空になると tab が collapse して field がずれる。--no-merges / --merges の 2 pass が堅牢。
+  # `|| [ -n "$ct" ]` は末尾改行なしの最終行 (= 最古 commit) を read が落とすのを防ぐ。
+  while IFS=$'\t' read -r ct subj || [ -n "${ct:-}" ]; do
+    [ -z "${ct:-}" ] && continue
+    age=$(( (NOW - ct) / WEEK ))
+    { [ "$age" -lt 0 ] || [ "$age" -gt 3 ]; } && continue
+    R_COMMITS[$age]=$((R_COMMITS[$age] + 1))
+    if printf '%s' "$subj" | grep -qiE '^[[:space:]]*"?(fix|hotfix|revert)'; then
+      R_FIXREV[$age]=$((R_FIXREV[$age] + 1))
+    fi
+    ct=""
+  done < <(git -C "$repo" log --no-merges --since="28 days ago" --pretty=format:'%ct	%s' 2>/dev/null)
+
+  # merge commit: epoch のみ。
+  while IFS= read -r ct || [ -n "${ct:-}" ]; do
+    [ -z "${ct:-}" ] && continue
+    age=$(( (NOW - ct) / WEEK ))
+    { [ "$age" -lt 0 ] || [ "$age" -gt 3 ]; } && continue
+    R_MERGES[$age]=$((R_MERGES[$age] + 1))
+    ct=""
+  done < <(git -C "$repo" log --merges --since="28 days ago" --pretty=format:'%ct' 2>/dev/null)
+
+  for w in 0 1 2 3; do
+    printf '%s\tw%d\t%d\t%d\t%d\n' "$repo" "$w" "${R_COMMITS[$w]}" "${R_MERGES[$w]}" "${R_FIXREV[$w]}"
+    T_COMMITS[$w]=$((T_COMMITS[$w] + R_COMMITS[$w]))
+    T_MERGES[$w]=$((T_MERGES[$w] + R_MERGES[$w]))
+    T_FIXREV[$w]=$((T_FIXREV[$w] + R_FIXREV[$w]))
+  done
+done
+
+if [ "$VALID" -eq 0 ]; then
+  echo "velocity: no valid git repo among arguments" >&2
+  exit 1
+fi
+
+SUM_C=0; SUM_M=0; SUM_F=0
+for w in 0 1 2 3; do
+  printf 'TOTAL\tw%d\t%d\t%d\t%d\n' "$w" "${T_COMMITS[$w]}" "${T_MERGES[$w]}" "${T_FIXREV[$w]}"
+  SUM_C=$((SUM_C + T_COMMITS[$w]))
+  SUM_M=$((SUM_M + T_MERGES[$w]))
+  SUM_F=$((SUM_F + T_FIXREV[$w]))
+done
+
+PCT=0
+[ "$SUM_C" -gt 0 ] && PCT=$((SUM_F * 100 / SUM_C))
+printf 'TOTAL\t4w\t%d\t%d\t%d\tdefect=%d%%\n' "$SUM_C" "$SUM_M" "$SUM_F" "$PCT"
+exit 0

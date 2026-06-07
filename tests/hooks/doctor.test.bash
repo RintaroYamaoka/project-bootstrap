@@ -134,12 +134,25 @@ assert_doctor_status partial
 assert_doctor_exit 2
 assert_out_contains "block-unplanned-feature-build.sh"
 
+# 8b. sprint 採用 + 旧 sprint hook 2 本は在るが review gate (block-unreviewed-merge) が
+#     欠落 → partial。レビュー precondition も sprint flow の採用機能 (= 配備漏れは silent)。
+setup_repo
+mkdir -p "$REPO/docs/sprint"
+vendor_core
+: > "$REPO/.claude/hooks/block-unplanned-feature-build.sh"
+: > "$REPO/.claude/hooks/block-out-of-lane-edit.sh"
+test_case "vendoring missing the review gate is partial"
+run_doctor "$REPO"
+assert_doctor_status partial
+assert_out_contains "block-unreviewed-merge.sh"
+
 # 9. vendored だが sprint 採用に必要な hook も揃っている → ok。
 setup_repo
 mkdir -p "$REPO/docs/sprint"
 vendor_core
 : > "$REPO/.claude/hooks/block-unplanned-feature-build.sh"
 : > "$REPO/.claude/hooks/block-out-of-lane-edit.sh"
+: > "$REPO/.claude/hooks/block-unreviewed-merge.sh"
 test_case "complete vendoring for adopted features is ok"
 run_doctor "$REPO"
 assert_doctor_status ok

@@ -43,6 +43,22 @@ src/auth/**   sequential: 単一画面の責務、disjoint >=2 leaf に割れな
 - 記録 scope 外の新規 source を作ると再 block (= 新しい disjoint 面 → 再判定)
 - `.gate` は ephemeral。**`.gitignore` に追加する** (= commit しない)
 
+## reviews/ — AI レビューの verdict 記録
+
+merge の前に read-only の adversarial AI レビューを回し (integrate skill Step 2)、結果を `docs/sprint/reviews/<branch の / を _ に置換>.md` に書く。必須行は `verdict: approve` または `verdict: reject`、以下に指摘一覧。
+
+```
+# docs/sprint/reviews/feat_T1-auth.md
+verdict: approve
+- 指摘: token 失効パスのテストが境界値 (exp ちょうど) を見ていない → worker が追加済み
+- サンプル監査: 該当 diff の 15% を人間が確認、逸脱なし
+```
+
+- `block-unreviewed-merge.sh` hook が、活性 sprint 中の task branch の merge に対しこの記録を fail-closed で要求する (approve なし → block、reject → より強く block)
+- **reviews/ は commit する** (= defect 発生時に「どの verdict が通したか」を遡る監査証跡。`.gate` / `.bootstrap-lane` と違い ephemeral ではない)
+- sprint 終了時は board と一緒に `archive/` へ移す (integrate skill Step 5)
+- 人間が読むのは verdict / 指摘 / diff サンプル 1-2 割 / 統合境界。全 diff 目視はしない — レビューの質の安全網は `scripts/velocity.sh` の defect rate 監視
+
 ## 並列しすぎない (= scrum の本質は WIP 制限)
 
 並列の収益は凹型カーブで、ソロ開発の変曲点は低い (実質 2-3)。落ちる理由:

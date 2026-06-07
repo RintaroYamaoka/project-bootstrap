@@ -77,10 +77,10 @@ esac
 # なく**活性** (= 未完了 task の有無) で判定する。全 task done / task 無し / status 不在の board
 # は sprint 終了後の残置 (stale) でありうるため素通しの根拠にしない — 存在を信号にすると state
 # の lifecycle 終端で gate が無音で fail-open する (実事故: docs/incidents/2026-06-07-stale-board-gate-bypass)。
-BOARD="$TOP/docs/sprint/board.json"
-if [ -s "$BOARD" ] && grep -oE '"status"[[:space:]]*:[[:space:]]*"[^"]*"' "$BOARD" | grep -qv '"done"'; then
-  exit 0
-fi
+# 判定エンジンは block-unreviewed-merge.sh と共有 (= 信号の drift 防止)。
+# shellcheck source=lib/board-liveness.sh
+. "$(dirname "$0")/lib/board-liveness.sh"
+board_has_active_tasks "$TOP/docs/sprint/board.json" && exit 0
 
 # .gate に記録された scope glob のどれかに REL が一致すれば、判定済みの feature 面 → 素通し。
 # 形式: 各行 `<scope-glob>  <free-text rationale>` (1 列目が glob)。# / 空行は無視。

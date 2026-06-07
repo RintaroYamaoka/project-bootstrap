@@ -170,6 +170,18 @@ session を開いた瞬間に `scripts/doctor.sh` で project-bootstrap の採�
 
 スクリプト: [`bootstrap-session-doctor.sh`](./bootstrap-session-doctor.sh) / エンジン: [`scripts/doctor.sh`](../scripts/doctor.sh)
 
+### M. PreToolUse on `Bash` for `git merge` — AI レビューを統合の precondition に強制
+
+並列フローの throughput 天井は「人間が全 diff を直列レビューする」ことに在る (sprint-plan/SKILL.md が明文化。しかも user のレビュー帯域は複数プロジェクト共有の単一資源)。trust ladder の Stage 2 として一次レビューを read-only の adversarial AI レビュー (integrate skill Step 2) に移すが、「レビューを済ませた」を advisory にすると忘れられる — 本 hook は**活性 sprint 中の task branch を `git merge` する行為そのもの**を信号に、レビュー記録の存在と verdict を fail-closed で要求する。TDD hook が test の存在を強制するのと同型 (= レビューの「質」は強制できないが「存在と結論」は強制できる)。
+
+- precondition = `docs/sprint/reviews/<branch の `/`→`_`>.md` が存在し `verdict: approve` 行を持つ
+- **`verdict: reject` はより強く block** (= 却下されたレビューを踏み越える merge を許さない。対処は修正 → re-review、記録の削除ではない)
+- **fail-closed**: コマンド解析不能 ([`lib/parse-command.sh`](./lib/parse-command.sh) の契約)
+- **fail-open (根拠不在)**: 非 merge / 非 git / docs/sprint 未採用 / sprint 非活性 ([`lib/board-liveness.sh`](./lib/board-liveness.sh) — 存在でなく活性) / merge 対象が board の task branch でない (= 通常の merge を一切妨げない)
+- レビューの質の安全網は gate ではなく `scripts/velocity.sh` の defect rate 監視 (跳ねたらレビューを 1 段厚く戻す)
+
+スクリプト: [`block-unreviewed-merge.sh`](./block-unreviewed-merge.sh)
+
 ## 発火順
 
 **SessionStart**:
@@ -189,9 +201,10 @@ session を開いた瞬間に `scripts/doctor.sh` で project-bootstrap の採�
 2. `block-dangerous-git-ops.sh`     — 他人の作業を消す op を block
 3. `block-cross-claude-wip.sh`      — commit 直前に巻き込み check (`--amend` 含む)
 4. `block-push-to-protected.sh`     — 宣言 branch への直接 push を block (opt-in)
-5. `block-arch-violations.sh`       — commit 時に依存方向を権威検証
-6. `block-commit-if-lint-fails.sh`  — commit 時に lint を回す
-7. `block-commit-if-tests-fail.sh`  — 最後に test を回す
+5. `block-unreviewed-merge.sh`      — レビュー記録なき task branch の merge を block (opt-in)
+6. `block-arch-violations.sh`       — commit 時に依存方向を権威検証
+7. `block-commit-if-lint-fails.sh`  — commit 時に lint を回す
+8. `block-commit-if-tests-fail.sh`  — 最後に test を回す
 
 block 系を test 実行より前に置くのは、test 実行が成功しても巻き込んだ commit / 契約違反は事故源だから。
 

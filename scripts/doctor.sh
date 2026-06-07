@@ -105,7 +105,7 @@ VENDORED=no
 if [ -d "$VHOOKS" ]; then
   VENDORED=yes
   REQ=(require-test-companion.sh block-commit-if-tests-fail.sh block-add-all.sh block-dangerous-git-ops.sh block-cross-claude-wip.sh)
-  [ "$SPRINT" = 1 ] && REQ+=(block-unplanned-feature-build.sh block-out-of-lane-edit.sh)
+  [ "$SPRINT" = 1 ] && REQ+=(block-unplanned-feature-build.sh block-out-of-lane-edit.sh block-unreviewed-merge.sh)
   [ "$ARCH"   = 1 ] && REQ+=(block-cross-layer-import.sh block-arch-violations.sh)
   [ "$PROT"   = 1 ] && REQ+=(block-push-to-protected.sh)
   [ "$LINT"   = 1 ] && REQ+=(block-commit-if-lint-fails.sh)

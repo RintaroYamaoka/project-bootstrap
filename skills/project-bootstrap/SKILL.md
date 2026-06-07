@@ -167,7 +167,7 @@ hook で完全には強制しきれない部分は AI default 経路に組み込
 | WIP 制限 | `wip_limit` 個までしか worktree を作らない (= 構造的に並列度を絞る)。既定は `.bootstrap-wip` (repo root、整数 1 行、opt-in) > 2-3 |
 | 担当境界 | lane 外編集を `block-out-of-lane-edit.sh` が hard block |
 | Definition of Done | TDD + verification 4 罠 + cohort audit (既存) |
-| integration / review | `integrate` skill が依存順 merge + **統合 verify** + claim close |
+| integration / review | `integrate` skill が **adversarial AI レビュー (read-only agent) → verdict 記録 → 依存順 merge → 統合 verify** → claim close。レビュー記録は `block-unreviewed-merge.sh` が merge の precondition として fail-closed 強制。人間は verdict + サンプル + 統合境界のみ読む (全 diff 目視はレビュー帯域が律速になり lane を増やしても throughput が増えない) |
 | retrospective | `incident` skill → memory 昇格 (既存) |
 
 **sprint 分解は default 挙動 (= 指示待ちにしない)**。単一タスクで `/plan` を default で回すのと同じく、並列が得な feature では `/sprint-plan` や「並列で」「スクラムで」を**言われるのを待たず**、探索 (`/plan` 相当の read-only) の直後に自動で sprint 分解 (`sprint-plan` skill をロード) を起動する。advisory な明示呼び出しは忘れられる (= プラグインの不採用方針)。判定はあくまで Claude が探索結果から下す。

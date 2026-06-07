@@ -7,6 +7,11 @@
 
 ## [Unreleased]
 
+### Added
+
+- **`hooks/block-unreviewed-merge.sh` + integrate skill の AI レビュー工程 — レビューの trust ladder Stage 2**。並列フローの throughput 天井は「人間が全 diff を直列レビューする」ことに在り (`sprint-plan/SKILL.md` が明文化)、user のレビュー帯域は複数プロジェクト共有の単一資源なので、lane を増やしても throughput が増えない構造だった。一次レビューを **read-only の adversarial subagent** に移す (= read-only なので「subagent は mutation 禁止」ADR 0001 と整合): integrate skill の新 Step 2 が merge 前に branch ごとのレビューを回し、verdict + 指摘を `docs/sprint/reviews/<branch>.md` に記録 (commit する = どの verdict が通したかを遡る監査証跡。sprint 終了時に board と一緒に archive)。人間が読むのは verdict / 指摘 / diff サンプル 1-2 割 / 統合境界のみ。「レビューを済ませた」は advisory にせず gate で強制する: 新 hook は**活性 sprint 中の task branch の `git merge` 行為そのもの**を信号に、記録なし → block、`verdict: reject` → より強く block (却下の踏み越え禁止)。fail-mode は memory 5 原則準拠 (解析不能 = fail-closed / 非 merge・非活性・非 task branch = fail-open で通常の merge を一切妨げない)。活性判定は `hooks/lib/board-liveness.sh` に切り出して sprint gate と共有 (= gate 信号の drift 防止)。「レビューの質」は gate で保証できないため、安全網は defect rate 監視 (下記 velocity)。doctor の sprint 用 vendored REQ に追加 (配備漏れは partial)。14 hook。
+- **`scripts/velocity.sh` — 週次 throughput / defect rate の複数 repo 横断計測 CLI**。レビューを薄くして「壊れていないか」を判定する唯一の客観データが fix/revert 率の推移。user は複数プロジェクト並行のため横断集計 (`bash scripts/velocity.sh <repo>...`)。出力は TSV: repo × 週 (直近 4 週) の commits/merges/fixrev + TOTAL + 4 週合算 defect 率。defect rate が跳ねたらレビューを 1 段厚く戻す、平坦なら lane を 1 段上げる — trust ladder の昇降判定をこの数字で行う。
+
 ## [0.14.0] - 2026-06-07
 
 ### Fixed

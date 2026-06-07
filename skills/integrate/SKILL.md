@@ -18,22 +18,35 @@ description: 並列開発した複数の feature branch を依存順に統合し
 
 `docs/sprint/board.json` を読む。`depends_on` で **topological order** を作る (= 直列 spine task が先、その下流が後)。`in-review` / `done` でない task があれば、それを待つか lead が引き取る。
 
-### Step 2: 1 task ずつ merge → 統合 verify
+### Step 2: merge 前に adversarial AI レビュー → verdict を記録 (人間は全 diff を読まない)
+
+throughput の律速は人間のレビュー帯域 (しかも user は複数プロジェクト並行 = 全 repo 共有の単一資源)。一次レビューは **read-only の subagent** に移す — read-only なので「subagent は mutation 禁止」(ADR 0001) と整合する、subagent の正しい使い道。
+
+依存順に、各 task について merge の**前に**:
+
+1. **adversarial レビュー agent を回す** (read-only)。プロンプトの態度は「この branch を落とすつもりで読む」: 正しさ / 統合境界 (共有 interface の前提ずれ) / verification 4 罠 / scope 逸脱。観点が複数要るなら lens を分けて並列に
+2. **結果を `docs/sprint/reviews/<branch名の `/` を `_` に置換>.md` に書く**。必須行は `verdict: approve` または `verdict: reject`、以下に指摘一覧。この記録は commit する (= defect 発生時に「どの verdict が通したか」を遡る監査証跡)
+3. **人間が読むのは: verdict / 指摘一覧 / diff のサンプル 1-2 割 / 統合境界だけ**。全 diff の目視はしない — それをやると lane を増やしても throughput が増えない
+4. `reject` なら worker lane に指摘を差し戻し、修正後に re-review。記録は上書きでなく verdict 行を更新する
+
+> **この precondition は gate で強制される** (`hooks/block-unreviewed-merge.sh`)。活性 sprint 中の task branch を `git merge` しようとした瞬間、レビュー記録が無ければ block、`verdict: reject` のままなら**より強く** block (却下の踏み越え禁止)。「レビューの質」は gate で保証できないので、velocity (`scripts/velocity.sh`) の defect rate が跳ねたらレビューを 1 段厚く戻す — これが安全網。
+
+### Step 3: 1 task ずつ merge → 統合 verify
 
 依存順に、各 task について:
 
-1. その branch を統合先 (= integration branch or main) に merge する
+1. その branch を統合先 (= integration branch or main) に merge する (= review gate を通過する)
 2. **全テストスイートを回す** (= その task のテストだけでなく、統合後の全体)。これが verification の本体。task 単位で緑でも、統合で semantic 結合が壊れることがある (= 共有 interface の前提ずれ)
 3. fail したら **その merge を戻して原因を特定**。conflict / 結合バグは「症状を隠す」のでなく根本 (= interface の前提ずれ等) を直す
 4. 緑なら次の task へ
 
 scope を disjoint に切れていれば file conflict はほぼ出ない。出たら **分解が甘かった signal** (= incident / 次回の sprint-plan へのフィードバック)。
 
-### Step 3: cohort / verification の最終確認
+### Step 4: cohort / verification の最終確認
 
 統合後、production-affecting な変更があれば `project-bootstrap` SKILL の verification 4 罠を最終 gate として確認する。user-facing bug fix を含むなら同根 cohort audit も。
 
-### Step 4: claim を閉じ、worktree を撤去
+### Step 5: claim を閉じ、worktree を撤去
 
 各 task の `status` を `done` に。worktree を撤去する:
 
@@ -42,7 +55,7 @@ git worktree remove ../wt-<id>
 git branch -d feat/<id>-<topic>   # merge 済を確認してから
 ```
 
-board の全 task が done になったら sprint 終了。**board.json を必ず `docs/sprint/archive/<sprint>.json` へ移す** (= sprint 終了の定義に board の終端処理を含める。残置は任意ではない)。ephemeral state の残置は権威の分散そのもので、実際に完了済み board の残置が sprint 発火 gate を 2 週間無音バイパスさせた (`docs/incidents/2026-06-07-stale-board-gate-bypass`)。gate 側も信号を「board の存在」から「未完了 task の有無 (活性)」に直してあるが、archive は防御の二重化ではなく lifecycle の責務 — 次の sprint-plan が古い board と衝突しないための正本整理。
+board の全 task が done になったら sprint 終了。**board.json と `reviews/` を必ず `docs/sprint/archive/` へ移す** (board は `archive/<sprint>.json`、レビュー記録は `archive/<sprint>-reviews/`) (= sprint 終了の定義に board の終端処理を含める。残置は任意ではない)。ephemeral state の残置は権威の分散そのもので、実際に完了済み board の残置が sprint 発火 gate を 2 週間無音バイパスさせた (`docs/incidents/2026-06-07-stale-board-gate-bypass`)。gate 側も信号を「board の存在」から「未完了 task の有無 (活性)」に直してあるが、archive は防御の二重化ではなく lifecycle の責務 — 次の sprint-plan が古い board と衝突しないための正本整理。
 
 ## やってはいけないこと
 
