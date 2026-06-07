@@ -4,7 +4,7 @@
 #
 # 背景: 並列フローの throughput 天井は「人間が全 diff を直列レビューする」ことに在る
 # (sprint-plan/SKILL.md が明文化)。Stage 2 では一次レビューを read-only の adversarial AI
-# レビュー (integrate skill Step 1.5) に移し、人間は verdict + 指摘 + サンプル + 統合境界だけを
+# レビュー (integrate skill Step 2) に移し、人間は verdict + 指摘 + サンプル + 統合境界だけを
 # 読む。だが「レビューを済ませた」を advisory にすると忘れられる — 本 hook は TDD hook が
 # test の存在を強制するのと同型に、**統合行為 (= 活性 sprint 中の task branch の git merge)**
 # を信号として、レビュー記録 (docs/sprint/reviews/<branch>.md, `/`→`_`) の存在と verdict を
