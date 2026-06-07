@@ -7,6 +7,8 @@
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-06-07
+
 ### Fixed
 
 - **sprint 発火 gate の素通し信号を「board.json の存在」から「活性 (= 未完了 task の有無)」に修正**。`block-unplanned-feature-build.sh` は「進行中 sprint なら lane hook が scope を握る」として `board.json 非空` で素通ししていたが、board は per-sprint の **ephemeral state** で「全 task done だが archive 前」という終端状態を持ち、そこでは存在と活性が乖離する。実際にこの repo 自身が完了済み board (2026-05-24、全 task done) を残置しており、**2026-05-24 以降 sprint 発火 gate が一度も発火し得ない状態**だった (= 0.12.0 で fail-closed 化し 0.13.0 で配備漏れを可視化した同じ gate が、自陣で stale state により無音で死んでいた。gate 無音化 class の 3 例目: advisory の沈黙 → 配備漏れ → stale state)。修正は素通し条件を「`status` ≠ `done` の task が存在する」に変更し、全 done / task 無し / status 不在の board は「進行中の根拠なし」として `.gate` 判定に降ろす (= 解析不能を素通し側に倒さない)。あわせて `integrate/SKILL.md` Step 4 の「board.json は次 sprint まで**残すか** archive する」という任意性が残置を default にしていた真因を「必ず `docs/sprint/archive/<sprint>.json` へ移す」に責務化し、この repo の stale board も archive した。`docs/incidents/2026-06-07-stale-board-gate-bypass` に起票、memory `feedback_gate_signal_and_failmode` に「存在 ≠ 活性」原則を昇格。`tests/hooks/block-unplanned-feature-build.test.bash` に全 done / task 無し / in-review / .gate 併用の 4 ケースを pin。
