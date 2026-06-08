@@ -1,20 +1,40 @@
 ---
 name: project-bootstrap
-description: AI 駆動開発の規律。ルール = AI の default 挙動 + hook 強制。Anthropic 公式 best practice (verification 最高レバレッジ / hooks deterministic / CLAUDE.md advisory) に整合する。verification 4 罠 / AI の癖 9 個 / TDD ループ / 根本修正 / 並列 Claude 安全運用 / subagent は read-only (mutation は main session、hook が subagent で効かないため) / 環境隔離 / external memory として docs/ 整備 (handoffs / decisions / incidents)。新機能・バグ修正・リファクタ・調査など、あらゆるコーディング作業で常にロードする。
+description: 上位1％の AI 駆動開発を個人の規律でなく構造として default 化する規律。純粋な強制は到達不能なので強制を4つの設計判断に作り替える = ① 分解 (precondition を fail-closed で強制・判断は逃さない) / ② 信号選び (行為を信号に・fail-mode を選ぶ) / ③ 配備の可視化 (効いていない強制を無音にしない) / ④ 計測つきの取引 (緩めるなら戻る根拠を metric で持つ)。Anthropic 公式 best practice (verification 最高レバレッジ / hooks deterministic / CLAUDE.md advisory) に整合する。verification 4 罠 / AI の癖 9 個 / TDD ループ / 根本修正 / 並列 Claude 安全運用 / subagent は read-only (mutation は main session、hook が subagent で効かないため) / 環境隔離 / external memory として docs/ 整備 (handoffs / decisions / incidents)。新機能・バグ修正・リファクタ・調査など、あらゆるコーディング作業で常にロードする。
 ---
 
 # AI 駆動開発の規律
 
-## ルールとは
+## ビジョン — 上位1％の AI 駆動開発
 
-**ルール = AI が常にそう振る舞うこと**。
+AI を使うこと自体はもう差別化にならない。本プラグインが目指すのは、AI の速度を壊さずに引き出しきる **上位1％の AI 駆動開発** を、個人の規律 (= 忘れられる) でなく **構造として default 化する** こと。その手段が以下の「強制の技芸」である。
 
-ユーザーが明示的にコマンドを叩いて初めて発動する形式 (slash command / 明示 subagent 呼び出し) は advisory にすぎず、忘れられる。本プラグインのルールは hook で deterministic に強制される。違反は blocking される。
+## 強制の技芸
+
+**規律 = AI が常にそう振る舞うこと**。明示コマンドで初めて発動する形式 (slash command / 明示 subagent 呼び出し) は advisory にすぎず、忘れられる。だから hook で deterministic に強制し、違反を blocking する。
 
 > Anthropic 公式 (https://code.claude.com/docs/en/best-practices):
 > "Hooks are deterministic and guarantee the action happens. Unlike CLAUDE.md instructions which are advisory."
 
-**ただし hook は消費先 repo で現行版が実際に走って初めて効く**。設計が正しい gate も、未配備 / 部分 vendoring の repo では無音で効果ゼロになる (実事故: `docs/incidents/2026-06-02-coverage-drift-silent`。とりわけ sprint 発火 gate は build 前の判断ゆえ CI 後追いができず PreToolUse hook 以外に backstop が無い)。そこで SessionStart hook (`hooks/bootstrap-session-doctor.sh`) が session 起動時に採用状態を audit し、**未採用なら導入を一度だけ尋ね / 採用済みで gate 配備漏れ (partial) なら警告**する (= 採用は consent ゆえ強制不能だが「状態を可視化する」ことはできる。enforcement の本体は per-action gate)。plugin 非依存の team-wide net は `templates/ci/bootstrap-doctor.yml`。判定エンジンは `scripts/doctor.sh` (ADR 0003)。
+ただし **純粋な強制はほとんどの実規律で到達不能** である (= 判断・配備・throughput は hook で縛りきれない)。諦めるのでなく、強制を以下4つの設計判断の連なりに作り替える。
+
+### ① 分解 — precondition は強制し、判断は逃さない
+
+規律を [強制可能な precondition] と [既約な判断] に割る。判断そのもの (= 良い test を書く / 並列が得かを見抜く) は強制できないが、**「判断を済ませた」という precondition は強制できる**。TDD hook が test の質を保証できなくても test の存在を強制するのと同型で、sprint 発火 gate (`hooks/block-unplanned-feature-build.sh`) も「sprint 判定の記録」を新規 source 面作成の precondition にする。判断を advisory に逃さない。
+
+強制には **構造的な射程外** もある (= PreToolUse hook は subagent で発火しない。ADR 0001 / upstream `#21460`)。穴を埋めるのでなく、**射程外で mutate しない設計に回避する** (= subagent は read-only、mutation は main session)。
+
+### ② 信号選び — 行為を信号にし、fail-mode を選ぶ
+
+gate は **proxy でなく行為そのもの** を信号にする (= sprint gate は prompt の語彙ではなく「新規 source file を作る行為」を信号にする。語彙は言い回しに穴が空く proxy)。fail-mode は意図的に選ぶ: **解析不能 = fail-closed** (判定できないなら止める) / **根拠不在 = fail-open** (非対象 project を妨げない)。ephemeral state は「存在」でなく **「活性」** で読み (= board.json の有無でなく未完了 task の有無。実事故: `docs/incidents/2026-06-07-stale-board-gate-bypass`)、終端処理 (archive) を所有 skill の責務にする。
+
+### ③ 配備の可視化 — 効いていない強制を無音にしない
+
+**hook は消費先 repo で現行版が実際に走って初めて効く**。設計が正しい gate も未配備 / 部分 vendoring の repo では無音で効果ゼロになる (実事故: `docs/incidents/2026-06-02-coverage-drift-silent`。とりわけ sprint 発火 gate は build 前の判断ゆえ CI 後追いができず PreToolUse hook 以外に backstop が無い)。だから強制は自身の **配備カバレッジを可視化する meta 層** を持つ: SessionStart hook (`hooks/bootstrap-session-doctor.sh`) が起動時に採用状態を audit し、**未採用なら導入を一度だけ尋ね / 採用済みで配備漏れ (partial) なら警告** する (= 採用は consent ゆえ強制不能だが、状態の可視化はできる。enforcement の本体は per-action gate)。plugin 非依存の team-wide net は `templates/ci/bootstrap-doctor.yml`、判定エンジンは `scripts/doctor.sh` (ADR 0003)。
+
+### ④ 計測つきの取引 — 緩めるなら戻る根拠を持つ
+
+強制を **throughput と引き換えに意図的に緩める** 層がある。人間の全 diff 直列レビューはレビュー帯域が律速なので、一次レビューを read-only AI に移し人間は verdict + サンプルだけ読む (trust ladder Stage 2、`hooks/block-unreviewed-merge.sh`)。これは advisory への退行ではない — **客観 metric (`scripts/velocity.sh` の defect rate) で「いつ1段戻すか」を持つ管理された取引** である。計測なき緩和は盲信に戻る。
 
 ## 最高レバレッジ — verification を必ず与える
 

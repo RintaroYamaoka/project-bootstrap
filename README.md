@@ -1,8 +1,8 @@
 # project-bootstrap
 
-AI 駆動開発の規律を **hook で deterministic に強制する** Claude Code プラグイン。
+**上位1％の AI 駆動開発を、個人の規律でなく構造として default 化する** Claude Code プラグイン。AI の速度を壊さずに引き出しきるための「強制の技芸」を hook で deterministic に効かせる。
 
-ルール = AI の default 挙動 + hook 強制。slash command や明示呼び出しで発動する advisory 形式は採用しない (= 忘れられるため)。Anthropic 公式 best practice ([code.claude.com/docs/en/best-practices](https://code.claude.com/docs/en/best-practices)) の整合: verification 最高レバレッジ / hooks deterministic / CLAUDE.md は prune して短く保つ。
+純粋な強制はほとんどの実規律で到達不能 (判断・配備・throughput は hook で縛りきれない) なので、強制を4つの設計判断の連なりに作り替える: **① 分解** (強制可能な precondition と既約な判断に割り、precondition を fail-closed で課す) / **② 信号選び** (proxy でなく行為を信号に、fail-mode を意図的に選ぶ) / **③ 配備の可視化** (効いていない強制を無音にしない) / **④ 計測つきの取引** (throughput と引き換えに緩めるなら戻る根拠を metric で持つ)。明示コマンドで発動する advisory 形式は採用しない (= 忘れられるため)。Anthropic 公式 best practice ([code.claude.com/docs/en/best-practices](https://code.claude.com/docs/en/best-practices)) と整合: verification 最高レバレッジ / hooks deterministic / CLAUDE.md は prune して短く保つ。
 
 ## 何を強制するか
 
