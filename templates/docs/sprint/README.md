@@ -56,7 +56,8 @@ verdict: approve
 - サンプル監査: 該当 diff の 15% を人間が確認、逸脱なし
 ```
 
-- `block-unreviewed-merge.sh` hook が、活性 sprint 中の task branch の merge に対しこの記録を fail-closed で要求する (approve なし → block、reject → より強く block)
+- `block-unreviewed-merge.sh` hook が、並列 lane の branch (= 活性 sprint の task branch、および **linked worktree に checkout された branch** — board 不要) の merge に対しこの記録を fail-closed で要求する (approve なし → block、reject → より強く block)。worktree の撤去は必ず merge の後 (先に撤去すると関所の信号が消える)
+- GitHub の **PR 画面での merge は手元 hook を通らない**ため、PR 経路は `.github/workflows/bootstrap-review-gate.yml` (templates/ci/) が CI で同じ記録を要求する (導入 repo では全 PR が対象)
 - **reviews/ は commit する** (= defect 発生時に「どの verdict が通したか」を遡る監査証跡。`.gate` / `.bootstrap-lane` と違い ephemeral ではない)
 - sprint 終了時は board と一緒に `archive/` へ移す (integrate skill Step 5)
 - 人間が読むのは verdict / 指摘 / diff サンプル 1-2 割 / 統合境界。全 diff 目視はしない — レビューの質の安全網は `scripts/velocity.sh` の defect rate 監視

@@ -20,7 +20,7 @@ description: 並列開発した複数の feature branch を依存順に統合し
 
 ### Step 2: merge 前に adversarial AI レビュー → verdict を記録 (人間は全 diff を読まない)
 
-throughput の律速は人間のレビュー帯域 (しかも user は複数プロジェクト並行 = 全 repo 共有の単一資源)。一次レビューは **read-only の subagent** に移す — read-only なので「subagent は mutation 禁止」(ADR 0001) と整合する、subagent の正しい使い道。
+throughput の律速は人間のレビュー帯域 (しかも user は複数プロジェクト並行 = 全 repo 共有の単一資源)。一次レビューは **read-only の subagent** に移す — レビューは判定であって mutation を伴わないため、どの並列形態 (worker ターミナル / PR / Workflow lane) でも同じ agent 設計で回せる (ADR 0001→0004)。
 
 依存順に、各 task について merge の**前に**:
 

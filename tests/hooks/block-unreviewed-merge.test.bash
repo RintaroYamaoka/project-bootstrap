@@ -142,4 +142,65 @@ test_case "non-git dir is fail-open"
 run_hook "$HOOK" "$(printf '{"tool_name":"Bash","tool_input":{"command":"git merge feat/T1-auth"},"cwd":"%s"}' "$NOGIT")"
 assert_exit 0
 
+# --- worktree lane branches (board-independent) ---
+# 実際の並列開発は board を作らない形でも起きる: Workflow サブエージェントの隔離 worktree、
+# 手動の worktree 並走 (ADR 0004 / docs/incidents/2026-06-11-parallel-mode-gate-coverage)。
+# 統合の関所は「どの方式で作ったか」に依存してはいけない — linked worktree に checkout
+# された branch の merge は、活性 board が無くてもレビュー記録を要求する。
+# opt-in は docs/sprint/ の存在 (= sprint flow 採用宣言、他 gate と同じ)。
+
+add_worktree_branch() { # add_worktree_branch <branch> — linked worktree に checkout した branch を作る
+  git -C "$REPO" commit -q --allow-empty -m base 2>/dev/null
+  git -C "$REPO" worktree add -q -b "$1" "$REPO/.claude/worktrees/$(printf '%s' "$1" | tr '/' '_')" >/dev/null 2>&1
+}
+
+# 13. No board at all, branch lives in a linked worktree, no review record => blocked.
+setup_repo
+mkdir -p "$REPO/docs/sprint"
+add_worktree_branch "lane/slack-notify"
+RUN_DIR="$REPO"
+test_case "worktree lane merge without review is blocked (no board needed)"
+run_hook "$HOOK" "$(merge_input 'git merge lane/slack-notify')"
+assert_exit 2
+assert_stderr_contains 'reviews/'
+
+# 14. Same lane with verdict: approve => passes.
+setup_repo
+mkdir -p "$REPO/docs/sprint"
+add_worktree_branch "lane/slack-notify"
+write_review "lane/slack-notify" "verdict: approve" "- 指摘なし"
+RUN_DIR="$REPO"
+test_case "worktree lane merge with approve passes"
+run_hook "$HOOK" "$(merge_input 'git merge lane/slack-notify')"
+assert_exit 0
+
+# 15. Same lane with verdict: reject => blocked harder.
+setup_repo
+mkdir -p "$REPO/docs/sprint"
+add_worktree_branch "lane/slack-notify"
+write_review "lane/slack-notify" "verdict: reject" "- 境界条件の test 不足"
+RUN_DIR="$REPO"
+test_case "worktree lane merge with reject is blocked"
+run_hook "$HOOK" "$(merge_input 'git merge lane/slack-notify')"
+assert_exit 2
+assert_stderr_contains 'REJECT'
+
+# 16. Plain branch (no worktree, no board): merge passes — 通常の merge を一切妨げない。
+setup_repo
+mkdir -p "$REPO/docs/sprint"
+git -C "$REPO" commit -q --allow-empty -m base
+git -C "$REPO" branch hotfix/typo
+RUN_DIR="$REPO"
+test_case "plain branch merge passes (no worktree, no board)"
+run_hook "$HOOK" "$(merge_input 'git merge hotfix/typo')"
+assert_exit 0
+
+# 17. Worktree lane but docs/sprint NOT adopted => fail-open (opt-in respected).
+setup_repo
+add_worktree_branch "lane/slack-notify"
+RUN_DIR="$REPO"
+test_case "worktree lane without sprint adoption passes (opt-in)"
+run_hook "$HOOK" "$(merge_input 'git merge lane/slack-notify')"
+assert_exit 0
+
 finish

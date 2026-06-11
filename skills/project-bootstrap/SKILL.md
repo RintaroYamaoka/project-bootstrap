@@ -1,6 +1,6 @@
 ---
 name: project-bootstrap
-description: 上位1％の AI 駆動開発を個人の規律でなく構造として default 化する規律。純粋な強制は到達不能なので強制を4つの設計判断に作り替える = ① 分解 (precondition を fail-closed で強制・判断は逃さない) / ② 信号選び (行為を信号に・fail-mode を選ぶ) / ③ 配備の可視化 (効いていない強制を無音にしない) / ④ 計測つきの取引 (緩めるなら戻る根拠を metric で持つ)。Anthropic 公式 best practice (verification 最高レバレッジ / hooks deterministic / CLAUDE.md advisory) に整合する。verification 4 罠 / AI の癖 9 個 / TDD ループ / 根本修正 / 並列 Claude 安全運用 / subagent は read-only (mutation は main session、hook が subagent で効かないため) / 環境隔離 / external memory として docs/ 整備 (handoffs / decisions / incidents)。新機能・バグ修正・リファクタ・調査など、あらゆるコーディング作業で常にロードする。
+description: 上位1％の AI 駆動開発を個人の規律でなく構造として default 化する規律。純粋な強制は到達不能なので強制を4つの設計判断に作り替える = ① 分解 (precondition を fail-closed で強制・判断は逃さない) / ② 信号選び (行為を信号に・fail-mode を選ぶ) / ③ 配備の可視化 (効いていない強制を無音にしない) / ④ 計測つきの取引 (緩めるなら戻る根拠を metric で持つ)。Anthropic 公式 best practice (verification 最高レバレッジ / hooks deterministic / CLAUDE.md advisory) に整合する。verification 4 罠 / AI の癖 9 個 / TDD ループ / 根本修正 / 並列 Claude 安全運用 / subagent の mutation は隔離 worktree + 統合関所つきで可 (hook は subagent にも効く: 2026-06-11 実測検証、ADR 0004) / 環境隔離 / external memory として docs/ 整備 (handoffs / decisions / incidents)。新機能・バグ修正・リファクタ・調査など、あらゆるコーディング作業で常にロードする。
 ---
 
 # AI 駆動開発の規律
@@ -22,7 +22,7 @@ AI を使うこと自体はもう差別化にならない。本プラグイン�
 
 規律を [強制可能な precondition] と [既約な判断] に割る。判断そのもの (= 良い test を書く / 並列が得かを見抜く) は強制できないが、**「判断を済ませた」という precondition は強制できる**。TDD hook が test の質を保証できなくても test の存在を強制するのと同型で、sprint 発火 gate (`hooks/block-unplanned-feature-build.sh`) も「sprint 判定の記録」を新規 source 面作成の precondition にする。判断を advisory に逃さない。
 
-強制には **構造的な射程外** もある (= PreToolUse hook は subagent で発火しない。ADR 0001 / upstream `#21460`)。穴を埋めるのでなく、**射程外で mutate しない設計に回避する** (= subagent は read-only、mutation は main session)。
+強制の射程は**外部前提に依存し、変わる**。かつて PreToolUse hook は subagent で発火せず (ADR 0001 / upstream `#21460`)、射程外で mutate しない設計に回避していた。upstream 修正 (2026-05-29 close) を**実測で検証**し (2026-06-11)、現在は subagent にも hook が届く — 回避は撤回し、関所は「どの方式でも必ず通る統合の入口」に置く (ADR 0004)。外部前提は閉じたら再検証する。
 
 ### ② 信号選び — 行為を信号にし、fail-mode を選ぶ
 
@@ -116,16 +116,26 @@ hook A (`hooks/hooks.json`) が「対応 test 不在の実装ファイル編集�
 3. 失敗パス (不正入力でどう fail するか)
 4. **Verification observation** — production-affecting なら read-back / live assert を含むテスト
 
-## subagent は read-only — 強制が効かない場所で mutate しない
+## subagent と並列開発 — 方式は選べる、統合の入口は必ず関所を通る
 
-**PreToolUse hook は subagent (= Task / Agent ツールで起動する子エージェント) の tool 呼び出しでは発火しない。** これは Claude Code の未修正の既知問題 (upstream `anthropics/claude-code#21460`「[SECURITY] PreToolUse hooks not enforced on subagent tool calls」OPEN) で、伝播オプションの追加も却下済 (`#27533` not planned)。plugin が配る subagent では frontmatter の `hooks:` も**無視される** (公式: "plugin subagents do not support the `hooks` ... field")。一次ソース検証は `docs/decisions/0001-subagent-hooks-not-enforced.md`。
+**PreToolUse hook は subagent の tool 呼び出しにも発火する** (upstream `#21460` は 2026-05-29 に修正済み。2026-06-11 に実測検証: subagent の新規 source Write を TDD hook が exit 2 で blocking)。かつては発火せず「subagent は read-only 専用」だった (ADR 0001) — この回避は **ADR 0004 で撤回**。外部前提 (upstream issue) は閉じたら再検証する。
 
 帰結として本プラグインは「強制 = hook」を貫くため、**実体を書き換える作業 (Edit / Write / git commit) を subagent に委譲しない**:
 
-- **subagent は read-only 探索専用**。`Read` / `Grep` / `Glob` での調査・要約・計画の下書きに使う (= context を節約しつつ gate すべき操作が存在しない)
-- **mutation はすべて main session が行う** (= TDD の Red/Green/Refactor、bug fix、refactor)。ここでだけ hook が test 先行 / lane / 依存方向 / commit gate を deterministic に強制できる
-- **並列開発は subagent ではなく別 session の worker** で行う。`sprint-plan` が吐く worker 起動文を**人間が別ターミナル / 別 worktree に貼って起動**する (= 各 worker はそれ自身が main session なので hook が普通に効く)。1 session 内で subagent を並列に走らせて実装させる方式は、gate が消えるため**採らない**
-- 最終砦として、subagent や人間の直 commit など hook を経由しない経路も `scripts/arch-check.sh` + CI + git pre-commit (server 側 net) が捕まえる
+並列実装の形態は 3 つあり、**どれを選んでもよい** — 強制は方式ではなく統合の入口 (merge / PR) に掛かる:
+
+| 形態 | 起動 | edit 時 gate | 統合関所 |
+|---|---|---|---|
+| ① 別ターミナル worker | `sprint-plan` の起動文を人間が貼る | 効く | `block-unreviewed-merge.sh` (board task branch) |
+| ② branch 並走 + GitHub PR | 人間 / 各 session | 効く | **CI** `bootstrap-review-gate.yml` (手元 hook は PR merge に届かない) |
+| ③ Workflow / subagent 並列実装 | main session が起動 | **効く** (実測検証済み) | `block-unreviewed-merge.sh` (worktree lane branch — board 不要) |
+
+規律:
+
+- **mutation を伴う subagent / Workflow lane は必ず隔離 worktree で走らせる** (= lane の物理分離。同一 tree での並走は引き続き禁止)
+- **統合 (merge / PR) には AI レビュー記録が必須**: `docs/sprint/reviews/<branch の / → _>.md` + `verdict: approve`。手元 merge は hook が、PR は CI が fail-closed で要求する。worktree の撤去は**必ず merge の後** (先に撤去すると関所の信号が消える — 手順違反)
+- 単発の read-only 探索・要約・計画下書きは従来通り subagent の主用途 (gate すべき操作がなく、context を節約できる)
+- 最終砦として、hook を経由しない経路も `scripts/arch-check.sh` + CI + git pre-commit (server 側 net) が捕まえる
 
 ## バグは根本を修正する
 
@@ -199,7 +209,7 @@ hook で完全には強制しきれない部分は AI default 経路に組み込
 
 **1 つでも欠けたら自動分解しない**。共有 interface / 型 / 契約があるなら、それを `depends_on` の **直列 spine** に切り出して先に 1 レーンで済ませ、その後に下流 leaf を並列化する (= Amdahl: 直列部分が speedup の上限)。disjoint に割れない feature は無理に刻まず逐次でやる (= 協調コストが利得を食う)。並列の収益は凹型で変曲点は低い (ソロで実質 2-3)。
 
-自動分解した結果は**人間に提示する** (board.json + 各 lane の worker 起動文)。worker Claude の起動は人間が行う (= task = 1 worktree = 1 owner、レビューは人間で直列。1 session 内での subagent 並列実行は別物で、ここでは採らない)。
+自動分解した結果は**人間に提示する** (board.json + 各 lane の worker 起動文)。lane の実行形態は worker ターミナル (人間が起動) でも Workflow / subagent (main session が起動、隔離 worktree 必須) でもよい — どちらでも edit 時 gate は効き、統合は同じ関所 (レビュー記録) を通る (ADR 0004)。task = 1 worktree = 1 owner は不変。
 
 > **この判定は advisory ではなく fail-closed gate で強制する** (= `hooks/block-unplanned-feature-build.sh`, PreToolUse)。sprint 自体は hook で起動できない (worktree 起動は人間、disjoint 判定は Claude — ADR 0001 の既約な残余) が、**「判定を済ませた」という precondition は強制できる**。TDD hook が「良い test」を書かせられなくても test の存在は強制するのと同型。`docs/sprint/` を採用した project で、**新規 source file を作ろうとした瞬間** (= feature 面を作る行為そのものを信号にする。prompt の語彙ではない — 語彙は proxy で言い回しに穴が空く)、sprint 判定の記録 (`docs/sprint/.gate`) も進行中 sprint (`board.json`) も無ければ blocking する。bug fix / refactor / 既存 file 編集は新規 source 面でないので素通し。
 >

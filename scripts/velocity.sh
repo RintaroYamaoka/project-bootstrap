@@ -24,6 +24,10 @@
 #             「解消」(handoff 更新などの非 defect) は false positive を確認し不採用 (罠 4)
 #   defect% = fixrev / commits (4 週合算、commits=0 なら 0%)
 #
+# 基準線: 旧方式 (英語 prefix のみ) で測った「11%」は無効。新方式の起点 = 2026-06-11 実測
+# 12% (creative-team-app + bootstrap 横断 4w)。以後この CLI の推移で更新し、跳ねたらレビューを
+# 1 段厚く戻す / 安定して下回ったら lane を上げる (trust ladder の昇降判定)。
+#
 # 非 git path は警告してスキップ。有効 repo が 1 つも無ければ exit 1。jq 非依存。
 
 set -u

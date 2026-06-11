@@ -6,15 +6,23 @@
 # (sprint-plan/SKILL.md が明文化)。Stage 2 では一次レビューを read-only の adversarial AI
 # レビュー (integrate skill Step 2) に移し、人間は verdict + 指摘 + サンプル + 統合境界だけを
 # 読む。だが「レビューを済ませた」を advisory にすると忘れられる — 本 hook は TDD hook が
-# test の存在を強制するのと同型に、**統合行為 (= 活性 sprint 中の task branch の git merge)**
-# を信号として、レビュー記録 (docs/sprint/reviews/<branch>.md, `/`→`_`) の存在と verdict を
+# test の存在を強制するのと同型に、**統合行為 (= 並列 lane の branch の git merge)** を信号
+# として、レビュー記録 (docs/sprint/reviews/<branch>.md, `/`→`_`) の存在と verdict を
 # precondition 化する。「良いレビュー」は強制できないが「レビューの存在と結論」は強制できる。
+#
+# 「並列 lane の branch」は 2 つの集合の和 (ADR 0004):
+#   (a) 活性 board の task branch (= sprint flow の正式 lane)
+#   (b) この repo の linked worktree に checkout されている branch (= Workflow サブエージェント
+#       の隔離 worktree / 手動 worktree 並走)。実際の並列開発は board を作らない形でも起きており
+#       (docs/incidents/2026-06-11-parallel-mode-gate-coverage)、関所が「どの方式で作ったか」に
+#       依存すると方式の選択 (= モデルの気分) で gate が無音になる。worktree という物理的痕跡を
+#       信号にすれば、どの方式でも統合の入口で必ず捕まる。
 #
 # fail-mode (memory feedback_gate_signal_and_failmode 準拠):
 #   - コマンド解析不能 = fail-closed (parse-command の契約。bypass 防止)
-#   - 根拠不在 = fail-open: 非 merge コマンド / 非 git / docs/sprint 未採用 / sprint 非活性
-#     (= board の活性判定は lib/board-liveness.sh。存在ではなく活性 — 2026-06-07 incident) /
-#     merge 対象が board の task branch でない (通常の merge を一切妨げない)
+#   - 根拠不在 = fail-open: 非 merge コマンド / 非 git / docs/sprint 未採用 (= opt-in、他 gate
+#     と同じ採用宣言) / merge 対象が (a)(b) のどちらでもない (通常の merge を一切妨げない)。
+#     board の活性判定は lib/board-liveness.sh (存在ではなく活性 — 2026-06-07 incident)
 #   - verdict: reject の記録がある merge は**より強く** block (却下の踏み越えを許さない)
 #
 # bypass: 例外的に必要なら /permissions で本 hook を一時 deny。
@@ -39,21 +47,34 @@ command -v git >/dev/null 2>&1 || exit 0
 TOP=$(git rev-parse --show-toplevel 2>/dev/null | tr '\\' '/' | tr -s '/')
 [ -z "$TOP" ] && exit 0
 
-# 活性 sprint 中でなければ素通し (存在ではなく活性 — 完了済み board の残置で発火しない)。
+# opt-in: sprint flow を採用した project (= docs/sprint/ が在る) でのみ発火。
+[ -d "$TOP/docs/sprint" ] || exit 0
+
+# 並列 lane の branch 集合を組み立てる。
+# (a) 活性 board の task branch (存在ではなく活性 — 完了済み board の残置で発火しない)。
 BOARD="$TOP/docs/sprint/board.json"
 # shellcheck source=lib/board-liveness.sh
 . "$(dirname "$0")/lib/board-liveness.sh"
-board_has_active_tasks "$BOARD" || exit 0
+LANE_BRANCHES=""
+if board_has_active_tasks "$BOARD"; then
+  LANE_BRANCHES=$(grep -oE '"branch"[[:space:]]*:[[:space:]]*"[^"]*"' "$BOARD" | sed 's/.*"branch"[[:space:]]*:[[:space:]]*"//; s/"$//')
+fi
 
-# board に宣言された task branch 集合を取り出す (exact 文字列比較 — regex escape 問題を回避)。
-TASK_BRANCHES=$(grep -oE '"branch"[[:space:]]*:[[:space:]]*"[^"]*"' "$BOARD" | sed 's/.*"branch"[[:space:]]*:[[:space:]]*"//; s/"$//')
-[ -z "$TASK_BRANCHES" ] && exit 0   # branch 宣言の無い board は判定根拠なし → fail-open
+# (b) linked worktree に checkout されている branch。porcelain 出力の最初の block は
+# main worktree 自身なので除外する (= main の checkout branch は lane ではない)。
+WT_BRANCHES=$(git worktree list --porcelain 2>/dev/null | sed -n '/^$/,$p' | sed -n 's|^branch refs/heads/||p')
+if [ -n "$WT_BRANCHES" ]; then
+  LANE_BRANCHES=$(printf '%s\n%s' "$LANE_BRANCHES" "$WT_BRANCHES")
+fi
 
-is_task_branch() {
+# lane が 1 つも無ければ判定根拠なし → fail-open (通常の merge を一切妨げない)。
+[ -z "$(printf '%s' "$LANE_BRANCHES" | tr -d '[:space:]')" ] && exit 0
+
+is_lane_branch() {
   local tok="$1" b
   while IFS= read -r b; do
-    [ "$tok" = "$b" ] && return 0
-  done <<< "$TASK_BRANCHES"
+    [ -n "$b" ] && [ "$tok" = "$b" ] && return 0
+  done <<< "$LANE_BRANCHES"
   return 1
 }
 
@@ -71,13 +92,13 @@ while [ $# -gt 0 ]; do
     -m|--message|-F|--file|--into-name|-S|--gpg-sign|--strategy|-s|--strategy-option|-X) SKIP_NEXT=1; continue ;;
     -*) continue ;;
   esac
-  if is_task_branch "$tok"; then
+  if is_lane_branch "$tok"; then
     BRANCH="$tok"
     break
   fi
 done
 
-# merge 対象が task branch でない → 根拠不在 → fail-open。
+# merge 対象が並列 lane の branch でない → 根拠不在 → fail-open。
 [ -z "$BRANCH" ] && exit 0
 
 REVIEW="$TOP/docs/sprint/reviews/$(printf '%s' "$BRANCH" | tr '/' '_').md"
@@ -102,8 +123,8 @@ fi
 cat >&2 <<EOF
 project-bootstrap: blocking merge of "$BRANCH" — no completed review record.
 
-活性 sprint の task branch を、AI レビューの記録なしに統合しようとした。
-統合の前提条件 (integrate skill Step 2):
+並列 lane の branch (sprint task branch / worktree lane) を、AI レビューの記録なしに
+統合しようとした。統合の前提条件 (integrate skill Step 2):
   1. read-only の adversarial レビュー agent でこの branch の diff を審査する
   2. 結果を $REVIEW に書く — 必須行: "verdict: approve" または "verdict: reject" + 指摘一覧
   3. approve なら merge は通る。reject なら worker lane で修正してから re-review

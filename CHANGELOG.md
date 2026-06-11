@@ -7,6 +7,13 @@
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-06-11
+
+### Changed
+
+- **並列開発の 3 形態を公認し、統合関所を方式非依存に拡張 (ADR 0004、ADR 0001 を部分 supersede)**。前提が 2 つ同日に覆った: (1) 「PreToolUse hook は subagent で発火しない」(#21460) は **2026-05-29 に upstream で修正済み**で、実測検証 (一時 repo で subagent に新規 source Write を指示 → `require-test-companion.sh` が exit 2 で blocking) により subagent にも plugin hook が届くことを確認。「subagent は read-only 専用」の根拠が消滅した。(2) 実際の並列開発はプラグインが想定した「ターミナル worker + board」では一度も起きておらず、**branch 並走 + GitHub PR merge** (消費先で 10 PR/日 の実績 — PR 画面の merge は手元 hook を物理的に通らない) と **Workflow サブエージェント並列実装** (board 不在で関所が眠る) の 2 形態で起きていた。gate 無音化 class の 5 例目 (**mode coverage**、`docs/incidents/2026-06-11-parallel-mode-gate-coverage`)。対応: ① subagent / Workflow の mutation を隔離 worktree 必須で公認 (edit 時 gate は subagent にも効く)。② `block-unreviewed-merge.sh` の信号を「活性 board の task branch」から「並列 lane の branch = 活性 board task branch ∪ **linked worktree に checkout された branch**」に拡張 (board 不要、opt-in は docs/sprint/ の存在。worktree という物理痕跡を信号にすればどの方式でも統合の入口で捕まる)。worktree の撤去は必ず merge の後 (`tests/hooks/block-unreviewed-merge.test.bash` 13-17 で pin)。③ PR 経路は **`templates/ci/bootstrap-review-gate.yml`** (新規) — 導入 repo では「PR を作る = 統合行為」とみなし全 PR にレビュー記録 (`docs/sprint/reviews/<branch>.md` + `verdict: approve`、手元 hook と同一規約) を要求。required status check 化は main 直 push 運用と両立しないため repo ごとの判断 (templates/ci/README.md)。SKILL.md の「subagent は read-only」節は 3 形態の表に書き換え。
+- **defect rate の基準線を引き直し**。旧「11%」は英語 prefix のみの旧計測による数字で比較不能 (同窓を新方式で再計測すると 20%)。新基準線の起点 = 2026-06-11 横断 4w 実測 **12%** (`scripts/velocity.sh` header に明記)。
+
 ## [0.16.1] - 2026-06-11
 
 ### Fixed

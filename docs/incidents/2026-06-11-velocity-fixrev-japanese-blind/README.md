@@ -5,7 +5,7 @@ gate-broad-glob incident の検証中、user の「実データは計測出来�
 ## 関係する file / 識別子
 
 - `scripts/velocity.sh` (旧 :51) — fixrev 判定が `^(fix|hotfix|revert)` (英語 prefix のみ)
-- 実測 (2026-06-11、creative-team-app + bootstrap の 4 週合算): 旧判定 fixrev=5 / defect=**3%** → 日本語対応後 fixrev=20 / defect=**12%** (基準線 11% とほぼ同水準)
+- 実測 (2026-06-11、creative-team-app + bootstrap の 4 週合算): 旧判定 fixrev=5 / defect=**3%** → 日本語対応後 fixrev=20 / defect=**12%**
 - creative-team-app の直近 4 週 133 非 merge commit 中、旧判定が数えたのは英語 subject の 2 件のみ。「〜を修正」「不具合報告4件を修正」「404修正」等は全て不可視だった
 
 ## 1. ミスの一覧
@@ -25,6 +25,7 @@ gate-broad-glob incident の検証中、user の「実データは計測出来�
 - [x] **fixrev 判定に日本語 defect 語を追加**: `修正` / `バグ` / `不具合` / `誤り` (subject 中のどこでも)。token は実 cohort (creative-team-app 4 週分の全 subject) で精度検証してから採用 (罠 4 の手順を踏む)
 - [x] **不採用 token を理由付きで記録**: 「戻す」(= CDへ戻す / 差し戻す という業務フロー語で false positive)、「直し」(= 「やり直し」という incident 記録語に誤反応)、「解消」(= handoff 更新などの非 defect に混入)。除外判断もテストに pin (`tests/hooks/velocity.test.bash` 7)
 - [x] **修正後の read-back**: 同一 repo 群で再計測し defect 3% → 12% を確認。新たに数えた commit 一覧を目視サンプル確認し false positive なし
+- [x] **基準線の引き直し**: 「基準線 11%」自体が旧方式の数字で比較不能だった (同窓を新方式で再計測すると bootstrap 単体 20%)。新基準線の起点 = 横断 4w 実測 **12%** (velocity.sh header に明記)。旧 11% への言及 (freeze handoff / CHANGELOG 0.15.0) は歴史記録としてそのまま、正本はここと velocity.sh
 
 ## 4. 関連 memory / docs
 

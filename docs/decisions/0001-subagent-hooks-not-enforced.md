@@ -1,6 +1,8 @@
 # 0001 — subagent では hook が効かないので mutation を委譲せず read-only 専用にする
 
-- **Status**: Accepted
+> **SUPERSEDED (部分) by [0004](./0004-parallel-mode-integration-gate.md), 2026-06-11**: 前提の upstream #21460 は 2026-05-29 に completed で close され、subagent への hook 配達を実測で確認した。「subagent は read-only 専用 / 並列はターミナルのみ」は撤回。read-only レビュー agent の設計・同一 tree 並走の禁止・CI/server 側 backstop は引き続き有効。
+
+- **Status**: Superseded (partially) by 0004
 - **Date**: 2026-05-29
 - **Deciders**: Rintaro Yamaoka
 - **References**: upstream [anthropics/claude-code#21460](https://github.com/anthropics/claude-code/issues/21460) (OPEN, SECURITY) / [#27533](https://github.com/anthropics/claude-code/issues/27533) (not_planned) / [#27661](https://github.com/anthropics/claude-code/issues/27661) (closed as duplicate of 上記) / 公式 docs [sub-agents](https://code.claude.com/docs/en/sub-agents)

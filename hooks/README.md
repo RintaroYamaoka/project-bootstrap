@@ -172,12 +172,12 @@ session を開いた瞬間に `scripts/doctor.sh` で project-bootstrap の採�
 
 ### M. PreToolUse on `Bash` for `git merge` — AI レビューを統合の precondition に強制
 
-並列フローの throughput 天井は「人間が全 diff を直列レビューする」ことに在る (sprint-plan/SKILL.md が明文化。しかも user のレビュー帯域は複数プロジェクト共有の単一資源)。trust ladder の Stage 2 として一次レビューを read-only の adversarial AI レビュー (integrate skill Step 2) に移すが、「レビューを済ませた」を advisory にすると忘れられる — 本 hook は**活性 sprint 中の task branch を `git merge` する行為そのもの**を信号に、レビュー記録の存在と verdict を fail-closed で要求する。TDD hook が test の存在を強制するのと同型 (= レビューの「質」は強制できないが「存在と結論」は強制できる)。
+並列フローの throughput 天井は「人間が全 diff を直列レビューする」ことに在る (sprint-plan/SKILL.md が明文化。しかも user のレビュー帯域は複数プロジェクト共有の単一資源)。trust ladder の Stage 2 として一次レビューを read-only の adversarial AI レビュー (integrate skill Step 2) に移すが、「レビューを済ませた」を advisory にすると忘れられる — 本 hook は**並列 lane の branch を `git merge` する行為そのもの**を信号に、レビュー記録の存在と verdict を fail-closed で要求する。lane = 活性 board の task branch ∪ **linked worktree に checkout された branch** (= board を作らない Workflow / 手動 worktree 並走でも捕まる。関所を方式に結合すると方式の選択で gate が無音になる — `docs/incidents/2026-06-11-parallel-mode-gate-coverage`、ADR 0004)。GitHub PR 画面の merge は手元 hook を通らないため、PR 経路は `templates/ci/bootstrap-review-gate.yml` が CI で同じ記録を要求する。TDD hook が test の存在を強制するのと同型 (= レビューの「質」は強制できないが「存在と結論」は強制できる)。
 
 - precondition = `docs/sprint/reviews/<branch の `/`→`_`>.md` が存在し `verdict: approve` 行を持つ
 - **`verdict: reject` はより強く block** (= 却下されたレビューを踏み越える merge を許さない。対処は修正 → re-review、記録の削除ではない)
 - **fail-closed**: コマンド解析不能 ([`lib/parse-command.sh`](./lib/parse-command.sh) の契約)
-- **fail-open (根拠不在)**: 非 merge / 非 git / docs/sprint 未採用 / sprint 非活性 ([`lib/board-liveness.sh`](./lib/board-liveness.sh) — 存在でなく活性) / merge 対象が board の task branch でない (= 通常の merge を一切妨げない)
+- **fail-open (根拠不在)**: 非 merge / 非 git / docs/sprint 未採用 (opt-in) / merge 対象が lane branch でない (= worktree にも活性 board にも居ない通常 branch の merge を一切妨げない。board の活性判定は [`lib/board-liveness.sh`](./lib/board-liveness.sh) — 存在でなく活性)
 - レビューの質の安全網は gate ではなく `scripts/velocity.sh` の defect rate 監視 (跳ねたらレビューを 1 段厚く戻す)
 
 スクリプト: [`block-unreviewed-merge.sh`](./block-unreviewed-merge.sh)
@@ -201,7 +201,7 @@ session を開いた瞬間に `scripts/doctor.sh` で project-bootstrap の採�
 2. `block-dangerous-git-ops.sh`     — 他人の作業を消す op を block
 3. `block-cross-claude-wip.sh`      — commit 直前に巻き込み check (`--amend` 含む)
 4. `block-push-to-protected.sh`     — 宣言 branch への直接 push を block (opt-in)
-5. `block-unreviewed-merge.sh`      — レビュー記録なき task branch の merge を block (opt-in)
+5. `block-unreviewed-merge.sh`      — レビュー記録なき並列 lane branch (board task / worktree) の merge を block (opt-in)
 6. `block-arch-violations.sh`       — commit 時に依存方向を権威検証
 7. `block-commit-if-lint-fails.sh`  — commit 時に lint を回す
 8. `block-commit-if-tests-fail.sh`  — 最後に test を回す
