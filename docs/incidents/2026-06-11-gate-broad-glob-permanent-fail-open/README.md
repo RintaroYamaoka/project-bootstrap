@@ -9,7 +9,7 @@
 - `hooks/block-unplanned-feature-build.sh` (旧 :85-100) — `.gate` の glob を無条件に `[[ $REL == $pat ]]` で照合 (= 日付も広さも見ない)
 - 消費先 `docs/sprint/.gate` 4 行目 — `src/**  supabase/migrations/**  sequential: 3機能(...)が...直列spineが支配的なため逐次(user承認済)` (2026-06-02 頃記録)
 - 消費先の `.gate` 最終更新 = 2026-06-04 13:16。その後 06-05〜06-10 に `src/lib/drive.ts` / `src/lib/business-days.ts` / `src/components/CaseQuickSearch.tsx` など新規 source 10 本以上が **gate 判定なし**で作成された
-- 付随: 消費先は `.gate` を commit していた (template は「ephemeral、gitignore せよ」— 残置を後押し)
+- 付随: 消費先の `.gate` は template 通り gitignore 済み (= untracked で正しく運用されていた。問題は運用でなく hook の信号設計のみ)
 
 ## 1. ミスの一覧
 
