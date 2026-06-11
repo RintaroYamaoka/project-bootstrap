@@ -25,18 +25,20 @@
 
 | 提供物 | 内容 |
 |---|---|
-| `skills/project-bootstrap/SKILL.md` | 規律本体 (ルール = default 挙動 / verification 4 罠 / TDD / AI 癖 9 個 / バグ根本修正 / 依存方向の強制 / 並列開発フロー / **subagent は read-only** / 環境隔離 / docs 整備 / cohort audit) |
+| `skills/project-bootstrap/SKILL.md` | 規律本体 (ルール = default 挙動 / verification 4 罠 / TDD / AI 癖 9 個 / バグ根本修正 / 依存方向の強制 / 並列開発フロー / **並列 3 形態と統合関所** (subagent にも hook は効く: 2026-06-11 実測) / 環境隔離 / docs 整備 / cohort audit) |
 | `skills/plan/SKILL.md` | `/plan` — 探索 → 計画 → 提示。実装前に計画書を出力 |
 | `skills/handoff/SKILL.md` | `/handoff` — session の cold restore に必要な状態を `docs/handoffs/` に書き残す |
 | `skills/incident/SKILL.md` | `/incident` — 事故を `docs/incidents/` に記録し、memory `feedback_*` / `reference_*` に昇格させる |
 | `skills/sprint-plan/SKILL.md` | `/sprint-plan` — feature を scope 非重複 task に分解し worktree + lane を用意 (並列開発の計画)。**default 発火**: feature が scope 非重複の leaf 2 個以上 (≤ `wip_limit`) に割れると判断したら、明示呼び出しを待たず自動で分解する (= advisory 不採用方針の徹底)。bug fix / refactor / 単一 file / 自明な変更には発火しない |
 | `skills/integrate/SKILL.md` | `/integrate` — 並列 branch を依存順 merge + 統合 verify + claim close |
-| `docs/decisions/0001-subagent-hooks-not-enforced.md` | ADR — hook が subagent で発火しない事実 (upstream `#21460` OPEN) と「subagent は read-only / mutation は main session / 並列は別 session の worker」doctrine の一次ソース検証 |
-| `hooks/hooks.json` | 14 hook を `plugin.json` 経由でデフォルト発火 (SessionStart 採用 audit / test 先行 / commit 前 lint+test / destructive git op / bulk-stage / cross-session WIP / 宣言 branch 直 push / lane 外編集 / 依存方向 edit+commit / sprint 発火判定 gate + reminder / レビューなき task branch merge の block) |
+| `docs/decisions/0001-subagent-hooks-not-enforced.md` | ADR (**0004 が部分 supersede**) — かつて hook が subagent で発火しなかった時代の「subagent は read-only」doctrine |
+| `docs/decisions/0004-parallel-mode-integration-gate.md` | ADR — upstream `#21460` 修正の実測確認と**並列 3 形態 (terminal worker / PR / Workflow worktree) の公認**。関所は方式でなく統合の入口 (手元 merge は worktree 痕跡、PR は CI) に置く |
+| `hooks/hooks.json` | 14 hook を `plugin.json` 経由でデフォルト発火 (SessionStart 採用 audit / test 先行 / commit 前 lint+test / destructive git op / bulk-stage / cross-session WIP / 宣言 branch 直 push / lane 外編集 / 依存方向 edit+commit / sprint 発火判定 gate + reminder / レビューなき並列 lane branch merge の block) |
 | `hooks/bootstrap-session-doctor.sh` + `scripts/doctor.sh` | SessionStart hook + 判定エンジン。session 起動時に採用状態を audit し、**未採用なら導入を一度だけ尋ね / 採用済みで gate 配備漏れ (partial) なら警告**する。設計が正しい gate も消費先に未配備なら無音で効かない問題への net (ADR 0003)。plugin 非依存の team-wide net は `templates/ci/bootstrap-doctor.yml` |
 | `hooks/block-unplanned-feature-build.sh` | PreToolUse hook (opt-in: `docs/sprint/` 採用 project)。**新規 source file を作ろうとした瞬間** (= feature 面を作る行為そのものを信号にする)、sprint 発火判定の記録 (`docs/sprint/.gate`) も進行中 sprint (`board.json`) も無ければ `exit 2`。sprint を起動はせず「判定を済ませた precondition」だけを fail-closed で強制する (TDD hook と同型)。advisory な語彙 reminder の穴を根治する |
 | `hooks/sprint-trigger-reminder.sh` | UserPromptSubmit hook。feature 実装っぽい prompt のとき sprint 発火判定 3 条件を context 注入する**早期ヒント**。強制本体は上記 gate なので、語彙 regex の取りこぼしは致命的でない |
-| `hooks/block-unreviewed-merge.sh` | PreToolUse hook (opt-in: 活性 sprint 中のみ)。**AI レビューを統合の precondition に強制** — task branch の `git merge` 時、レビュー記録 (`docs/sprint/reviews/`) の `verdict: approve` が無ければ `exit 2`、`reject` はより強く block。人間の全 diff 直列レビュー (throughput の律速) を verdict + サンプル監査に置き換える trust ladder の Stage 2 |
+| `hooks/block-unreviewed-merge.sh` | PreToolUse hook (opt-in: `docs/sprint/` 採用 project)。**AI レビューを統合の precondition に強制** — 並列 lane の branch (= 活性 board の task branch ∪ **linked worktree に checkout された branch**、board 不要) の `git merge` 時、レビュー記録 (`docs/sprint/reviews/`) の `verdict: approve` が無ければ `exit 2`、`reject` はより強く block。GitHub PR 画面の merge は手元 hook を通らないため、PR 経路は `templates/ci/bootstrap-review-gate.yml` が CI で同じ記録を要求する。人間の全 diff 直列レビュー (throughput の律速) を verdict + サンプル監査に置き換える trust ladder の Stage 2 |
+| `hooks/lib/gate-entry.sh` | `.gate` entry の活性判定 (日付 + TTL 3 日 / feature-scoped glob)。1 行の全域 glob が gate を恒久 fail-open にした実事故の根治 |
 | `hooks/lib/board-liveness.sh` | 「sprint が進行中か」の共通判定 (= board.json の存在でなく**活性** = 未完了 task の有無)。sprint gate と review gate が共有 — gate 信号の drift 防止 |
 | `scripts/velocity.sh` | 週次 throughput / defect rate の**複数 repo 横断**計測 CLI。レビューを trust ladder で薄くしたとき「壊れていない」を判定する客観データ (defect rate が跳ねたら 1 段戻す) |
 | `hooks/lib/arch-check.sh` | 依存方向強制エンジン (`.bootstrap-arch` parse / layer 判定 / import 解決)。jq 非依存 |
