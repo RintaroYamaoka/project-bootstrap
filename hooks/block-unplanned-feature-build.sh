@@ -82,16 +82,36 @@ esac
 . "$(dirname "$0")/lib/board-liveness.sh"
 board_has_active_tasks "$TOP/docs/sprint/board.json" && exit 0
 
-# .gate に記録された scope glob のどれかに REL が一致すれば、判定済みの feature 面 → 素通し。
-# 形式: 各行 `<scope-glob>  <free-text rationale>` (1 列目が glob)。# / 空行は無視。
+# .gate に記録された判定のうち「生きている」entry に REL が一致すれば、判定済みの feature 面
+# → 素通し。形式: 各行 `<scope-glob>  <YYYY-MM-DD>  <free-text rationale>`。# / 空行は無視。
+# entry は時間 (日付列が TTL 内) と空間 (feature-scoped な glob) の両方で bound する —
+# .gate は feature 単位の ephemeral 判定であり、無期限・無界に信じると 1 行で gate が恒久
+# fail-open する (実事故: 消費先 repo の `src/**` 1 行が source tree 全域の gate を以後ずっと
+# 無音で殺した。docs/incidents/2026-06-11-gate-broad-glob-permanent-fail-open)。
+# 日付なし (旧形式) / 失効 / 全域 glob は「判定の活性を証明できない」→ 不採用 (= 解析不能を
+# 素通し側に倒さない)。不採用 entry は block message に列挙する (= 正データを隠させない)。
+# 判定エンジンは lib/gate-entry.sh (= 信号の drift 防止。board-liveness と同慣行)。
+# shellcheck source=lib/gate-entry.sh
+. "$(dirname "$0")/lib/gate-entry.sh"
 GATE="$TOP/docs/sprint/.gate"
+IGNORED=""
 if [ -f "$GATE" ]; then
   while IFS= read -r line || [ -n "$line" ]; do
     line="${line#"${line%%[![:space:]]*}"}"   # ltrim
     [ -z "$line" ] && continue
     case "$line" in \#*) continue ;; esac
-    IFS=' ' read -r pat _rest <<< "$line"   # 1 列目 = glob (read は glob 展開しない)
+    IFS=' ' read -r pat dt _rest <<< "$line"   # 1 列目 = glob / 2 列目 = 日付 (read は glob 展開しない)
     [ -z "$pat" ] && continue
+    if ! gate_date_fresh "${dt:-}"; then
+      IGNORED="$IGNORED
+  - $pat  (日付なし旧形式 / 失効 >${GATE_TTL_DAYS}日 / 日付不正 — 判定の活性を証明できない)"
+      continue
+    fi
+    if ! gate_scope_ok "$pat"; then
+      IGNORED="$IGNORED
+  - $pat  (全域 glob — feature 面の scope になっていない)"
+      continue
+    fi
     # shellcheck disable=SC2053
     if [[ "$REL" == $pat ]]; then
       exit 0
@@ -117,12 +137,18 @@ project-bootstrap: blocking creation of new source file "$REL" — sprint gate n
 (= 分解後は board.json の存在でこの gate は通る)。
 
 1 つでも欠けたら逐次。その判定を docs/sprint/.gate に 1 行記録してから続行する
-(1 列目 = この作業がカバーする scope glob、以降は理由):
+(1 列目 = この作業がカバーする scope glob、2 列目 = 今日の日付、以降は理由):
 
-  printf '%s\n' "src/<area>/**  sequential: <理由>" >> docs/sprint/.gate
+  printf '%s\n' "src/<area>/<feature>/**  \$(date +%F)  sequential: <理由>" >> docs/sprint/.gate
 
-記録した scope 内の新規 source は以後素通しする (= 同 feature 面の継続)。
+scope glob は feature 面に絞る — exact path か、wildcard の前に 2 階層以上のディレクトリ
+prefix を持つ glob のみ有効 (src/** のような全域 glob は entry として無効 = 1 行で gate が
+恒久 fail-open した実事故あり)。記録は ${GATE_TTL_DAYS} 日で失効する — 同じ feature 面の継続が
+長引いたら同じ行を日付だけ更新して再記録する (= その再記録が「まだ同一 feature 面か」の再判定)。
+記録 scope 内の新規 source は以後素通しする (= 同 feature 面の継続)。
 記録 scope 外の新規 source を作ると再び停止する (= 新しい disjoint 面 → 再判定)。
-共有 interface/型は直列 spine (depends_on) に切り出してから下流 leaf を並列化する。
+共有 interface/型は直列 spine (depends_on) に切り出してから下流 leaf を並列化する。${IGNORED:+
+
+なお .gate に entry はあるが、以下は判定の証拠として無効だった (行の削除は不要 — 失効は正常な終端):$IGNORED}
 EOF
 exit 2

@@ -34,12 +34,14 @@ tests/hooks/require-test-companion.test.bash
 `docs/sprint/` を置いた時点で `block-unplanned-feature-build.sh` hook が有効になり、**新規 source file を作ろうとした瞬間**に「sprint 発火判定を済ませたか」を fail-closed で要求する (= advisory な語彙 reminder の穴を根治)。判定の記録は `docs/sprint/.gate` に置く:
 
 ```
-# docs/sprint/.gate  (各行 1 列目 = この作業の scope glob、以降は理由)
-src/auth/**   sequential: 単一画面の責務、disjoint >=2 leaf に割れない
+# docs/sprint/.gate  (各行: <scope glob>  <YYYY-MM-DD>  <理由>)
+src/auth/**   2026-06-11   sequential: 単一画面の責務、disjoint >=2 leaf に割れない
 ```
 
 - 並列にすると決めたら `board.json` を作れば gate は通る (lane hook が scope を握る)
-- 逐次にすると決めたら、その scope と理由を上記 1 行で記録する
+- 逐次にすると決めたら、その scope・**今日の日付**・理由を上記 1 行で記録する: `printf '%s\n' "src/<area>/<feature>/**  $(date +%F)  sequential: <理由>" >> docs/sprint/.gate`
+- entry は時間と空間で bound される (= 1 entry が判定として有効なのは **記録から 3 日以内** かつ **feature-scoped な glob** — exact path か wildcard 前に 2 階層以上の prefix を持つ glob — のときだけ)。`src/**` のような全域 glob・日付なし旧形式・失効 entry は無効。1 行の広域 glob が gate を恒久 fail-open にした実事故から (`docs/incidents/2026-06-11-gate-broad-glob-permanent-fail-open`)
+- 失効したら同じ行を日付だけ更新して再記録する (= その再記録が「まだ同一 feature 面か」の再判定)。失効行の削除は不要 (無視されるだけ)
 - 記録 scope 外の新規 source を作ると再 block (= 新しい disjoint 面 → 再判定)
 - `.gate` は ephemeral。**`.gitignore` に追加する** (= commit しない)
 

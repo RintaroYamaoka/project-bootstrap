@@ -19,6 +19,7 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$DIR/helper.bash"
 
 HOOK=block-unplanned-feature-build.sh
+TODAY="$(date +%F)"
 
 setup_repo() {
   local tmp; tmp="$(mktemp -d)"
@@ -55,13 +56,15 @@ run_hook "$HOOK" "$(write_input "$REPO/src/foo.ts")"
 assert_exit 2
 assert_stderr_contains ".gate"
 
-# 3. .gate records a covering scope glob => passes.
+# 3. .gate records a covering, dated, feature-scoped glob => passes.
+#    Format: <glob>  <YYYY-MM-DD>  <rationale> — the date bounds the entry in time,
+#    the scope rule bounds it in space (incident 2026-06-11-gate-broad-glob-permanent-fail-open).
 setup_repo
 enable_sprint
-write_gate 'src/**  sequential: single module, no disjoint >=2 leaves'
+write_gate "src/auth/**  $TODAY  sequential: single feature surface, no disjoint >=2 leaves"
 RUN_DIR="$REPO"
-test_case "new source within recorded .gate scope passes"
-run_hook "$HOOK" "$(write_input "$REPO/src/foo.ts")"
+test_case "new source within recorded fresh .gate scope passes"
+run_hook "$HOOK" "$(write_input "$REPO/src/auth/foo.ts")"
 assert_exit 0
 
 # 4. Active sprint (board.json with an unfinished task) => passes (lane hook owns scope).
@@ -87,10 +90,10 @@ assert_exit 2
 setup_repo
 enable_sprint
 write_done_board
-write_gate 'src/**  sequential: post-sprint follow-up, single module'
+write_gate "src/auth/**  $TODAY  sequential: post-sprint follow-up, single module"
 RUN_DIR="$REPO"
 test_case "all-done board with covering .gate record passes"
-run_hook "$HOOK" "$(write_input "$REPO/src/new.ts")"
+run_hook "$HOOK" "$(write_input "$REPO/src/auth/new.ts")"
 assert_exit 0
 
 # 4d. in-review is still unfinished => active, passes.
@@ -140,7 +143,7 @@ assert_exit 0
 # 8. New source OUTSIDE the recorded .gate scope re-fires (mid-session new feature surface).
 setup_repo
 enable_sprint
-write_gate 'src/auth/**  sequential: auth only'
+write_gate "src/auth/**  $TODAY  sequential: auth only"
 RUN_DIR="$REPO"
 test_case "new source outside recorded scope is blocked (re-fire)"
 run_hook "$HOOK" "$(write_input "$REPO/src/billing/pay.ts")"
@@ -191,10 +194,51 @@ assert_stderr_contains '既定 2-3'
 # 14. Comment/blank lines in .gate are ignored; a later glob still matches.
 setup_repo
 enable_sprint
-printf '# decisions\n\nsrc/**  sequential: x\n' > "$REPO/docs/sprint/.gate"
+printf '# decisions\n\nsrc/feature/**  %s  sequential: x\n' "$TODAY" > "$REPO/docs/sprint/.gate"
 RUN_DIR="$REPO"
 test_case "comment/blank lines in .gate ignored, glob still matches"
-run_hook "$HOOK" "$(write_input "$REPO/src/deep/nested.ts")"
+run_hook "$HOOK" "$(write_input "$REPO/src/feature/deep/nested.ts")"
 assert_exit 0
+
+# 15. A TREE-WIDE glob is not evidence even when fresh. One `src/**` line recorded for a
+#     single feature permanently disarmed the gate for a whole consumer repo
+#     (docs/incidents/2026-06-11-gate-broad-glob-permanent-fail-open). The block message
+#     must name the ignored entry — never hide why the recorded line did not count.
+setup_repo
+enable_sprint
+write_gate "src/**  $TODAY  sequential: x"
+RUN_DIR="$REPO"
+test_case "tree-wide glob entry is ignored: new source is blocked"
+run_hook "$HOOK" "$(write_input "$REPO/src/foo.ts")"
+assert_exit 2
+assert_stderr_contains 'src/**'
+assert_stderr_contains '全域'
+
+# 16. An UNDATED entry (旧形式) carries no liveness evidence => blocked.
+setup_repo
+enable_sprint
+write_gate 'src/auth/**  sequential: x'
+RUN_DIR="$REPO"
+test_case "undated (old-format) entry is ignored: new source is blocked"
+run_hook "$HOOK" "$(write_input "$REPO/src/auth/foo.ts")"
+assert_exit 2
+
+# 17. A STALE entry (older than TTL) carries no liveness evidence => blocked.
+setup_repo
+enable_sprint
+write_gate 'src/auth/**  2026-01-01  sequential: x'
+RUN_DIR="$REPO"
+test_case "stale entry is ignored: new source is blocked"
+run_hook "$HOOK" "$(write_input "$REPO/src/auth/foo.ts")"
+assert_exit 2
+
+# 18. The block message teaches the dated format (so the next record is born valid).
+setup_repo
+enable_sprint
+RUN_DIR="$REPO"
+test_case "block message instructs the dated .gate format"
+run_hook "$HOOK" "$(write_input "$REPO/src/foo.ts")"
+assert_exit 2
+assert_stderr_contains '$(date +%F)'
 
 finish

@@ -203,7 +203,7 @@ hook で完全には強制しきれない部分は AI default 経路に組み込
 
 > **この判定は advisory ではなく fail-closed gate で強制する** (= `hooks/block-unplanned-feature-build.sh`, PreToolUse)。sprint 自体は hook で起動できない (worktree 起動は人間、disjoint 判定は Claude — ADR 0001 の既約な残余) が、**「判定を済ませた」という precondition は強制できる**。TDD hook が「良い test」を書かせられなくても test の存在は強制するのと同型。`docs/sprint/` を採用した project で、**新規 source file を作ろうとした瞬間** (= feature 面を作る行為そのものを信号にする。prompt の語彙ではない — 語彙は proxy で言い回しに穴が空く)、sprint 判定の記録 (`docs/sprint/.gate`) も進行中 sprint (`board.json`) も無ければ blocking する。bug fix / refactor / 既存 file 編集は新規 source 面でないので素通し。
 >
-> 逐次でよいと判断したら、その scope と理由を `docs/sprint/.gate` に 1 行記録して続行する (1 列目 = この作業の scope glob): `printf '%s\n' "src/<area>/**  sequential: <理由>" >> docs/sprint/.gate`。記録 scope 外の新規 source を作ると再び止まる (= 新しい disjoint 面 → 再判定)。
+> 逐次でよいと判断したら、その scope・今日の日付・理由を `docs/sprint/.gate` に 1 行記録して続行する: `printf '%s\n' "src/<area>/<feature>/**  $(date +%F)  sequential: <理由>" >> docs/sprint/.gate`。entry は記録から 3 日で失効し、glob は feature-scoped (exact path か wildcard 前に 2 階層以上の prefix) のみ有効 — `src/**` のような全域 glob は 1 行で gate を恒久 fail-open にした実事故があり無効。失効したら日付を更新して再記録する (= 再記録が「まだ同一 feature 面か」の再判定)。記録 scope 外の新規 source を作ると再び止まる (= 新しい disjoint 面 → 再判定)。
 >
 > `hooks/sprint-trigger-reminder.sh` (UserPromptSubmit) は早期ヒントとして残るが、強制本体は上記 gate。語彙 regex の取りこぼしはもう致命的ではない (= 行為信号が最終的に必ず捕まえる)。
 

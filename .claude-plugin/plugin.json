@@ -1,6 +1,6 @@
 {
   "name": "project-bootstrap",
-  "version": "0.15.1",
+  "version": "0.16.0",
   "description": "上位1％の AI 駆動開発を個人の規律でなく構造として default 化する Claude Code プラグイン。純粋な強制は到達不能なので強制を4つの設計判断に作り替える: ① 分解 (precondition を fail-closed で強制・判断は逃さない) / ② 信号選び (行為を信号に・fail-mode を選ぶ) / ③ 配備の可視化 (効いていない強制を無音にしない) / ④ 計測つきの取引 (緩めるなら戻る根拠を metric で持つ)。Anthropic 公式 best practice 整合。verification 4 罠 / AI の癖 9 個 / TDD ループ / 根本修正 / 依存方向の強制 (architecture) / 並列開発フロー (sprint) / lint gate / 環境隔離 / cohort audit / external memory として docs/ 整備。14 hook がデフォルト発火: SessionStart で採用状態を audit し未採用なら導入提案・採用済みで gate 配備漏れ (partial) なら警告、実装編集前に対応 test / 依存方向違反 import / 並列 lane 外編集を blocking、新規 source 面を sprint 発火判定なしで作るのを fail-closed で blocking、AI レビュー記録 (verdict: approve) なき task branch の merge を blocking (= 一次レビューを read-only AI に移し人間は verdict + サンプルだけ読む trust ladder)、git commit 前に test 実行 + staged の依存方向検証、destructive git op / bulk-staging / cross-session WIP (--amend 含む) を blocking。lint gate / arch / lane / sprint gate / 宣言 branch 直 push は project-local marker (.bootstrap-* / docs/sprint/) で opt-in。綺麗さは linter が見る層だけ gate し taste は review に委ねる。skills: project-bootstrap / plan / handoff / incident / sprint-plan / integrate。",
   "author": {
     "name": "Rintaro Yamaoka"

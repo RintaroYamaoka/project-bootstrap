@@ -17,7 +17,7 @@ description: 1 つの feature を複数 Claude で安全に並列開発するた
 
 判定の結果「並列にする価値が薄い」なら、**正直にそう言って逐次 (/plan → TDD) を勧める**。
 
-> **この skill のロード自体が gate で強制される**。`docs/sprint/` を採用した project では `hooks/block-unplanned-feature-build.sh` が、新規 source file を作ろうとした瞬間に「sprint 判定の記録があるか」を見て fail-closed で blocking する。だから feature の実装に入る前に必ずこの判定を通る。並列にすると決めたら board.json を作れば gate は通る。逐次にすると決めたら、その scope と理由を `docs/sprint/.gate` に 1 行記録する (`<scope-glob>  sequential: <理由>`)。`.gate` は ephemeral なので各 worktree / repo の `.gitignore` に入れる (commit しない)。
+> **この skill のロード自体が gate で強制される**。`docs/sprint/` を採用した project では `hooks/block-unplanned-feature-build.sh` が、新規 source file を作ろうとした瞬間に「sprint 判定の記録があるか」を見て fail-closed で blocking する。だから feature の実装に入る前に必ずこの判定を通る。並列にすると決めたら board.json を作れば gate は通る。逐次にすると決めたら、その scope・今日の日付・理由を `docs/sprint/.gate` に 1 行記録する (`<scope-glob>  <YYYY-MM-DD>  sequential: <理由>`)。entry は **記録から 3 日で失効**し、glob は **feature-scoped** (exact path か wildcard 前に 2 階層以上の prefix) のみ有効 — `src/**` のような全域 glob は 1 行で gate を恒久 fail-open にした実事故があり無効 (`docs/incidents/2026-06-11-gate-broad-glob-permanent-fail-open`)。失効したら日付を更新して再記録する (= 再記録が再判定)。`.gate` は ephemeral なので各 worktree / repo の `.gitignore` に入れる (commit しない)。
 
 ## ワークフロー
 

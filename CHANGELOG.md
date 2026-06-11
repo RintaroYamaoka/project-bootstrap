@@ -7,6 +7,12 @@
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-06-11
+
+### Fixed
+
+- **sprint 発火 gate の `.gate` entry を時間 (日付列 + TTL 3 日) と空間 (feature-scoped glob) で bound する**。gate は `.gate` に記録された scope glob を**無期限・無界**に信じていたが、`.gate` entry は「この scope は逐次と判定した」という feature 単位の **ephemeral 判定**で、実際に消費先 repo (creative-team-app) で 2026-06-02 に 1 つの feature のために記録された `src/**` 1 行が **source tree 全域の gate を恒久 fail-open** にし、06-05〜06-10 に判定なしの新規 source が 10 本以上通過した (= gate 無音化 class の 4 例目: advisory の沈黙 → 配備漏れ → stale state → **unbounded state**。`docs/incidents/2026-06-11-gate-broad-glob-permanent-fail-open`)。stale-board (0.14.0) と同根の lifecycle 問題だが、追記型 log は board.json と違い「所有 skill が archive する」という終端責務を置けない (誰もその行の feature の終わりを判定できない) ため、**state 自身に失効を埋め込む**: 形式を `<glob>  <YYYY-MM-DD>  <理由>` に変え、記録から `GATE_TTL_DAYS` (= 3 日) で失効、日付なし旧形式 / 日付不正 / 未来日付は「判定の活性を証明できない」として不採用 (= 解析不能を素通し側に倒さない)。失効後は同じ行を日付だけ更新して再記録し、**その 1 printf が「まだ同一 feature 面か」の再判定**として機能する。空間側は exact path か「wildcard 前に 2 階層以上の literal prefix を持つ glob」のみ有効 (`src/components/**` は有効、`src/**` / `scripts/**` / `**` は無効)。判定エンジンは `hooks/lib/gate-entry.sh` (`gate_date_fresh` / `gate_scope_ok`、純 bash・jq/GNU date 非依存 — 日数差は Julian Day Number の整数演算)。不採用 entry は block message に理由付きで列挙し「行の削除は不要 — 失効は正常な終端」と明記 (= 「記録したのに block された」を無説明にすると全消し・全域 glob 再記録という正データ隠蔽側の回避に走る。memory 原則 3)。block message の例示 glob も `src/<area>/**` → `src/<area>/<feature>/**` に変更 (= 広い記録への誘導を解消)。`tests/hooks/gate-entry.test.bash` 新設 (TTL 境界・月跨ぎ・旧形式・全域 glob) + 統合テスト 4 ケース追加で TDD。`templates/docs/sprint/README.md` / `skills/sprint-plan/SKILL.md` / `skills/project-bootstrap/SKILL.md` / `hooks/README.md` を新形式に更新。memory `feedback_gate_signal_and_failmode` に原則 6 を昇格。**`.gate` の旧形式 entry は無効になる** — 消費先は次回 block 時のメッセージに従って新形式で再記録すればよい (一括移行は不要)。
+
 ## [0.15.1] - 2026-06-07
 
 ### Fixed
