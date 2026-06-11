@@ -99,4 +99,22 @@ test_case "non-git path alone exits 1"
 run_velocity "$(mktemp -d)"
 assert_velocity_exit 1
 
+# 7. 日本語 commit の fixrev 判定。user の repo は日本語 subject が主で、英語 prefix だけ
+#    数えると defect 率が 4 倍過小になった実測がある (velocity 3% vs 実態 ~12%、
+#    docs/incidents/2026-06-11-velocity-fixrev-japanese-blind)。
+#    採用 token (subject 中のどこでも): 修正 / バグ / 不具合 / 誤り — 実 cohort で精度高。
+#    不採用 token: 「戻す」(= CDへ戻す / 差し戻す という業務フロー語)、「直し」(= やり直し
+#    という incident 記録語)、「解消」(= handoff 更新などの非 defect に混入) — 実 cohort で
+#    false positive を確認したもの。広げる fix は cohort 副作用を測ってから (罠 4)。
+REPO_J="$(make_repo)"
+commit_at "$REPO_J" 1 "コピー元を案件フォルダ直下の納品動画に修正"
+commit_at "$REPO_J" 1 "編集者の不具合報告4件を修正(BGM参照表示ほか)"
+commit_at "$REPO_J" 1 "クライアント確認を3択化(納品/CDへ戻す/編集者へ差し戻す)"
+commit_at "$REPO_J" 1 "incident 記録: テーマ初版のやり直し(基調色解釈の教訓)"
+commit_at "$REPO_J" 1 "feat: 新機能の追加"
+test_case "Japanese fix tokens count, domain words do not"
+run_velocity "$REPO_J"
+assert_velocity_exit 0
+assert_out_contains "$REPO_J	w0	5	0	2"
+
 finish

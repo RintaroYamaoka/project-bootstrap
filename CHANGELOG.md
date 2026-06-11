@@ -7,6 +7,12 @@
 
 ## [Unreleased]
 
+## [0.16.1] - 2026-06-11
+
+### Fixed
+
+- **velocity.sh の fixrev 判定が日本語 commit を数えられず defect 率が 4 倍過小だった**。判定が英語 prefix (`^fix|hotfix|revert`) のみで、user の repo の主たる commit 語彙 (「〜を修正」「不具合報告4件を修正」) が全て不可視だった — Stage 2 trust ladder の安全網の数字が、昇降判定を逆方向に誤らせる状態 (実測: 4 週合算 defect 3% → 修正後 12%、基準線 11% とほぼ同水準。`docs/incidents/2026-06-11-velocity-fixrev-japanese-blind`)。日本語 defect 語 `修正` / `バグ` / `不具合` / `誤り` (subject 中のどこでも) を追加。token は実 cohort で精度検証してから採用し、false positive を確認した「戻す」(業務フロー語) / 「直し」(やり直し = incident 記録語) / 「解消」(非 defect に混入) は理由付きで不採用 (= 罠 4: pattern を広げる fix は cohort 副作用を測ってから)。除外判断ごと `tests/hooks/velocity.test.bash` に pin。
+
 ## [0.16.0] - 2026-06-11
 
 ### Fixed
