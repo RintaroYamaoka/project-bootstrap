@@ -25,6 +25,8 @@ source "$(cd "$DIR/../../hooks" && pwd)/lib/resolve-wip-limit.sh"
 
 # resolve_in <dir> — run the resolver with <dir> as cwd.
 resolve_in() { (cd "$1" && resolve_wip_limit); }
+# resolve_int_in <dir> — run the blocking-gate integer variant; echo "<val>:<rc>".
+resolve_int_in() { local v rc; v="$( (cd "$1" && resolve_wip_limit_int) )"; rc=$?; printf '%s:%s' "$v" "$rc"; }
 
 make_repo() {
   local tmp; tmp="$(mktemp -d)"
@@ -84,5 +86,43 @@ printf '4\n' > "$REPO/.bootstrap-wip"
 mkdir -p "$REPO/src/deep"
 test_case "resolves toplevel declaration from a subdirectory"
 assert_eq "4 (.bootstrap-wip)" "$(resolve_in "$REPO/src/deep")"
+
+# --- resolve_wip_limit_int (the blocking-gate variant, ADR 0005 guard 3) ---
+# Returns the raw integer + rc 0 only when declared & parseable; else no stdout + rc 1.
+# Callers (block-over-wip-parallel.sh) fail OPEN on rc 1 to preserve opt-in.
+
+# 10. Non-git dir => rc 1, no value.
+test_case "int: non-git dir returns rc 1"
+assert_eq ":1" "$(resolve_int_in "$(mktemp -d)")"
+
+# 11. Repo without .bootstrap-wip => rc 1 (undeclared, opt-in).
+REPO="$(make_repo)"
+test_case "int: undeclared returns rc 1"
+assert_eq ":1" "$(resolve_int_in "$REPO")"
+
+# 12. Declared integer => the bare integer + rc 0.
+REPO="$(make_repo)"; printf '3\n' > "$REPO/.bootstrap-wip"
+test_case "int: declared integer returns value + rc 0"
+assert_eq "3:0" "$(resolve_int_in "$REPO")"
+
+# 13. Comments/blank lines skipped, integer surfaced.
+REPO="$(make_repo)"; printf '# lanes\n\n5\n' > "$REPO/.bootstrap-wip"
+test_case "int: comments skipped"
+assert_eq "5:0" "$(resolve_int_in "$REPO")"
+
+# 14. Non-integer content => rc 1 (fail-open at the caller).
+REPO="$(make_repo)"; printf 'abc\n' > "$REPO/.bootstrap-wip"
+test_case "int: garbage returns rc 1"
+assert_eq ":1" "$(resolve_int_in "$REPO")"
+
+# 15. Trailing junk on the value line => rc 1 (strict digits-only).
+REPO="$(make_repo)"; printf '4 lanes\n' > "$REPO/.bootstrap-wip"
+test_case "int: trailing junk returns rc 1"
+assert_eq ":1" "$(resolve_int_in "$REPO")"
+
+# 16. Empty file => rc 1.
+REPO="$(make_repo)"; : > "$REPO/.bootstrap-wip"
+test_case "int: empty file returns rc 1"
+assert_eq ":1" "$(resolve_int_in "$REPO")"
 
 finish

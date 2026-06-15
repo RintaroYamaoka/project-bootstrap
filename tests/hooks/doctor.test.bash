@@ -152,7 +152,9 @@ mkdir -p "$REPO/docs/sprint"
 vendor_core
 : > "$REPO/.claude/hooks/block-unplanned-feature-build.sh"
 : > "$REPO/.claude/hooks/block-out-of-lane-edit.sh"
+: > "$REPO/.claude/hooks/block-uniso-main-edit.sh"
 : > "$REPO/.claude/hooks/block-unreviewed-merge.sh"
+: > "$REPO/.claude/hooks/block-over-wip-parallel.sh"
 test_case "complete vendoring for adopted features is ok"
 run_doctor "$REPO"
 assert_doctor_status ok

@@ -25,6 +25,8 @@ description: 1 つの feature を複数 Claude で安全に並列開発するた
 
 `/plan` と同じく `Read` / `Grep` / `Glob` だけで feature の影響範囲を把握する。**この段階で Edit / Write しない**。
 
+影響範囲が広い (= 多数の file / 命名規約を横断する) なら、この探索を **read-only の Workflow ファンアウト**に下請けさせてよい (ADR 0005 の breadth 顔)。breadth は lane ではないので**隔離 worktree 不要・`wip_limit` 非対象・gate 摩擦ゼロ**。各 subagent は `Read`/`Grep`/`Glob` だけの read-only に保ち、結果 (影響 file・disjoint 候補) を main session が集約して Step 2 の分解に使う。**mutation を伴う lane をここで spawn しない** — 分解前に書き換えると lane 不変条件が壊れる。
+
 ### Step 2: scope 非重複の task に分解
 
 - 各 task の **owned file glob** を決める。**task 間で glob が重複してはいけない** (= 並列の不変条件)
@@ -57,13 +59,17 @@ printf '%s\n' "src/auth/**" "tests/auth/**" > ../wt-<id>/.bootstrap-lane
 
 各 worktree について、人間がそのまま貼って Claude を起動できる文を出す:
 
+**形態 ① 別ターミナル worker** (人間が貼る):
+
 ```
 cd ../wt-<id> で Claude を起動し、docs/sprint/board.json の <id> を読んで、
 scope (.bootstrap-lane) の範囲だけで TDD (Red→Green→Refactor) する。
 完了したら status を in-review にして feat/<id>-<topic> を push (PR)。
 ```
 
-直列 spine task は **先に 1 レーンで終わらせてから** 下流 worktree を作る。
+**形態 ③ Workflow / subagent lane** (main session が起動、ADR 0004/0005): 同じ board の task を、人間にターミナルを開かせる代わりに main session の Workflow で走らせてよい。その場合 lane は **`isolation:'worktree'` 必須** (mutation lane なので隔離 worktree を強制) で、worktree root の `.bootstrap-lane` がそのまま効き、edit/merge gate は terminal worker と同一に発火する。Workflow runtime の worktree 自動撤去に任せず、**worktree は integrate の merge 後に撤去**する (先に撤去すると統合関所の信号が消える)。lane 数は ① と合算して `wip_limit` を超えない。
+
+どちらの形態でも **task = 1 worktree = 1 owner** は不変。直列 spine task は **先に 1 レーンで終わらせてから** 下流 worktree を作る。
 
 ## やってよいこと / やってはいけないこと
 
