@@ -105,6 +105,30 @@ REVIEW="$TOP/docs/sprint/reviews/$(printf '%s' "$BRANCH" | tr '/' '_').md"
 
 if [ -s "$REVIEW" ]; then
   if grep -qiE '^[[:space:]]*verdict:[[:space:]]*approve' "$REVIEW"; then
+    # ADR 0005 guard 1: agent 判定の approve は実検証を代替しない。approve はレビューが
+    # 起きた証明であって「テストが通った」証明ではない。関所が自分で検出スイートを回し、
+    # fail なら block する (= verdict 行という自由文を信じない。信号は実テストの実行結果)。
+    # merge は PreToolUse なので統合"後"の結合状態は測れない (タイミングの限界) が、統合先が
+    # 緑であることは保証する — これは agent の approve 単独では担保されない。
+    # runner 未検出は fail-open (commit gate と同じ。レビュー記録自体は既に precondition を満たす)。
+    # 検出は commit gate と共有エンジン (lib/detect-test-suite.sh) で drift を防ぐ。
+    # shellcheck source=lib/detect-test-suite.sh
+    . "$(dirname "$0")/lib/detect-test-suite.sh"
+    if SUITE="$(cd "$TOP" && detect_test_command)"; then
+      echo "project-bootstrap: running $SUITE to verify before merge of \"$BRANCH\" (ADR 0005 guard 1)..." >&2
+      if ! ( cd "$TOP" && $SUITE ) >&2; then
+        cat >&2 <<EOF
+project-bootstrap: blocking merge of "$BRANCH" — the test suite fails (ADR 0005 guard 1).
+
+レビュー記録は verdict: approve だが、関所が実行した実テストスイート ($SUITE) が fail した。
+AI レビューの approve は「レビューが起きた」証明であって実検証ではない — 落ちるスイートを
+agent の approve で踏み越えて統合することは許可しない。対処:
+  1. lane でテストを緑にしてから re-review し、verdict を更新する
+  2. 統合境界 (共有 interface の前提ずれ) が原因なら、その根本を直す (症状を隠さない)
+EOF
+        exit 2
+      fi
+    fi
     exit 0
   fi
   if grep -qiE '^[[:space:]]*verdict:[[:space:]]*reject' "$REVIEW"; then

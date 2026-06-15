@@ -24,12 +24,14 @@ throughput の律速は人間のレビュー帯域 (しかも user は複数プ�
 
 依存順に、各 task について merge の**前に**:
 
-1. **adversarial レビュー agent を回す** (read-only)。プロンプトの態度は「この branch を落とすつもりで読む」: 正しさ / 統合境界 (共有 interface の前提ずれ) / verification 4 罠 / scope 逸脱。観点が複数要るなら lens を分けて並列に
+1. **adversarial レビュー agent を回す** (read-only)。プロンプトの態度は「この branch を落とすつもりで読む」: 正しさ / 統合境界 (共有 interface の前提ずれ) / verification 4 罠 / scope 逸脱。観点が複数要るなら lens を分けて並列に — これは ADR 0005 の breadth 顔なので **Workflow で 1 lens = 1 subagent に最大 16 ファンアウト**してよい (read-only・隔離不要・`wip_limit` 非対象)。ただし**各 lens を `reviews/<branch>.md` に並行追記させない** (verdict 行が競合して監査証跡が壊れる) — 各 subagent は指摘を**返り値で返し**、main session が 1 つの verdict 記録に集約する
 2. **結果を `docs/sprint/reviews/<branch名の `/` を `_` に置換>.md` に書く**。必須行は `verdict: approve` または `verdict: reject`、以下に指摘一覧。この記録は commit する (= defect 発生時に「どの verdict が通したか」を遡る監査証跡)
 3. **人間が読むのは: verdict / 指摘一覧 / diff のサンプル 1-2 割 / 統合境界だけ**。全 diff の目視はしない — それをやると lane を増やしても throughput が増えない
 4. `reject` なら worker lane に指摘を差し戻し、修正後に re-review。記録は上書きでなく verdict 行を更新する
 
 > **この precondition は gate で強制される** (`hooks/block-unreviewed-merge.sh`)。活性 sprint 中の task branch を `git merge` しようとした瞬間、レビュー記録が無ければ block、`verdict: reject` のままなら**より強く** block (却下の踏み越え禁止)。「レビューの質」は gate で保証できないので、velocity (`scripts/velocity.sh`) の defect rate が跳ねたらレビューを 1 段厚く戻す — これが安全網。
+>
+> **agent 判定の `verdict: approve` は実テストスイートを代替しない** (ADR 0005 guard 1)。Workflow 自身の subagent が下した approve は LLM が LLM を判定した記録であって、実検証ではない。`block-unreviewed-merge.sh` は approve を確認した上で**検出したテストスイートを自分で実行**し、fail なら block する (= `tests:` 行のような自由文を信じない。信号は実テストの実行結果そのもの。runner 未検出は warn して fail-open、commit gate と同じ)。これにより approve は「レビューが起きた」証明であって「テストが通った」証明ではない、が構造的に担保される。なお merge は PreToolUse なので統合"後"の結合状態は測れない (Step 3 の post-merge 全スイートが本体) — 関所が保証するのは「統合先が緑」まで。
 
 ### Step 3: 1 task ずつ merge → 統合 verify
 

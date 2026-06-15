@@ -203,4 +203,30 @@ test_case "worktree lane without sprint adoption passes (opt-in)"
 run_hook "$HOOK" "$(merge_input 'git merge lane/slack-notify')"
 assert_exit 0
 
+# --- ADR 0005 guard 1: an agent's verdict: approve does NOT substitute for the real suite ---
+# After approve, the gate runs the detected test suite itself and blocks on failure. The only
+# runner deterministically installed + controllable here is package.json's npm test (same basis
+# as block-commit-if-tests-fail.test.bash). No runner => fail-open (cases 3/10/14 above still pass).
+
+# 18. approve + a passing project suite => merge passes (the gate ran it green).
+setup_repo
+active_board
+write_review feat/T1-auth 'verdict: approve'
+printf '{"scripts":{"test":"exit 0"}}' > "$REPO/package.json"
+RUN_DIR="$REPO"
+test_case "approve with a passing suite merges (guard 1 ran it)"
+run_hook "$HOOK" "$(merge_input 'git merge feat/T1-auth')"
+assert_exit 0
+
+# 19. approve + a FAILING project suite => blocked (agent approve cannot override real failure).
+setup_repo
+active_board
+write_review feat/T1-auth 'verdict: approve'
+printf '{"scripts":{"test":"exit 1"}}' > "$REPO/package.json"
+RUN_DIR="$REPO"
+test_case "approve with a failing suite is blocked (guard 1)"
+run_hook "$HOOK" "$(merge_input 'git merge feat/T1-auth')"
+assert_exit 2
+assert_stderr_contains 'guard 1'
+
 finish

@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+# Hook N — PreToolUse on Bash for `git worktree add`
+# WIP 上限を fail-closed で強制する gate (ADR 0005 guard 3)。
+#
+# 背景: `.bootstrap-wip` はこれまで resolve-wip-limit.sh が checklist に**表示**するだけの値で、
+# 並列度がそれを超えても何も block しなかった (= 強制なき宣言)。scrum の本質は WIP 制限であり、
+# review 帯域 (= 複数 repo 共有の単一資源) を守るには lane を開く数そのものを縛る必要がある。
+# 本 hook は「並列 lane を 1 本開く行為」= `git worktree add` を信号に、既存の linked worktree が
+# 宣言 wip_limit に達していれば exit 2。
+#
+# 限界 (ADR 0005): hook は Workflow 内部の isolation worktree 生成を観測できない (main session の
+# Bash tool 呼び出しではないため)。本 hook が縛るのは観測可能な `git worktree add` (skill / 人間 /
+# lead が開く lane)。Workflow 内部 lane の暴走は統合の入口 (block-unreviewed-merge.sh: 各 lane に
+# review 記録 + 実スイート) が review 帯域を守る最終 net。
+#
+# fail-mode (memory feedback_gate_signal_and_failmode 準拠):
+#   - コマンド解析不能 = fail-closed (parse-command の契約。bypass 防止)
+#   - 根拠不在 = fail-open: 非 worktree-add / 非 git / docs/sprint 未採用 (opt-in) /
+#     .bootstrap-wip 未宣言 or 整数として解析不能 (= 宣言した repo でだけ縛る。opt-in 尊重)
+#
+# opt-in: docs/sprint/ が在るときだけ発火。jq 非依存。
+
+set -u
+
+INPUT=$(cat)
+# shellcheck source=lib/parse-command.sh
+. "$(dirname "$0")/lib/parse-command.sh"
+if ! CMD="$(printf '%s' "$INPUT" | parse_command)"; then
+  echo "project-bootstrap: could not parse the tool command from hook input — blocking to fail safe (fail-closed). If this is a false positive, disable this hook via /permissions." >&2
+  exit 2
+fi
+
+[ -z "$CMD" ] && exit 0
+
+# `git worktree add` でなければ素通し (remove / list / prune / move は lane 生成ではない)。
+echo "$CMD" | grep -qE '(^|[[:space:]&|;()`]+)git[[:space:]]+worktree[[:space:]]+add([[:space:]]|$)' || exit 0
+
+# repo root を解決。非 git は根拠不在 → fail-open。
+command -v git >/dev/null 2>&1 || exit 0
+TOP=$(git rev-parse --show-toplevel 2>/dev/null | tr '\\' '/' | tr -s '/')
+[ -z "$TOP" ] && exit 0
+
+# opt-in: sprint flow を採用した project でのみ発火。
+[ -d "$TOP/docs/sprint" ] || exit 0
+
+# 宣言された wip_limit を整数で取る。未宣言/解析不能は fail-open (opt-in を尊重)。
+# 判定は表示版 resolve_wip_limit と同じ lib (= 単一権威。drift 防止)。
+# shellcheck source=lib/resolve-wip-limit.sh
+. "$(dirname "$0")/lib/resolve-wip-limit.sh"
+LIMIT="$(resolve_wip_limit_int)" || exit 0
+
+# 現在の linked worktree 数 = (全 worktree 行) - 1 (= main worktree を除く)。
+TOTAL=$(git worktree list --porcelain 2>/dev/null | grep -c '^worktree ')
+[ "$TOTAL" -ge 1 ] 2>/dev/null || TOTAL=1
+LINKED=$((TOTAL - 1))
+
+# 既存 lane 数が上限に達していれば、もう 1 本開く行為を block (LINKED + 1 > LIMIT)。
+if [ "$LINKED" -ge "$LIMIT" ]; then
+  cat >&2 <<EOF
+project-bootstrap: blocking 'git worktree add' — WIP 上限 ($LIMIT lanes) に達している (現在 $LINKED 本)。
+
+scrum の本質は並列の最大化でなく WIP の制限。人間のレビュー帯域は複数 repo 共有の単一資源なので、
+lane を増やしてもレビューが律速で throughput は増えない。対処:
+  1. 開いている lane を 1 本 integrate (merge + 統合 verify) して閉じてから次を開く
+  2. その lane の必要性が本当に高く、leaf が完全 disjoint なら、.bootstrap-wip の整数を 1 つ上げる
+     (= per-project の既定変更。sprint 固有の逸脱なら board.json の wip_limit + _wip_note に理由を書く)
+  3. read-only の探索/監査/レビューを並列化したいだけなら worktree は不要 — それは lane ではなく
+     breadth ファンアウト (ADR 0005) で、wip_limit の対象外
+EOF
+  exit 2
+fi
+
+exit 0

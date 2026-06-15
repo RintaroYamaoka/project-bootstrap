@@ -25,6 +25,35 @@
 #   digits + a fixed literal (never quotes/backslashes), so callers may embed
 #   it in additionalContext without escaping.
 
+# resolve_wip_limit_int — the BLOCKING-gate variant (ADR 0005 guard 3). Unlike
+# resolve_wip_limit (a display string that always falls open to "既定 2-3"), this
+# returns the raw integer ONLY when .bootstrap-wip declares a parseable one, so a
+# gate can branch on it:
+#   stdout = "<n>" + return 0   when declared & parseable (digits only after trim)
+#   no stdout + return 1        otherwise (absent / non-git / unparseable)
+# Callers MUST fail OPEN on return 1 — enforcing a WIP cap only when the project has
+# explicitly declared one preserves the opt-in idiom (an undeclared repo is never
+# blocked). The default "2-3" is advisory display only and never blocks.
+resolve_wip_limit_int() {
+  local top file line val
+  top=$(git rev-parse --show-toplevel 2>/dev/null | tr '\\' '/' | tr -s '/')
+  [ -n "$top" ] || return 1
+  file="$top/.bootstrap-wip"
+  [ -f "$file" ] || return 1
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line#"${line%%[![:space:]]*}"}"
+    line="${line%"${line##*[![:space:]]}"}"
+    [ -z "$line" ] && continue
+    case "$line" in \#*) continue ;; esac
+    val="$line"
+    break
+  done < "$file"
+  case "${val:-}" in
+    '' | *[!0-9]*) return 1 ;;
+    *) printf '%s' "$val"; return 0 ;;
+  esac
+}
+
 # resolve_wip_limit — see header. Writes the display string to stdout.
 resolve_wip_limit() {
   local top file line val

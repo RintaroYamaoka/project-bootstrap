@@ -58,20 +58,12 @@ esac
 # PreToolUse は書き込み前に走るので、新規作成のときだけ対象 path が未存在になる。
 [ -e "$TOP/$REL" ] && exit 0
 
-# test ファイル / config / docs は feature 面ではない → 素通し (require-test-companion と同慣行)。
-case "$REL" in
-  *.test.*|*.spec.*|*_test.*|test_*.py|*/tests/*|*/test/*|*/__tests__/*|*/_test/*) exit 0 ;;
-  *.md|*.json|*.yaml|*.yml|*.toml|*.ini|*.cfg|*.lock|*.txt|*.env|*.gitignore|*.dockerignore) exit 0 ;;
-  *Dockerfile*|*Makefile*|*.sql) exit 0 ;;
-  */scripts/_*|scripts/_*) exit 0 ;;   # 使い捨て調査 script は素通し
-esac
-
-# source (= 実装) 拡張子のみ対象。それ以外は根拠不在 → fail-open。
-EXT="${REL##*.}"
-case "$EXT" in
-  ts|tsx|js|jsx|mjs|cjs|py|go|rs|rb|php|java|cs|cpp|cc|c|h|hpp|swift|kt|scala|ex|exs|clj|hs|ml) ;;
-  *) exit 0 ;;
-esac
+# test ファイル / config / docs / 非 source 拡張子は feature 面ではない → 素通し
+# (require-test-companion と同慣行)。判定は共有エンジン (= guard 2 の block-uniso-main-edit.sh
+# と「source 面とは何か」を単一権威に保ち drift を防ぐ。ADR 0005)。
+# shellcheck source=lib/source-face.sh
+. "$(dirname "$0")/lib/source-face.sh"
+is_source_path "$REL" || exit 0
 
 # 進行中の sprint なら lane hook が scope を握る → 素通し。「進行中」は board の**存在**では
 # なく**活性** (= 未完了 task の有無) で判定する。全 task done / task 無し / status 不在の board

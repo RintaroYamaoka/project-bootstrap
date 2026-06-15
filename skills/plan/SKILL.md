@@ -36,6 +36,8 @@ description: 自明でないコーディング作業 (新機能追加・バグ�
 
 **この時点で `Edit` / `Write` を行わない**。読むだけ。
 
+探索範囲が広いなら、この読みを **read-only の Workflow ファンアウト**に下請けさせてよい (ADR 0005 の breadth 顔: 隔離不要・`wip_limit` 非対象・gate 摩擦ゼロ)。ただし `/plan` の鉄則を保つ — 起動する Workflow は **read-only 専用** (lane worktree を作らない・mutation させない)。mutation を伴う lane を出すのは `/sprint-plan` の役割であって `/plan` ではない (この区別が「判定の前に実装しない」の境界)。
+
 ### Step 4: 最小ステップに分解する
 
 タスクを、次の条件を満たす変更単位に分解する:

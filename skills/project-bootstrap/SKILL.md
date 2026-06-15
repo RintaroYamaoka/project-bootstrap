@@ -137,6 +137,19 @@ hook A (`hooks/hooks.json`) が「対応 test 不在の実装ファイル編集�
 - 単発の read-only 探索・要約・計画下書きは従来通り subagent の主用途 (gate すべき操作がなく、context を節約できる)
 - 最終砦として、hook を経由しない経路も `scripts/arch-check.sh` + CI + git pre-commit (server 側 net) が捕まえる
 
+### ultracode / Workflow を使うとき (ADR 0005)
+
+ハーネスの `ultracode` (= `xhigh` effort + Workflow の subagent 自動 orchestration) は**新しい並列方式ではなく形態 ③ の一級コマンド化**。独立した方式として扱わず、bootstrap が governance する**実行エンジン**として使う (bootstrap = 永続/lifecycle/強制/横断 memory の層、ultracode = 揮発的な実行エンジン)。2 つの顔を別 governance にする:
+
+| 顔 | 用途 | governance |
+|---|---|---|
+| **breadth (read-only ファンアウト)** | 探索 / 監査 / 移行発見 / レビュー多レンズ | **無制限・隔離不要・`wip_limit` 非対象・gate 摩擦ゼロ** (lane でないので review 帯域も消費しない)。plan/sprint-plan の探索 Step・integrate のレビュー Step に置く |
+| **mutation lane (source を書く subagent)** | 形態 ③ | **隔離 worktree 必須・`wip_limit` 対象**・edit/merge/commit gate を terminal worker と同一に通過 |
+
+- **WIP・隔離の強制は spawn 時でなく edit/merge/commit 時**。hook は Workflow 内部の `agent()` spawn を観測できない (内部 subagent は main session の tool 呼び出しでないため PreToolUse に届かない) — 見えるのは各 subagent の Edit/Bash と最上位 Workflow 呼び出しだけ。だから「16 並列を spawn で止める」は不可能で、統合の入口で縛る (ADR 0004 の関所を WIP と検証に一般化)。
+- **agent 判定のレビューは実検証を代替しない**。`block-unreviewed-merge.sh` は `verdict: approve` を確認後、検出したテストスイートを関所自身が回し fail なら block する (自由文の証拠行を信じない)。`.bootstrap-wip` は guard 3 (`block-over-wip-parallel.sh`) が `git worktree add` で実強制 (従来は表示のみ)。
+- mutation を伴う Workflow lane は `isolation:'worktree'` で走らせ、worktree は merge の**後**に撤去する (先に撤去すると関所信号が消える)。breadth ファンアウトは worktree 不要。隔離せず active lane 中に main tree で source を mutate すると `block-uniso-main-edit.sh` (guard 2) が block する (統合操作中の conflict 解決は通す)。
+
 ## バグは根本を修正する
 
 1. **Red**: バグを再現する failing test を書く (= 回帰テスト)
