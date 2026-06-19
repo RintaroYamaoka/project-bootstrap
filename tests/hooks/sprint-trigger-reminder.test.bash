@@ -49,7 +49,7 @@ assert_stdout_contains 'wip_limit'
 assert_stdout_contains 'leaf'
 
 # --- wip_limit display follows the project declaration (.bootstrap-wip) --------
-# The "既定 2-3" used to be hardcoded in the injected text; a project running a
+# The default wording (now form-aware, ADR 0006) used to be hardcoded in the injected text; a project running a
 # lane-count experiment had no way to make the checklist show its actual limit.
 
 make_repo() {
@@ -70,19 +70,19 @@ assert_stdout_contains '4 (.bootstrap-wip)'
 # 7. Without a declaration, the checklist falls back to the default wording.
 REPO="$(make_repo)"
 RUN_DIR="$REPO"
-test_case "no declaration falls back to 既定 2-3"
+test_case "no declaration falls back to form-aware default (worker 3-4)"
 run_hook sprint-trigger-reminder.sh "$(prompt_json '通知機能を実装してほしい')"
 assert_exit 0
-assert_stdout_contains '既定 2-3'
+assert_stdout_contains 'worker 既定 3-4'
 
 # 8. Garbage declaration falls back (display is not a blocking signal => fail-open).
 REPO="$(make_repo)"
 printf 'four\n' > "$REPO/.bootstrap-wip"
 RUN_DIR="$REPO"
-test_case "unparseable declaration falls back to 既定 2-3"
+test_case "unparseable declaration falls back to form-aware default (worker 3-4)"
 run_hook sprint-trigger-reminder.sh "$(prompt_json '通知機能を実装してほしい')"
 assert_exit 0
-assert_stdout_contains '既定 2-3'
+assert_stdout_contains 'worker 既定 3-4'
 unset RUN_DIR
 
 finish

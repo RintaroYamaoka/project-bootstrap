@@ -59,13 +59,17 @@ if [ "$LINKED" -ge "$LIMIT" ]; then
   cat >&2 <<EOF
 project-bootstrap: blocking 'git worktree add' — WIP 上限 ($LIMIT lanes) に達している (現在 $LINKED 本)。
 
-scrum の本質は並列の最大化でなく WIP の制限。人間のレビュー帯域は複数 repo 共有の単一資源なので、
-lane を増やしてもレビューが律速で throughput は増えない。対処:
+この cap は **terminal worker lane の路** (= `git worktree add`) にだけ掛かる。scrum の本質は並列の
+最大化でなく WIP の制限で、worker 路の律速は人間のレビュー帯域 (複数 repo 共有の単一資源) — lane を
+増やしてもレビューが律速で throughput は増えない。対処:
   1. 開いている lane を 1 本 integrate (merge + 統合 verify) して閉じてから次を開く
   2. その lane の必要性が本当に高く、leaf が完全 disjoint なら、.bootstrap-wip の整数を 1 つ上げる
      (= per-project の既定変更。sprint 固有の逸脱なら board.json の wip_limit + _wip_note に理由を書く)
   3. read-only の探索/監査/レビューを並列化したいだけなら worktree は不要 — それは lane ではなく
      breadth ファンアウト (ADR 0005) で、wip_limit の対象外
+  4. もっと並列が要るなら **Workflow/subagent 路**に回す — main session が orchestrate する mutation
+     lane は engine 上限 (min(16, cores-2)) 律速で wip 非対象、帯域は統合関所 (block-unreviewed-merge)
+     が自動で守る (ADR 0006)。worker 路の帯域天井に縛られているのはこの hook が見る路だけ
 EOF
   exit 2
 fi

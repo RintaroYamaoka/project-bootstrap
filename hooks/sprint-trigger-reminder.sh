@@ -26,7 +26,7 @@ FEATURE_RE='実装|機能|feature|追加してほしい|追加して|作って|�
 # パスや ID なので上記キーワードに当たらない。raw INPUT を grep すれば十分 (完全な JSON 解析不要)。
 printf '%s' "$INPUT" | grep -qiE "$FEATURE_RE" || exit 0
 
-# wip_limit の表示値: project が .bootstrap-wip で宣言していればその値、なければ「既定 2-3」。
+# wip_limit の表示値: project が .bootstrap-wip で宣言していればその値、なければ form-aware な既定 (worker 3-4・Workflow lane は wip 非対象、ADR 0006)。
 # 出力は数字 + 固定文字列のみ (= " や \ を含まない) なので、そのまま JSON に埋められる。
 # shellcheck source=lib/resolve-wip-limit.sh
 . "$(dirname "$0")/lib/resolve-wip-limit.sh"

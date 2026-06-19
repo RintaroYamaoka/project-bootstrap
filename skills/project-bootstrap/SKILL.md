@@ -30,7 +30,7 @@ gate は **proxy でなく行為そのもの** を信号にする (= sprint gate
 
 ### ③ 配備の可視化 — 効いていない強制を無音にしない
 
-**hook は消費先 repo で現行版が実際に走って初めて効く**。設計が正しい gate も未配備 / 部分 vendoring の repo では無音で効果ゼロになる (実事故: `docs/incidents/2026-06-02-coverage-drift-silent`。とりわけ sprint 発火 gate は build 前の判断ゆえ CI 後追いができず PreToolUse hook 以外に backstop が無い)。だから強制は自身の **配備カバレッジを可視化する meta 層** を持つ: SessionStart hook (`hooks/bootstrap-session-doctor.sh`) が起動時に採用状態を audit し、**未採用なら導入を一度だけ尋ね / 採用済みで配備漏れ (partial) なら警告** する (= 採用は consent ゆえ強制不能だが、状態の可視化はできる。enforcement の本体は per-action gate)。plugin 非依存の team-wide net は `templates/ci/bootstrap-doctor.yml`、判定エンジンは `scripts/doctor.sh` (ADR 0003)。
+**hook は消費先 repo で現行版が実際に走って初めて効く**。設計が正しい gate も未配備 / 部分 vendoring の repo では無音で効果ゼロになる (実事故: `docs/incidents/2026-06-02-coverage-drift-silent`。とりわけ sprint 発火 gate は build 前の判断ゆえ CI 後追いができず PreToolUse hook 以外に backstop が無い)。だから強制は自身の **配備カバレッジを可視化する meta 層** を持つ: SessionStart hook (`hooks/bootstrap-session-doctor.sh`) が起動時に採用状態を audit し、**未採用なら導入を一度だけ尋ね / 採用済みで配備漏れ (partial) なら警告** する (= 採用は consent ゆえ強制不能だが、状態の可視化はできる。enforcement の本体は per-action gate)。plugin 非依存の team-wide net は `templates/ci/bootstrap-doctor.yml`、判定エンジンは `scripts/doctor.sh` (ADR 0003)。同じ可視化原理を **repo drift** にも適用する (`hooks/lib/repo-drift.sh`、ADR 0003 の延長): 採用状態と独立に、`HEAD` の `origin/main` 遅れ (stale checkout = 本番操作前の追従確認漏れ) と **merge 済みなのに残っている worktree** (lane 撤去漏れ) を session 起動時に surface する — どちらも「どの checkout/lane が正しいか」は既約な判断なので強制せず事実だけ出す。
 
 ### ④ 計測つきの取引 — 緩めるなら戻る根拠を持つ
 
@@ -133,7 +133,7 @@ hook A (`hooks/hooks.json`) が「対応 test 不在の実装ファイル編集�
 規律:
 
 - **mutation を伴う subagent / Workflow lane は必ず隔離 worktree で走らせる** (= lane の物理分離。同一 tree での並走は引き続き禁止)
-- **統合 (merge / PR) には AI レビュー記録が必須**: `docs/sprint/reviews/<branch の / → _>.md` + `verdict: approve`。手元 merge は hook が、PR は CI が fail-closed で要求する。worktree の撤去は**必ず merge の後** (先に撤去すると関所の信号が消える — 手順違反)
+- **統合 (merge / PR) には AI レビュー記録が必須**: `docs/sprint/reviews/<branch の / → _>.md` + `verdict: approve`。手元 merge は hook が、PR は CI が fail-closed で要求する。worktree の撤去は**必ず merge の後** (先に撤去すると関所の信号が消える — 手順違反)。撤去を忘れて lane が滞留しても無音にしない: SessionStart の doctor (`bootstrap-session-doctor.sh` + `lib/repo-drift.sh`) が **merge 済みなのに残っている worktree** を session 起動時に surface する (= 終端処理の漏れの可視化。強制でなく advisory)
 - 単発の read-only 探索・要約・計画下書きは従来通り subagent の主用途 (gate すべき操作がなく、context を節約できる)
 - 最終砦として、hook を経由しない経路も `scripts/arch-check.sh` + CI + git pre-commit (server 側 net) が捕まえる
 
@@ -144,7 +144,7 @@ hook A (`hooks/hooks.json`) が「対応 test 不在の実装ファイル編集�
 | 顔 | 用途 | governance |
 |---|---|---|
 | **breadth (read-only ファンアウト)** | 探索 / 監査 / 移行発見 / レビュー多レンズ | **無制限・隔離不要・`wip_limit` 非対象・gate 摩擦ゼロ** (lane でないので review 帯域も消費しない)。plan/sprint-plan の探索 Step・integrate のレビュー Step に置く |
-| **mutation lane (source を書く subagent)** | 形態 ③ | **隔離 worktree 必須・`wip_limit` 対象**・edit/merge/commit gate を terminal worker と同一に通過 |
+| **mutation lane (source を書く subagent)** | 形態 ③ | **隔離 worktree 必須**・edit/merge/commit gate を terminal worker と同一に通過。**並列度は engine 上限 `min(16, cores-2)` 律速で `wip_limit` 非対象** (guard 3 は内部 spawn を観測できない — ADR 0006)。帯域は統合関所 (guard 1) が自動で守る |
 
 - **WIP・隔離の強制は spawn 時でなく edit/merge/commit 時**。hook は Workflow 内部の `agent()` spawn を観測できない (内部 subagent は main session の tool 呼び出しでないため PreToolUse に届かない) — 見えるのは各 subagent の Edit/Bash と最上位 Workflow 呼び出しだけ。だから「16 並列を spawn で止める」は不可能で、統合の入口で縛る (ADR 0004 の関所を WIP と検証に一般化)。
 - **agent 判定のレビューは実検証を代替しない**。`block-unreviewed-merge.sh` は `verdict: approve` を確認後、検出したテストスイートを関所自身が回し fail なら block する (自由文の証拠行を信じない)。`.bootstrap-wip` は guard 3 (`block-over-wip-parallel.sh`) が `git worktree add` で実強制 (従来は表示のみ)。
@@ -207,7 +207,7 @@ hook で完全には強制しきれない部分は AI default 経路に組み込
 |---|---|
 | sprint planning | `sprint-plan` skill が feature を **scope 非重複 task** に分解、board.json 生成 |
 | 担当 / commitment | task = 1 worktree = 1 owner。`.bootstrap-lane` が触れる範囲を宣言 |
-| WIP 制限 | `wip_limit` 個までしか worktree を作らない (= 構造的に並列度を絞る)。既定は `.bootstrap-wip` (repo root、整数 1 行、opt-in) > 2-3 |
+| WIP 制限 | `wip_limit` 個までしか **terminal worker** worktree を作らない (= 人間のレビュー帯域律速の路を構造的に絞る)。既定は `.bootstrap-wip` (repo root、整数 1 行、opt-in) > **worker 3-4**。Workflow/subagent lane は engine 上限律速で `wip_limit` 非対象 (ADR 0006) |
 | 担当境界 | lane 外編集を `block-out-of-lane-edit.sh` が hard block |
 | Definition of Done | TDD + verification 4 罠 + cohort audit (既存) |
 | integration / review | `integrate` skill が **adversarial AI レビュー (read-only agent) → verdict 記録 → 依存順 merge → 統合 verify** → claim close。レビュー記録は `block-unreviewed-merge.sh` が merge の precondition として fail-closed 強制。人間は verdict + サンプル + 統合境界のみ読む (全 diff 目視はレビュー帯域が律速になり lane を増やしても throughput が増えない) |
@@ -218,9 +218,9 @@ hook で完全には強制しきれない部分は AI default 経路に組み込
 **自動分解の発火条件 (= 全部満たすときだけ)**:
 1. 作業が **feature** (= 新規/拡張の実装)。bug fix / refactor / 単一 file / 自明な小変更は対象外 → 逐次 (`/plan` → TDD)
 2. **scope 非重複の leaf が 2 個以上**に割れる (= 各 task の owned file glob が重ならない)
-3. 同時 lane 数 ≤ `wip_limit` (= `.bootstrap-wip` が在ればその値、なければ 2-3)。超えるなら lane を減らすか逐次
+3. 同時 lane 数 ≤ `wip_limit` (= `.bootstrap-wip` が在ればその値、なければ **worker 3-4**)。これは terminal worker 路の cap。Workflow/subagent 路は engine 上限 (~`min(16, cores-2)`) で走り wip 非対象 (ADR 0006)。超えるなら lane を減らすか逐次
 
-**1 つでも欠けたら自動分解しない**。共有 interface / 型 / 契約があるなら、それを `depends_on` の **直列 spine** に切り出して先に 1 レーンで済ませ、その後に下流 leaf を並列化する (= Amdahl: 直列部分が speedup の上限)。disjoint に割れない feature は無理に刻まず逐次でやる (= 協調コストが利得を食う)。並列の収益は凹型で変曲点は低い (ソロで実質 2-3)。
+**1 つでも欠けたら自動分解しない**。共有 interface / 型 / 契約があるなら、それを `depends_on` の **直列 spine** に切り出して先に 1 レーンで済ませ、その後に下流 leaf を並列化する (= Amdahl: 直列部分が speedup の上限)。disjoint に割れない feature は無理に刻まず逐次でやる (= 協調コストが利得を食う)。並列の収益は凹型だが、変曲点は**実行形態で違う** (ADR 0006): terminal worker 路は人間のレビュー帯域律速で低め (worker 3-4)、main session が orchestrate する Workflow/subagent 路は帯域を統合関所が自動で守るので engine 上限 (~`min(16, cores-2)`) まで伸ばせる。「2-3 が全形態の天井」ではない — その誤読が「並列が少ない」体感の正体。
 
 自動分解した結果は**人間に提示する** (board.json + 各 lane の worker 起動文)。lane の実行形態は worker ターミナル (人間が起動) でも Workflow / subagent (main session が起動、隔離 worktree 必須) でもよい — どちらでも edit 時 gate は効き、統合は同じ関所 (レビュー記録) を通る (ADR 0004)。task = 1 worktree = 1 owner は不変。
 

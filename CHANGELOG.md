@@ -7,6 +7,17 @@
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-06-19
+
+### Added
+
+- **SessionStart doctor が repo drift を可視化 (`hooks/lib/repo-drift.sh` 新設 + `bootstrap-session-doctor.sh` 拡張)**。dogfood (appo-followup) で繰り返した 2 つの無音事故 — (1) `git status` clean を「最新 main」と誤信して stale checkout から本番操作 (incident 2026-06-16-prod-migration-from-stale-checkout / 2026-06-12-shared-checkout-branch-collision)、(2) integrate skill が merge 後に撤去すべき worktree が残り lane が滞留 — を、session 起動時に surface する。`HEAD` が `origin/main` 系 remote-tracking ref より遅れている commit 数と、**merge 済みなのに残っている linked worktree** を出す。**強制でなく可視化** (どの checkout が正しいかは既約な判断 = ADR 0001 の残余だが、drift の事実は出せる = ADR 0003 の doctrine)。採用 audit と独立 (採用 ok でも drift は出す)。**fetch しない** (SessionStart は offline/高速であるべき) ので遅れは過小報告側にのみ倒れ誤警告しない。drift が無ければ無音 (advisory bloat ゼロ)。判定は純関数 lib に集約し `tests/hooks/repo-drift.test.bash` (11 ケース) + session-doctor test に drift 2 ケース追加。
+
+### Changed
+
+- **並列 default を実行形態で分離 (ADR 0006)**。`wip_limit` の既定は長く「2-3」と一言で書かれ、これが**全実行形態の単一天井**として読まれていた (= dogfood orchestrator の体感「並列が少ない・bootstrap が遅い」の正体)。実際には ADR 0005 の 2 形態は律速が違う: **terminal worker lane** は人間のレビュー帯域律速で `wip_limit` が `git worktree add` を cap する (guard 3 が観測できる唯一の路)、**Workflow/subagent lane** は main session が orchestrate し engine 並列上限 `min(16, cores-2)` 律速・帯域は統合関所 (guard 1) が自動で守るため **`wip_limit` 非対象** (guard 3 は内部 spawn を観測できない)。`wip_limit` cap を terminal worker 路に限ると明示し、worker advisory 既定を **2-3 → 3-4** に一段引き上げ (根拠 = dogfood の体感シグナル、revert 根拠 = `scripts/velocity.sh` の defect rate = ④ の管理された取引)。**コード挙動の変更は最小** — guard 3 は元々 worker 路専用で不変。変えたのは form-aware な default 表示文言 (`resolve-wip-limit.sh`) と doctrine (`skills/project-bootstrap` / `skills/sprint-plan` の WIP 節、`block-over-wip-parallel.sh` の block message、`templates/.bootstrap-wip` 既定 3→4、README、hooks/README)。`docs/decisions/0006-*.md` 新設。doctrine の 4 設計判断は 5 にしない (= ④ の適用であって新軸ではない)。
+- **`scripts/doctor.sh` の `.bootstrap-wip` parseability 判定を rc ベースに**。従来は display 文字列 `"既定 2-3"` との一致で「整数が読めない」を検出していたが、ADR 0006 の既定改名で結合が割れた。整数版 `resolve_wip_limit_int` の return code で判定するよう変更し、既定文言の変更に結合しないようにした (= gate 信号の drift 防止)。`resolve-wip-limit.test.bash` / `sprint-trigger-reminder.test.bash` / `block-unplanned-feature-build.test.bash` の既定 assertion を form-aware 文言に追従。
+
 ## [0.18.0] - 2026-06-15
 
 ### Added

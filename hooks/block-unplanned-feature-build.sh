@@ -111,7 +111,7 @@ if [ -f "$GATE" ]; then
   done < "$GATE"
 fi
 
-# wip_limit の表示値: project が .bootstrap-wip で宣言していればその値、なければ「既定 2-3」。
+# wip_limit の表示値: project が .bootstrap-wip で宣言していればその値、なければ form-aware な既定 (worker 3-4・Workflow lane は wip 非対象、ADR 0006)。
 # shellcheck source=lib/resolve-wip-limit.sh
 . "$(dirname "$0")/lib/resolve-wip-limit.sh"
 WIP_DISPLAY=$(resolve_wip_limit)

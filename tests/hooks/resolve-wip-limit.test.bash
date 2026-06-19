@@ -3,7 +3,7 @@
 # wip_limit display value injected by sprint-trigger-reminder.sh and
 # block-unplanned-feature-build.sh.
 #
-# The bug this replaces: "既定 2-3" was hardcoded as advisory text in both hooks
+# The bug this replaces: a single all-forms "2-3" ceiling was hardcoded as advisory text in both hooks
 # (and 4 docs). A project that declares a different limit per-experiment had no
 # single place to do it — board.json is per-sprint ephemeral state (goes stale
 # when a sprint ends), so it cannot carry the project default. `.bootstrap-wip`
@@ -14,7 +14,7 @@
 #   no stdin; resolves git toplevel from cwd
 #   stdout = "<n> (.bootstrap-wip)"  when toplevel/.bootstrap-wip's first
 #            non-comment non-blank line is digits-only (after trim)
-#          = "既定 2-3"              otherwise (absent / non-git / unparseable)
+#          = "worker 既定 3-4・…"     otherwise (form-aware default, ADR 0006: absent / non-git / unparseable)
 #   always returns 0 — this value is checklist DISPLAY, not a blocking signal,
 #   so absence/garbage is fail-open to the default (doctor warns on garbage).
 
@@ -37,12 +37,12 @@ make_repo() {
 # 1. Not a git repo => default (no basis to locate a declaration).
 NOGIT="$(mktemp -d)"
 test_case "non-git dir falls back to default"
-assert_eq "既定 2-3" "$(resolve_in "$NOGIT")"
+assert_eq "worker 既定 3-4・Workflow lane は wip 非対象" "$(resolve_in "$NOGIT")"
 
 # 2. Git repo without .bootstrap-wip => default (opt-in absent).
 REPO="$(make_repo)"
 test_case "repo without .bootstrap-wip falls back to default"
-assert_eq "既定 2-3" "$(resolve_in "$REPO")"
+assert_eq "worker 既定 3-4・Workflow lane は wip 非対象" "$(resolve_in "$REPO")"
 
 # 3. Declared integer is surfaced with its provenance.
 REPO="$(make_repo)"
@@ -60,13 +60,13 @@ assert_eq "3 (.bootstrap-wip)" "$(resolve_in "$REPO")"
 REPO="$(make_repo)"
 printf 'abc\n' > "$REPO/.bootstrap-wip"
 test_case "non-integer content falls back to default"
-assert_eq "既定 2-3" "$(resolve_in "$REPO")"
+assert_eq "worker 既定 3-4・Workflow lane は wip 非対象" "$(resolve_in "$REPO")"
 
 # 6. Trailing junk on the value line is NOT tolerated (strict: digits only).
 REPO="$(make_repo)"
 printf '4 lanes\n' > "$REPO/.bootstrap-wip"
 test_case "trailing junk on value line falls back to default"
-assert_eq "既定 2-3" "$(resolve_in "$REPO")"
+assert_eq "worker 既定 3-4・Workflow lane は wip 非対象" "$(resolve_in "$REPO")"
 
 # 7. Surrounding whitespace is trimmed.
 REPO="$(make_repo)"
@@ -78,7 +78,7 @@ assert_eq "5 (.bootstrap-wip)" "$(resolve_in "$REPO")"
 REPO="$(make_repo)"
 : > "$REPO/.bootstrap-wip"
 test_case "empty file falls back to default"
-assert_eq "既定 2-3" "$(resolve_in "$REPO")"
+assert_eq "worker 既定 3-4・Workflow lane は wip 非対象" "$(resolve_in "$REPO")"
 
 # 9. Resolution works from a subdirectory (declaration lives at toplevel).
 REPO="$(make_repo)"

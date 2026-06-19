@@ -1,4 +1,6 @@
-# .bootstrap-wip — この project の wip_limit 既定 (同時並列 lane 数の上限) の宣言。
-# repo root に置く。最初の非コメント行に整数のみを書く (それ以外は無視され既定 2-3 に落ちる。
-# doctor が警告する)。sprint ごとの逸脱は board.json の wip_limit + _wip_note で行う。
-3
+# .bootstrap-wip — この project の wip_limit 既定 (= terminal worker lane の同時上限) の宣言。
+# repo root に置く。最初の非コメント行に整数のみを書く (それ以外は無視され既定 worker 3-4 に
+# 落ちる。doctor が警告する)。sprint ごとの逸脱は board.json の wip_limit + _wip_note で行う。
+# 射程: これは worker lane (= `git worktree add`) の cap。Workflow/subagent lane は engine 上限
+# (min(16, cores-2)) 律速で wip 非対象、帯域は統合関所が守る (ADR 0006)。
+4

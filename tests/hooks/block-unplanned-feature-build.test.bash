@@ -186,10 +186,10 @@ assert_stderr_contains '4 (.bootstrap-wip)'
 setup_repo
 enable_sprint
 RUN_DIR="$REPO"
-test_case "block message falls back to 既定 2-3 without declaration"
+test_case "block message falls back to form-aware default (worker 3-4) without declaration"
 run_hook "$HOOK" "$(write_input "$REPO/src/foo.ts")"
 assert_exit 2
-assert_stderr_contains '既定 2-3'
+assert_stderr_contains 'worker 既定 3-4'
 
 # 14. Comment/blank lines in .gate are ignored; a later glob still matches.
 setup_repo

@@ -87,14 +87,16 @@ if [ "$PROT" = 1 ] && ! grep -qE '^[[:space:]]*[^#[:space:]]' "$REPO/.bootstrap-
   ISSUES+=(".bootstrap-protected は在るが branch 行が無い → push 保護は実質 no-op")
 fi
 # .bootstrap-wip: 宣言が在るのに整数として解析できないと、hook 側 (resolve-wip-limit.sh) は
-# 表示値ゆえ fail-open に「既定 2-3」へ落ちる — が、その「落ちた」事実は宣言者に届かない。
+# 表示値ゆえ fail-open に form-aware な既定へ落ちる — が、その「落ちた」事実は宣言者に届かない。
 # 判定は hook と同じエンジンを source して単一権威に保つ (lib 不在の異常配置では skip = fail-open)。
+# parseability は display 文字列の一致でなく整数版 resolve_wip_limit_int の rc で見る (= 既定文言の
+# 変更に結合しない。文字列一致は ADR 0006 の既定改名で一度割れた)。
 WIPLIB="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd)/hooks/lib/resolve-wip-limit.sh"
 if have .bootstrap-wip && [ -f "$WIPLIB" ]; then
   # shellcheck source=../hooks/lib/resolve-wip-limit.sh
   . "$WIPLIB"
-  if [ "$( (cd "$REPO" && resolve_wip_limit) )" = "既定 2-3" ]; then
-    ISSUES+=(".bootstrap-wip は在るが整数が読めない → wip_limit 宣言は無音で無視され「既定 2-3」表示に落ちる (1 行目に整数のみを書く)")
+  if ! ( cd "$REPO" && resolve_wip_limit_int >/dev/null 2>&1 ); then
+    ISSUES+=(".bootstrap-wip は在るが整数が読めない → wip_limit 宣言は無音で無視され既定 (worker 3-4) 表示に落ちる (1 行目に整数のみを書く)")
   fi
 fi
 

@@ -1,5 +1,7 @@
 # 0003 — 採用状態を SessionStart で audit する doctor を導入し、配備漏れの無音を破る
 
+> **Extended (2026-06-19, 0.19.0)**: 同じ「可視化は強制できないが状態は surface できる」原理を **repo drift** に拡張した。SessionStart hook が採用 audit と独立に、`HEAD` の `origin/main` 遅れ (stale checkout) と merge 済み worktree の残骸 (lane 撤去漏れ) も出す。判定エンジンは `hooks/lib/repo-drift.sh`。新しい不可逆判断ではなく本 ADR の原理の適用なので独立 ADR は起こさない (drift の可視化 ≠ 強制 — どの checkout/lane が正しいかは既約)。
+
 - **Status**: Accepted
 - **Date**: 2026-06-02
 - **Deciders**: Rintaro Yamaoka

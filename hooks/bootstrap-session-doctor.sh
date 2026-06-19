@@ -12,8 +12,11 @@
 #     本体は per-action gate (PreToolUse) が担う。本 hook は「状態を可視化する」だけ。
 #   - plugin が在る session でしか発火しない (= plugin 不在で vendored hook だけの repo は救えない)。
 #     その穴は CI template (templates/ci/bootstrap-doctor.yml) が plugin 非依存で塞ぐ。
-#   - 注入するのは actionable な状態 (unadopted = 導入を聞く / partial = 穴を警告) だけ。
-#     ok / declined / 非 git は無音 (= advisory bloat を増やさない)。
+#   - 注入するのは actionable な状態だけ: 採用 audit は unadopted = 導入を聞く / partial = 穴を警告、
+#     repo drift audit は stale-vs-main / merge 済み worktree 残骸が在るときだけ。両方無ければ無音
+#     (= advisory bloat を増やさない)。
+#   - 採用 audit と drift audit は独立 — 採用が ok でも drift は出す (= 別軸の可視化。stale checkout
+#     と lane 撤去漏れは採用状態と無関係に session を蝕む)。判定エンジンは lib/repo-drift.sh。
 
 set -u
 
@@ -24,20 +27,40 @@ CWD=$(printf '%s' "$INPUT" | grep -oE '"cwd"[^,}]*' | head -1 | sed 's/.*"cwd"[[
 [ -z "$CWD" ] && CWD="$PWD"
 
 DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# (1) 採用 audit — doctor.sh の verdict。actionable (unadopted/partial) のときだけ本文化。
 REPORT=$(bash "$DIR/../scripts/doctor.sh" "$CWD" 2>/dev/null)
 STATUS=$(printf '%s\n' "$REPORT" | head -1 | sed 's/^STATUS:[[:space:]]*//')
-
+ADOPT=""
 case "$STATUS" in
-  unadopted|partial) ;;   # actionable → 注入する
-  *) exit 0 ;;            # ok / declined / skip → 無音
+  unadopted|partial) ADOPT="$REPORT" ;;
 esac
 
-# REPORT を JSON 文字列に pure-bash で escape (jq 非依存): \ → \\、" → \"、改行 → \n。
-ESC="$REPORT"
+# (2) repo drift audit — stale-vs-main + merge 済み worktree 残骸。drift が無ければ空 (無音)。
+# shellcheck source=lib/repo-drift.sh
+. "$DIR/lib/repo-drift.sh"
+DRIFT=$(drift_report "$CWD" 2>/dev/null)
+
+# どちらも無ければ無音で終わる。
+[ -z "$ADOPT" ] && [ -z "$DRIFT" ] && exit 0
+
+# 本文を組む (両方在れば空行で繋ぐ)。
+BODY="$ADOPT"
+if [ -n "$DRIFT" ]; then
+  if [ -n "$BODY" ]; then
+    BODY="$BODY
+$DRIFT"
+  else
+    BODY="$DRIFT"
+  fi
+fi
+
+# 本文を JSON 文字列に pure-bash で escape (jq 非依存): \ → \\、" → \"、改行 → \n。
+ESC="$BODY"
 ESC="${ESC//\\/\\\\}"
 ESC="${ESC//\"/\\\"}"
 ESC="${ESC//$'\n'/\\n}"
 
-PREFIX='[project-bootstrap] SessionStart 採用 audit (advisory — 強制ではない。enforcement は per-action gate):\n'
+PREFIX='[project-bootstrap] SessionStart audit (advisory — 強制ではない。enforcement は per-action gate):\n'
 printf '{"hookSpecificOutput":{"hookEventName":"SessionStart","additionalContext":"%s%s"}}\n' "$PREFIX" "$ESC"
 exit 0

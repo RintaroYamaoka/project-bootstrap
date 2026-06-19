@@ -9,7 +9,7 @@ feature を **scope 非重複の task** に分解した状態を持つ。`board.
 | field | 意味 |
 |---|---|
 | `sprint` | `<YYYY-MM-DD>-<feature-topic>` |
-| `wip_limit` | 同時 in-progress 上限 (これ以上 worktree を作らない)。既定は repo root の `.bootstrap-wip` (整数 1 行、opt-in) > 2-3。sprint 固有に逸脱するなら `_wip_note` に理由を書く |
+| `wip_limit` | 同時 in-progress 上限 (= terminal worker lane の cap。これ以上 worktree を作らない)。既定は repo root の `.bootstrap-wip` (整数 1 行、opt-in) > worker 3-4。Workflow/subagent lane は engine 上限律速で wip 非対象 (ADR 0006)。sprint 固有に逸脱するなら `_wip_note` に理由を書く |
 | `tasks[].id` | `T0` / `T1` … |
 | `tasks[].scope` | この task が所有する file glob 群。**task 間で重複させない** (= 並列の不変条件) |
 | `tasks[].branch` | `feat/<id>-<topic>` |
@@ -64,7 +64,7 @@ verdict: approve
 
 ## 並列しすぎない (= scrum の本質は WIP 制限)
 
-並列の収益は凹型カーブで、ソロ開発の変曲点は低い (実質 2-3)。落ちる理由:
+並列の収益は凹型カーブで、変曲点は実行形態で違う (terminal worker は帯域律速で実質 3-4 / Workflow lane は engine 上限律速、ADR 0006)。worker 路で落ちる理由:
 
 - **統合コストが超線形** — scope を disjoint にしても semantic 結合 (共有 interface/型) は残る。Amdahl の法則で直列部分 (planning + integration) が speedup の上限を決める
 - **律速は人間のレビュー帯域** — ワーカーが速く PR を出してもレビューは直列

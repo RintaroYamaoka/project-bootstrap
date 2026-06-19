@@ -82,4 +82,33 @@ test_case "missing cwd falls back to PWD without crashing"
 run_hook "$HOOK" '{"hook_event_name":"SessionStart"}'
 assert_exit 0
 
+# 8. Repo drift surfaces INDEPENDENTLY of adoption: adopted+consistent but HEAD behind
+#    origin/main => the stale-checkout nudge is injected even though the adoption audit is ok.
+setup_repo
+mkdir -p "$REPO/docs/sprint"
+git -C "$REPO" commit -q --allow-empty -m c0
+BASE="$(git -C "$REPO" rev-parse HEAD)"
+git -C "$REPO" commit -q --allow-empty -m c1
+git -C "$REPO" update-ref refs/remotes/origin/main "$(git -C "$REPO" rev-parse HEAD)"
+git -C "$REPO" reset -q --hard "$BASE"
+RUN_DIR="$REPO"
+test_case "behind origin/main injects drift nudge even when adoption is ok"
+run_hook "$HOOK" "$(session_input "$REPO")"
+assert_exit 0
+assert_stdout_contains "遅れ"
+
+# 9. Merged-but-leftover worktree => teardown nudge injected.
+setup_repo
+mkdir -p "$REPO/docs/sprint"
+git -C "$REPO" commit -q --allow-empty -m c0
+H="$(git -C "$REPO" rev-parse HEAD)"
+git -C "$REPO" update-ref refs/remotes/origin/main "$H"
+git -C "$REPO" branch feat-old "$H"
+WT="$(mktemp -d)/old"; git -C "$REPO" worktree add -q "$WT" feat-old
+RUN_DIR="$REPO"
+test_case "leftover merged worktree injects teardown nudge"
+run_hook "$HOOK" "$(session_input "$REPO")"
+assert_exit 0
+assert_stdout_contains "worktree remove"
+
 finish
