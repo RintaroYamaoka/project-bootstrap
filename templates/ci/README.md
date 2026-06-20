@@ -40,3 +40,12 @@ doctor は採用済みなのに必要 hook が欠けている `partial` 状態�
 GitHub 側では「この branch が並列 lane だったか」を判別できないため、**この file を置いた repo では全 PR にレビュー記録を要求する** (= PR を作ること自体を統合行為とみなす。語彙/命名の proxy に逃げない)。
 
 **required にするかの判断**: branch protection の required status check に指定すると bypass 不可になるが、**main への直接 push も check 待ちで弾かれる**。「日常は main へ直接 commit、並列開発のときだけ PR」という運用の repo では required にせず、PR 上の赤い X を人間が尊重する運用から始める (それでも「無音」ではなくなる — 関所の目的は気づかず素通りを無くすこと)。
+
+## 動作テスト gate の PR 経路 (bootstrap-verification-gate)
+
+`hooks/block-merge-if-verification-unclosed.sh` (ADR 0007 の統合関所) も同じく手元の `git merge` しか見られない。**PR 画面の merge ボタンは手元の hook を通らない**ので、動作テスト計画 (verification plan) を PR 経路でも要求するには CI が要る。
+
+1. `templates/ci/bootstrap-verification-gate.yml` を `.github/workflows/` にコピー (self-contained なので plugin lib の vendoring 不要)
+2. 計画の規約は手元の hook と共通: `docs/verification/<branch の / を _ に置換>.md`。OPEN 行 (TODO/FAIL/HUMAN) ゼロ・理由なき DROP ゼロを満たしてから PR を出す
+
+review gate と同型に「PR を作ること自体を統合行為とみなし全 PR に閉じた計画を要求する」。required 化の判断も review gate と同じ。

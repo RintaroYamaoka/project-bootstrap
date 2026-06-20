@@ -45,16 +45,17 @@ REPO="$GITTOP"
 have() { [ -e "$REPO/$1" ]; }
 
 # --- 採用 marker の検出 ---
-ARCH=0; PROT=0; LINT=0; LANE=0; SPRINT=0; MEM=0
+ARCH=0; PROT=0; LINT=0; LANE=0; SPRINT=0; MEM=0; VERIFY=0
 have .bootstrap-arch       && ARCH=1
 have .bootstrap-protected  && PROT=1
 have .bootstrap-lint       && LINT=1
 have .bootstrap-lane       && LANE=1
 [ -d "$REPO/docs/sprint" ] && SPRINT=1
+[ -d "$REPO/docs/verification" ] && VERIFY=1
 { [ -d "$REPO/docs/decisions" ] || [ -d "$REPO/docs/handoffs" ] || [ -d "$REPO/docs/incidents" ]; } && MEM=1
 
 ADOPTED=0
-[ $((ARCH + PROT + LINT + LANE + SPRINT + MEM)) -gt 0 ] && ADOPTED=1
+[ $((ARCH + PROT + LINT + LANE + SPRINT + VERIFY + MEM)) -gt 0 ] && ADOPTED=1
 
 # --- unadopted 分岐 ---
 if [ "$ADOPTED" = 0 ]; then
@@ -108,6 +109,7 @@ if [ -d "$VHOOKS" ]; then
   VENDORED=yes
   REQ=(require-test-companion.sh block-commit-if-tests-fail.sh block-add-all.sh block-dangerous-git-ops.sh block-cross-claude-wip.sh)
   [ "$SPRINT" = 1 ] && REQ+=(block-unplanned-feature-build.sh block-out-of-lane-edit.sh block-uniso-main-edit.sh block-unreviewed-merge.sh block-over-wip-parallel.sh)
+  [ "$VERIFY" = 1 ] && REQ+=(block-merge-if-verification-unclosed.sh)
   [ "$ARCH"   = 1 ] && REQ+=(block-cross-layer-import.sh block-arch-violations.sh)
   [ "$PROT"   = 1 ] && REQ+=(block-push-to-protected.sh)
   [ "$LINT"   = 1 ] && REQ+=(block-commit-if-lint-fails.sh)
@@ -121,7 +123,7 @@ if [ -d "$VHOOKS" ]; then
   fi
 fi
 
-SUM="arch=$ARCH protected=$PROT lint=$LINT lane=$LANE sprint=$SPRINT memory=$MEM vendored=$VENDORED"
+SUM="arch=$ARCH protected=$PROT lint=$LINT lane=$LANE sprint=$SPRINT verify=$VERIFY memory=$MEM vendored=$VENDORED"
 
 if [ "${#ISSUES[@]}" -gt 0 ]; then
   echo "STATUS: partial"

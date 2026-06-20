@@ -75,6 +75,10 @@
           },
           {
             "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}\"/hooks/block-merge-if-verification-unclosed.sh"
+          },
+          {
+            "type": "command",
             "command": "bash \"${CLAUDE_PLUGIN_ROOT}\"/hooks/block-arch-violations.sh"
           },
           {

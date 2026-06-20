@@ -7,6 +7,20 @@
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-06-21
+
+### Added
+
+- **動作テスト設計を「意図アンカーの verification plan」として構造化し、統合の precondition にする (ADR 0007)**。dogfood (appo-followup) の incident ログを種類で見ると、残った事故が **1 件もロジックバグでない** — cross-repo 契約ズレ (mood)、要件捏造、stale checkout、deploy 虚偽完了。**コードレベルのバグは TDD hook + レビューで潰れ、残余リスクが丸ごと「継ぎ目 (seam)」へ移動した**。決定的なのは mood incident: サイトが問診から `mood` 設問を削除 → appo の zod は `mood: z.string().min(1)` 必須のまま → 当日 CV 17 人で**予約成立 0**。効かなかったのは「テストが無かった」ことでなく、**zod の unit test が緑のまま間違った契約を固定し false confidence を配った**こと。テスト設計の核心はオラクル問題 (正解をどこから取るか) で、AI 駆動開発では「著者=採点者」の円環になりやすい。
+  - **唯一の原則 = テストは実装からでなく意図と跨いだ境界から導く**。これを二点アンカーで構造化: **plan 時** (コード前に意図 → behavior space + オラクルを導く。実装が無いので追認にならない) と **完了/統合時** (突合・実行・人間への引き継ぎ書)。
+  - **成果物 = `docs/verification/<branch>.md`** (行指向・jq 非依存)。1 行 = 1 ケース `STATUS | kind | behaviour | oracle | by | evidence`。STATUS: `TODO`/`FAIL`/`HUMAN` = OPEN、`PASS`/`DROP`(理由必須) = CLOSED。フォーマット権威は単一 lib `hooks/lib/verification-plan.sh` に集約 (gate/doctor/skill 共有 = drift 防止)。fail-closed bias: 未知 status は OPEN 扱い、理由なき DROP は弾く (無音カット禁止)。
+  - **強制点 = `hooks/block-merge-if-verification-unclosed.sh` (PreToolUse on `git merge`)**。review gate と同じ lane 信号 (活性 board task branch + linked worktree branch、ADR 0004) で、lane branch の merge に plan の存在・非空・OPEN 行ゼロ・理由なき DROP ゼロを要求。opt-in = `docs/verification/` を置く。fail-mode: 解析不能=fail-closed / 非 merge・非 git・未採用・非 lane=fail-open / 採用済みで plan 不在=fail-closed (「計画を書かない」で素通りさせない = ADR 0002 の教訓)。
+  - **kill-question を doctrine に**: 各 `PASS` の前に「このテストが緑のままユーザーが困る状態はあるか?」を問う (Yes ならオラクルが誤り = mood の罠)。オラクル不在の挙動は「pass と仮定」でなく `HUMAN` で人間に倒す。
+  - **新 skill `verification`** (技法選択表 / オラクル分類 / kill-question / plan テンプレ / 共同記録 / 引き継ぎ書)。`plan` skill に plan 時アンカー、`integrate` skill に閉じた plan の終端処理 (archive + 永続テスト昇格 + incident→memory) を委譲。doctrine の 4 設計判断は 5 にしない (テスト設計への適用であって新軸ではない)。
+  - **doctor に verification 採用 + vendored-coverage 要件を追加** (③ 配備の可視化)。`scripts/doctor.sh` が verification 採用済みで gate 未配備を partial で surface。
+  - **PR 経路の CI net `templates/ci/bootstrap-verification-gate.yml`** (review gate と同型)。手元 hook は GitHub PR 画面の merge を通らないので、plugin 非依存・self-contained (lib semantics をインライン再現) な CI で全 PR に閉じた計画を要求する。
+  - `hooks/lib/verification-plan.sh` の unit test (21 ケース) + `block-merge-if-verification-unclosed.sh` の gate test (15 ケース) 新設。17 hook に。`docs/decisions/0007-*.md` 新設。
+
 ## [0.19.0] - 2026-06-19
 
 ### Added

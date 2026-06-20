@@ -182,6 +182,19 @@ session を開いた瞬間に `scripts/doctor.sh` で project-bootstrap の採�
 
 スクリプト: [`block-unreviewed-merge.sh`](./block-unreviewed-merge.sh)
 
+### N. PreToolUse on `Bash` for `git merge` — verification plan を統合の precondition に強制
+
+コードレベルのバグは TDD hook + レビューで潰れたが、残余の事故は**継ぎ目 (cross-repo 契約 / 要件 / 「実物を見ずの完了」/ 環境)** に移動した — repo 内 unit test の射程外で、緑のテストが誤った契約を固定して false confidence を配る (mood incident: zod `min(1)` の test が緑のまま全予約 reject、ADR 0007)。本 hook は review gate と同じ lane 信号 (活性 board task branch ∪ linked worktree branch) を使い、**lane branch を `git merge` する行為**を信号に、その branch の verification plan が閉じていることを fail-closed で要求する。フォーマット権威は [`lib/verification-plan.sh`](./lib/verification-plan.sh) に集約 (gate/doctor/skill 共有 = drift 防止)。
+
+- precondition = `docs/verification/<branch の `/`→`_`>.md` が存在し、データ行を 1 つ以上持ち、OPEN 行 (TODO/FAIL/HUMAN) がゼロ、理由なき DROP がゼロ
+- **plan 不在は fail-open に逃さず block** (= 「計画を書かない」で gate を素通りさせない。ADR 0002 の教訓)
+- **fail-closed**: コマンド解析不能 / 採用済み lane branch の plan 不在・空・OPEN 行残存・理由なき DROP
+- **fail-open (根拠不在)**: 非 merge / 非 git / `docs/verification/` 未採用 (opt-in) / merge 対象が lane branch でない
+- 射程の境界: 統合 (merge) を信号にするので branch を切らない逐次作業は捕まえない (そこは `verification` skill が plan 時に担う)。kill-question「緑のままユーザーが困る状態はあるか?」は skill 側の doctrine
+- GitHub PR 画面の merge は手元 hook を通らないため、PR 経路は `templates/ci/bootstrap-verification-gate.yml` が CI で同じ計画を要求する (review gate と同型)
+
+スクリプト: [`block-merge-if-verification-unclosed.sh`](./block-merge-if-verification-unclosed.sh)
+
 ## 発火順
 
 **SessionStart**:
@@ -202,9 +215,10 @@ session を開いた瞬間に `scripts/doctor.sh` で project-bootstrap の採�
 3. `block-cross-claude-wip.sh`      — commit 直前に巻き込み check (`--amend` 含む)
 4. `block-push-to-protected.sh`     — 宣言 branch への直接 push を block (opt-in)
 5. `block-unreviewed-merge.sh`      — レビュー記録なき並列 lane branch (board task / worktree) の merge を block (opt-in)
-6. `block-arch-violations.sh`       — commit 時に依存方向を権威検証
-7. `block-commit-if-lint-fails.sh`  — commit 時に lint を回す
-8. `block-commit-if-tests-fail.sh`  — 最後に test を回す
+6. `block-merge-if-verification-unclosed.sh` — verification plan が閉じていない lane branch の merge を block (opt-in)
+7. `block-arch-violations.sh`       — commit 時に依存方向を権威検証
+8. `block-commit-if-lint-fails.sh`  — commit 時に lint を回す
+9. `block-commit-if-tests-fail.sh`  — 最後に test を回す
 
 block 系を test 実行より前に置くのは、test 実行が成功しても巻き込んだ commit / 契約違反は事故源だから。
 

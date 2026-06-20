@@ -1,0 +1,75 @@
+# .github/workflows/bootstrap-verification-gate.yml にコピーする。
+# 動作テスト計画 (verification plan) を統合の precondition にする gate の **PR 経路** 版 (ADR 0007)。
+#
+# なぜ必要か: hooks/block-merge-if-verification-unclosed.sh は Claude session の手元の
+# `git merge` しか見られない。GitHub の PR 画面で押す merge ボタンは手元の hook を一切
+# 通らない (review gate と同じ穴: docs/incidents/2026-06-11-parallel-mode-gate-coverage)。
+# PR 側の関所は CI にしか置けない。
+#
+# 信号設計: GitHub 側では「この branch が並列 lane だったか」を判別できないため、**この file
+# を置いた repo では「PR を作る = 統合行為」とみなし、全 PR に閉じた verification plan を
+# 要求する** (= 語彙や命名規約の proxy に逃げない。導入自体が opt-in)。
+#
+# verification plan の format (hooks/lib/verification-plan.sh と同一。このチェックは consumer
+# repo が plugin lib を vendoring していなくても動くよう self-contained):
+#   docs/verification/<head branch の / を _ に置換>.md、行指向。
+#   data 行 = 非空・非 `#`・`|` 区切りで先頭が STATUS:
+#       STATUS | kind | behaviour | oracle | by | evidence/note
+#   STATUS: TODO/FAIL/HUMAN = OPEN、PASS = CLOSED、DROP = CLOSED (理由=6 列目 必須)。
+#   fail-closed bias: 未知 status は OPEN 扱い、理由なき DROP は弾く。
+#
+# 注意: bypass 不可にするには branch protection で required status check に指定する
+# (運用の注意は templates/ci/README.md、review gate と同じ)。
+name: bootstrap-verification-gate
+on:
+  pull_request:
+
+jobs:
+  verification-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Closed verification plan required before merge
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          set -u
+          PLAN="docs/verification/$(printf '%s' "$HEAD_REF" | tr '/' '_').md"
+
+          if [ ! -s "$PLAN" ]; then
+            echo "::error::統合 (PR merge) の前提条件: 動作テスト計画 $PLAN が無い。意図と跨いだ境界から検証すべき挙動を導き (実装からでなく)、各行に外部オラクルを与えて記録すること (verification skill / ADR 0007)。"
+            exit 1
+          fi
+
+          # trim helper
+          trim() { local s="$1"; s="${s#"${s%%[![:space:]]*}"}"; s="${s%"${s##*[![:space:]]}"}"; printf '%s' "$s"; }
+
+          rows=0; open=""; baddrop=""
+          while IFS= read -r line || [ -n "$line" ]; do
+            t="$(trim "$line")"
+            case "$t" in ''|'#'*) continue ;; esac
+            rows=$((rows + 1))
+            status="$(printf '%s' "${t%%|*}" | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')"
+            case "$status" in
+              PASS) ;;
+              DROP)
+                reason="$(trim "$(printf '%s' "$t" | cut -d'|' -f6)")"
+                [ -z "$reason" ] && baddrop="$baddrop\n  $t"
+                ;;
+              *) open="$open\n  $t" ;;   # TODO/FAIL/HUMAN/unknown -> OPEN (fail-closed)
+            esac
+          done < "$PLAN"
+
+          if [ "$rows" = 0 ]; then
+            echo "::error::$PLAN にデータ行が無い (空の計画 = 検証ゼロを緑に見せる儀式)。検証すべき挙動を最低 1 行書くこと。"
+            exit 1
+          fi
+          if [ -n "$open" ]; then
+            printf '::error::%s に未解決の行がある (TODO=未実施 / FAIL=失敗 / HUMAN=人間の実施待ち):%b\n' "$PLAN" "$open"
+            exit 1
+          fi
+          if [ -n "$baddrop" ]; then
+            printf '::error::%s に理由なき DROP がある (テストしない判断には理由が要る — 無音カット禁止):%b\n' "$PLAN" "$baddrop"
+            exit 1
+          fi
+          echo "verification gate: $PLAN closed ($rows rows, 0 open)"
