@@ -43,6 +43,8 @@ Production-affecting な変更 (= 外部 API write / DB write / repo push / 設�
 > Anthropic 公式:
 > "Give Claude a way to verify its work. This is the single highest-leverage thing you can do. If you can't verify it, don't ship it."
 
+**何を動作テストすべきかの設計は `verification` skill が担う (ADR 0007)**。コードレベルのバグは TDD hook が潰すが、残余リスクは**継ぎ目** (cross-repo 契約 / 要件 / 「実物を見ずの完了」/ 環境) に移動しており、それらは repo 内 unit test の射程外で、緑のテストが誤った契約を固定して false confidence を配る (mood incident)。原則 = **テストは実装からでなく意図と跨いだ境界から導く**。各行に**外部オラクル**を与え (オラクルが AI 内なら著者=採点者の円環)、最終オラクルが人間にしか出せない行は `HUMAN` でフラグする。各 PASS の前に kill-question「このテストが緑のまま、ユーザーが困る状態はありうるか?」を問う (Yes ならオラクルが誤り)。成果物 `docs/verification/<branch>.md` は lane merge の precondition (`block-merge-if-verification-unclosed.sh`)。
+
 verification を「素朴な return チェック」で済ますと AI は以下 4 罠に default で落ちる:
 
 ### 罠 1 — silent failure を「正常」と読む

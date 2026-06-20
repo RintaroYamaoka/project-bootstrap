@@ -120,6 +120,12 @@ description: 自明でないコーディング作業 (新機能追加・バグ�
 
 承認後、TDD ワークフロー (Red → Green → Refactor) に移る。各ステップは Red フェーズで failing テストを書くところから始める (詳細は `project-bootstrap` skill 参照)。
 
+## 動作テスト (verification) は plan 時にアンカーする
+
+成功条件 (Step 2) は「コードの正しさ」を超えて**継ぎ目 (cross-repo 契約 / 要件 / 「実物を見ずの完了」/ 環境)** を含むことが多い。これらは repo 内 unit test の射程外で、緑のテストが誤った契約を固定して false confidence を配る (ADR 0007 / mood incident)。だから**動作テストの設計は実装の後でなく plan 時に始める** — 実装がまだ無いので実装追認テストにならない (TDD が test を先に書くのと同型)。
+
+feature を実装する計画なら、`verification` skill をロードして**意図と「跨いだ境界」から検証すべき挙動を導き** (実装からでなく)、`docs/verification/<branch>.md` の骨子 (各行に外部オラクル) を起こす。最終オラクルが人間にしか出せない行は `HUMAN` でフラグする。統合時に `block-merge-if-verification-unclosed.sh` がこの plan の clozure を要求する。
+
 ## 例外処理
 
 - **計画が大きすぎる** と判断したら、「1 タスクには大きすぎる、分割を提案する」と伝える
