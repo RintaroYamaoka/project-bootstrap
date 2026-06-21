@@ -1,6 +1,6 @@
 # 0008 — Claude Code 新 primitive の採用方針 (prompt/agent hook / exec-form / saved workflow)
 
-- **Status**: Accepted (#1 実装済み / #2 受諾 → opt-in pilot 実装済み 2026-06-21 / #3 却下 / #4 保留)
+- **Status**: Accepted (#1 実装済み / #2 受諾 → opt-in pilot 実装済み / #3 却下 / #4 却下 — plugin は workflow を配布不可と確認)
 - **Date**: 2026-06-21
 - **Deciders**: Rintaro Yamaoka
 - **References**: 本 repo の評価 workflow (2026-06-21、local audit + web research + 3-vote adversarial verify)。`docs/decisions/0004-*` / `0005-*` / `0006-*` (並列 governance の系譜)。Claude Code docs: [hooks](https://code.claude.com/docs/en/hooks) (handler 5 型) / [workflows](https://code.claude.com/docs/en/workflows) (bundled `/deep-research`, saved workflows) / [goal](https://code.claude.com/docs/en/goal)。`skills/project-bootstrap/SKILL.md` の AI 癖 (3 scope-creep / 4 症状隠蔽 / 7 不在断定) と「完遂責任」cohort audit。
@@ -43,9 +43,9 @@ read-only の web 照合腕を `skills/plan` (前提検証 Step) / `skills/verif
 
 hook の起動文字列 `bash "${CLAUDE_PLUGIN_ROOT}"/hooks/X.sh` には **untrusted 入力が一切流れない** (path は harness 設定の trusted env、追加引数なし、`"..."` で空白も安全)。shell injection 面が存在しないので exec-form 化は**硬化すべき脅威が無い** = rent を払わない複雑さ。加えて exec-form で `${CLAUDE_PLUGIN_ROOT}` が展開されるかが未検証で、誤ると**全 hook が無音で壊れる** (リスク > 利得)。doctrine「rent を払わない複雑さを足さない / 不確実な harness 依存を盲目的に入れない」に従い却下。将来 hook command に untrusted 入力を渡す設計が出たら再検討。
 
-### 4. saved workflow (`.claude/workflows/`) を同梱 — **保留 (要確認)**
+### 4. saved workflow (`.claude/workflows/`) を同梱 — **却下 (2026-06-22 確認済み)**
 
-並列 adversarial レビューを `/bootstrap-review` として再利用可能な saved workflow にする案。だが **plugin が workflow を consumer の `.claude/workflows/` へ配布できるか未確認** (`plugin.json` は skills/hooks/commands/agents を配るが workflows は不明)。配布できないなら consumer の手動 save が要り、同梱の旨味が薄い。確認後に判断する。当面は `integrate` skill のレビュー Step が breadth fanout (ADR 0005) を直に使えば足りる。
+並列 adversarial レビューを `/bootstrap-review` として再利用可能な saved workflow にする案。**plugin は workflow を配布できないと確認した** — 公式 plugin structure の package 可能 component は skills / commands / agents / hooks / MCP / LSP / monitors / bin / settings のみで、**`workflows/` ディレクトリは存在しない** ([plugins docs](https://code.claude.com/docs/en/plugins) の plugin structure overview)。consumer の `.claude/workflows/` へは手動 save しか経路が無く「同梱」は成立しない。よって却下。レビューの再利用は `integrate` skill のレビュー Step が breadth fanout (ADR 0005、隔離不要・`wip_limit` 非対象・gate 摩擦ゼロ) を直に使えば足り、別 saved workflow を要しない。(手動 save 用テンプレを `templates/` に置く余地は残るが「同梱」ではなく、breadth fanout で足りる以上 rent を払わないので現時点では作らない。)
 
 ## Consequences (結果)
 
@@ -59,5 +59,5 @@ hook の起動文字列 `bash "${CLAUDE_PLUGIN_ROOT}"/hooks/X.sh` には **untru
 
 ### 移行後に必要な保守
 - #2 受諾 → cohort-audit pilot を実装、誤検知列を `velocity.sh` に追加、N 週後に展開可否を判定。
-- #4 → plugin-workflow の配布可否を CC docs / 実測で確認し、可なら `/bootstrap-review` を起こす、不可なら `templates/workflows/` に手動 save 用テンプレとして提供。
+- #4 → 確認済み・却下 (plugin は workflow を配布不可)。レビュー再利用は `integrate` の breadth fanout で足りる。手動 save テンプレの要望が出たら `templates/` に置く (同梱ではない)。
 - 新 primitive の**版番号は信頼しない**方針を維持 (CC アップグレード時は機能の存在を doc で再確認。`hooks/README.md` の harness contract 節と同じ規律)。
