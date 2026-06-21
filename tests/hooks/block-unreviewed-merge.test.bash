@@ -229,4 +229,40 @@ run_hook "$HOOK" "$(merge_input 'git merge feat/T1-auth')"
 assert_exit 2
 assert_stderr_contains 'guard 1'
 
+# --- regression: compound + path-prefixed merges (the greedy-sed / bare-token bypass) ---
+# This gate used to extract the target with a greedy `sed 's/^.*git merge//'` (which sees
+# only the LAST merge of a compound command) and detect only a bare `git merge` token. So
+# `git merge <unreviewed> && git merge <approved>` slipped the unreviewed lane past with
+# zero enforcement, and `/usr/bin/git merge <lane>` was invisible. lib/merge-targets.sh now
+# walks EVERY segment and accepts path-prefixed git. (The "string proxy for an action"
+# weakness the doctrine condemns for sprint vocabulary — fixed here for the merge signal.)
+
+# 20. Compound merge must not hide an unreviewed lane behind an approved one.
+setup_repo
+active_board
+write_review feat/T2-api 'verdict: approve'
+RUN_DIR="$REPO"
+test_case "compound merge does not hide an unreviewed lane behind an approved one"
+run_hook "$HOOK" "$(merge_input 'git merge feat/T1-auth && git merge feat/T2-api')"
+assert_exit 2
+assert_stderr_contains 'reviews/'
+
+# 21. Path-prefixed git (/usr/bin/git) must be detected, not only a bare `git` token.
+setup_repo
+active_board
+RUN_DIR="$REPO"
+test_case "path-prefixed git merge of an unreviewed lane is blocked"
+run_hook "$HOOK" "$(merge_input '/usr/bin/git merge feat/T1-auth')"
+assert_exit 2
+
+# 22. Compound merge of two approved lanes still passes (no over-block).
+setup_repo
+active_board
+write_review feat/T1-auth 'verdict: approve'
+write_review feat/T2-api 'verdict: approve'
+RUN_DIR="$REPO"
+test_case "compound merge of two approved lanes passes"
+run_hook "$HOOK" "$(merge_input 'git merge feat/T1-auth && git merge feat/T2-api')"
+assert_exit 0
+
 finish

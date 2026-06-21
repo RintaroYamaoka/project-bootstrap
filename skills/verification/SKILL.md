@@ -52,6 +52,8 @@ description: 動作テスト (behavioral verification) を「意図と跨いだ�
 
 **オラクルは必ず AI の外に置く。** 期待値が書けない → プロパティ/メタモルフィック。跨ぐ → 契約 or 実アウトカム。意図レベル (「これが欲しかったか」) → **人間にフラグ (`HUMAN`)**。オラクルが見つからない挙動を「pass と仮定」で埋めない。
 
+外部の事実がオラクルになる行 (3rd-party 契約 / 挙動 / 仕様) は、**`/deep-research`** (web を多角検索し主張を相互照合する read-only の breadth 腕、ADR 0005) で**引用つきの外部証拠**を取れる — ただし **advisory input に留め、`HUMAN`/意図行を web claim で自動 close しない** (stale / hallucinated な引用が偽オラクルになりうる)。「外から事実を取る」までが breadth 腕の仕事で、「これが欲しかったか」の最終採点は人間に残る。
+
 ### Step 4: verification plan を書く
 
 `docs/verification/<branch>.md` (branch の `/` は `_` に)。1 行 = 1 ケース、先頭が STATUS:

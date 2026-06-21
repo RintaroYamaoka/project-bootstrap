@@ -180,4 +180,38 @@ test_case "worktree lane without verification adoption passes (opt-in)"
 run_hook "$HOOK" "$(merge_input 'git merge lane/slack-notify')"
 assert_exit 0
 
+# --- regression: compound + path-prefixed merges (the greedy-sed / bare-token bypass) ---
+# Same bug as block-unreviewed-merge: only the LAST merge of a compound command was
+# inspected and only a bare `git merge` token was detected. lib/merge-targets.sh fixes both.
+
+# 16. Compound merge must not hide a lane with no/open plan behind a closed-plan lane.
+setup_repo
+active_board
+adopt_verify
+write_plan feat/T2-api 'PASS | contract | x | y | ai | ok'
+RUN_DIR="$REPO"
+test_case "compound merge does not hide an unverified lane behind a closed one"
+run_hook "$HOOK" "$(merge_input 'git merge feat/T1-auth && git merge feat/T2-api')"
+assert_exit 2
+assert_stderr_contains 'no verification plan'
+
+# 17. Path-prefixed git (/usr/bin/git) must be detected.
+setup_repo
+active_board
+adopt_verify
+RUN_DIR="$REPO"
+test_case "path-prefixed git merge of an unverified lane is blocked"
+run_hook "$HOOK" "$(merge_input '/usr/bin/git merge feat/T1-auth')"
+assert_exit 2
+
+# 18. Compound merge of two closed-plan lanes still passes (no over-block).
+setup_repo
+active_board
+write_plan feat/T1-auth 'PASS | contract | x | y | ai | ok'
+write_plan feat/T2-api 'PASS | contract | x | y | ai | ok'
+RUN_DIR="$REPO"
+test_case "compound merge of two closed-plan lanes passes"
+run_hook "$HOOK" "$(merge_input 'git merge feat/T1-auth && git merge feat/T2-api')"
+assert_exit 0
+
 finish

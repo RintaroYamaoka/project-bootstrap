@@ -39,8 +39,10 @@ fi
 
 [ -z "$CMD" ] && exit 0
 
-# git merge でなければ素通し
-echo "$CMD" | grep -qE '(^|[[:space:]&|;()`]+)git[[:space:]]+merge([[:space:]]|$)' || exit 0
+# git merge でなければ素通し (path-prefixed git も含め共有エンジンで判定)。
+# shellcheck source=lib/merge-targets.sh
+. "$(dirname "$0")/lib/merge-targets.sh"
+cmd_has_git_merge "$CMD" || exit 0
 
 # repo root を解決。非 git は根拠不在 → fail-open。
 command -v git >/dev/null 2>&1 || exit 0
@@ -78,60 +80,23 @@ is_lane_branch() {
   return 1
 }
 
-# `git merge` 以降の引数から merge 対象 branch を探す。flag はスキップ、引数を取る flag
-# (-m/-F 等) はその値もスキップ (= message が branch に見える誤検知を防ぐ)。
-ARGS=$(printf '%s' "$CMD" | sed -E 's/^.*git[[:space:]]+merge//')
-BRANCH=""
-SKIP_NEXT=0
-# shellcheck disable=SC2086
-set -- $ARGS
-while [ $# -gt 0 ]; do
-  tok="$1"; shift
-  if [ "$SKIP_NEXT" = 1 ]; then SKIP_NEXT=0; continue; fi
-  case "$tok" in
-    -m|--message|-F|--file|--into-name|-S|--gpg-sign|--strategy|-s|--strategy-option|-X) SKIP_NEXT=1; continue ;;
-    -*) continue ;;
-  esac
-  if is_lane_branch "$tok"; then
-    BRANCH="$tok"
-    break
+# merge 対象 branch を全 segment から enumerate する (複合コマンド対応)。共有エンジン
+# lib/merge-targets.sh が貪欲 sed バグ + path-prefixed git を吸収する (単一権威で drift 防止)。
+# 各 lane branch を分類: 1 つでも reject / 未レビューがあれば即 block (その branch の理由を出す)。
+# 全 lane branch が approve なら、ADR 0005 guard 1 として実スイートを 1 回だけ回す。
+HAS_LANE=0
+NEEDS_SUITE=0
+while IFS= read -r BRANCH; do
+  [ -z "$BRANCH" ] && continue
+  is_lane_branch "$BRANCH" || continue
+  HAS_LANE=1
+  REVIEW="$TOP/docs/sprint/reviews/$(printf '%s' "$BRANCH" | tr '/' '_').md"
+
+  if [ -s "$REVIEW" ] && grep -qiE '^[[:space:]]*verdict:[[:space:]]*approve' "$REVIEW"; then
+    NEEDS_SUITE=1
+    continue
   fi
-done
-
-# merge 対象が並列 lane の branch でない → 根拠不在 → fail-open。
-[ -z "$BRANCH" ] && exit 0
-
-REVIEW="$TOP/docs/sprint/reviews/$(printf '%s' "$BRANCH" | tr '/' '_').md"
-
-if [ -s "$REVIEW" ]; then
-  if grep -qiE '^[[:space:]]*verdict:[[:space:]]*approve' "$REVIEW"; then
-    # ADR 0005 guard 1: agent 判定の approve は実検証を代替しない。approve はレビューが
-    # 起きた証明であって「テストが通った」証明ではない。関所が自分で検出スイートを回し、
-    # fail なら block する (= verdict 行という自由文を信じない。信号は実テストの実行結果)。
-    # merge は PreToolUse なので統合"後"の結合状態は測れない (タイミングの限界) が、統合先が
-    # 緑であることは保証する — これは agent の approve 単独では担保されない。
-    # runner 未検出は fail-open (commit gate と同じ。レビュー記録自体は既に precondition を満たす)。
-    # 検出は commit gate と共有エンジン (lib/detect-test-suite.sh) で drift を防ぐ。
-    # shellcheck source=lib/detect-test-suite.sh
-    . "$(dirname "$0")/lib/detect-test-suite.sh"
-    if SUITE="$(cd "$TOP" && detect_test_command)"; then
-      echo "project-bootstrap: running $SUITE to verify before merge of \"$BRANCH\" (ADR 0005 guard 1)..." >&2
-      if ! ( cd "$TOP" && $SUITE ) >&2; then
-        cat >&2 <<EOF
-project-bootstrap: blocking merge of "$BRANCH" — the test suite fails (ADR 0005 guard 1).
-
-レビュー記録は verdict: approve だが、関所が実行した実テストスイート ($SUITE) が fail した。
-AI レビューの approve は「レビューが起きた」証明であって実検証ではない — 落ちるスイートを
-agent の approve で踏み越えて統合することは許可しない。対処:
-  1. lane でテストを緑にしてから re-review し、verdict を更新する
-  2. 統合境界 (共有 interface の前提ずれ) が原因なら、その根本を直す (症状を隠さない)
-EOF
-        exit 2
-      fi
-    fi
-    exit 0
-  fi
-  if grep -qiE '^[[:space:]]*verdict:[[:space:]]*reject' "$REVIEW"; then
+  if [ -s "$REVIEW" ] && grep -qiE '^[[:space:]]*verdict:[[:space:]]*reject' "$REVIEW"; then
     cat >&2 <<EOF
 project-bootstrap: blocking merge of "$BRANCH" — review verdict is REJECT.
 
@@ -142,9 +107,8 @@ project-bootstrap: blocking merge of "$BRANCH" — review verdict is REJECT.
 EOF
     exit 2
   fi
-fi
 
-cat >&2 <<EOF
+  cat >&2 <<EOF
 project-bootstrap: blocking merge of "$BRANCH" — no completed review record.
 
 並列 lane の branch (sprint task branch / worktree lane) を、AI レビューの記録なしに
@@ -155,4 +119,34 @@ project-bootstrap: blocking merge of "$BRANCH" — no completed review record.
 
 レビューそのものを skip したい例外時は /permissions で本 hook を一時 deny にする。
 EOF
-exit 2
+  exit 2
+done < <(merge_target_branches "$CMD")
+
+# merge 対象に並列 lane の branch が無い → 根拠不在 → fail-open (通常の merge を一切妨げない)。
+[ "$HAS_LANE" = 0 ] && exit 0
+
+# 全 lane branch が approve だった。ADR 0005 guard 1: agent 判定の approve は実検証を代替しない。
+# approve はレビューが起きた証明であって「テストが通った」証明ではない。関所が自分で検出スイートを
+# 回し、fail なら block する (= verdict 行という自由文を信じない。信号は実テストの実行結果)。merge は
+# PreToolUse なので統合"後"の結合状態は測れない (タイミングの限界) が、統合先が緑であることは保証する。
+# runner 未検出は fail-open。検出は commit gate と共有エンジン (lib/detect-test-suite.sh) で drift 防止。
+if [ "$NEEDS_SUITE" = 1 ]; then
+  # shellcheck source=lib/detect-test-suite.sh
+  . "$(dirname "$0")/lib/detect-test-suite.sh"
+  if SUITE="$(cd "$TOP" && detect_test_command)"; then
+    echo "project-bootstrap: running $SUITE to verify before merge (ADR 0005 guard 1)..." >&2
+    if ! ( cd "$TOP" && $SUITE ) >&2; then
+      cat >&2 <<EOF
+project-bootstrap: blocking merge — the test suite fails (ADR 0005 guard 1).
+
+レビュー記録は verdict: approve だが、関所が実行した実テストスイート ($SUITE) が fail した。
+AI レビューの approve は「レビューが起きた」証明であって実検証ではない — 落ちるスイートを
+agent の approve で踏み越えて統合することは許可しない。対処:
+  1. lane でテストを緑にしてから re-review し、verdict を更新する
+  2. 統合境界 (共有 interface の前提ずれ) が原因なら、その根本を直す (症状を隠さない)
+EOF
+      exit 2
+    fi
+  fi
+fi
+exit 0
