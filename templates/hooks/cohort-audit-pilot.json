@@ -1,0 +1,15 @@
+{
+  "_comment": "project-bootstrap — cohort-audit pilot (ADR 0008 #2). OPT-IN, NOT part of the default 17 hooks. Copy this into a settings file (.claude/settings.json / ~/.claude/settings.json) to enable. This is a PROBABILISTIC, warn-only gate (a Stop prompt hook: Haiku evaluates each turn-end; on ok:false the reason is fed back to Claude, which keeps working — it never blocks). It exists to back the 'bug fix = same-root cohort audit' discipline (SKILL.md 完遂責任), which is otherwise advisory. It cannot be CI-tested (it calls a model), so measure its false-positive rate in real use before considering promotion to a default hook. Remove this block to disable.",
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "project-bootstrap cohort-audit pilot (warn-only). Review this turn: $ARGUMENTS. Respond {\"ok\": false, \"reason\": \"<one line>\"} ONLY when BOTH hold: (1) a user-facing bug was fixed this turn (code changed to correct broken behaviour for end users), and (2) there is NO evidence of a same-root cohort audit — a scan (SQL / grep / log) for OTHER instances of the SAME root cause, with those instances fixed or explicitly triaged in the same change. The reason must say: 'same-root cohort audit missing — scan for other instances of this root cause and fix or triage them in this change (完遂責任)'. Respond {\"ok\": true} for features, refactors, docs, tests, config, non-code turns, and whenever you are unsure. This is warn-only: prefer false negatives over false alarms (cry-wolf disables guards)."
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -7,6 +7,24 @@
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-06-22
+
+### Fixed
+
+- **統合関所 (merge gate) の迂回穴を塞いだ — 並列作業の唯一の net が「行為の文字列 proxy」で実装され、実際にすり抜け可能だった**。`block-unreviewed-merge.sh` / `block-merge-if-verification-unclosed.sh` は merge 対象を貪欲 `sed 's/^.*git merge//'` で抽出していたため、複合コマンド `git merge A && git merge B` では**最後の B しか検査されず A が無検査で統合**された。また検出が bare `git merge` token のみで、`/usr/bin/git merge` 等の path-prefixed 形を**素通し**した。どちらも、プラグインが sprint 語彙について他所で断罪している「行為の文字列 proxy」(② 信号選び) そのものだった。
+  - 共有エンジン `hooks/lib/merge-targets.sh` を新設 (単一権威で 2 gate の signal drift を防止)。複合コマンドの**全** `git merge` segment を走査し、path-prefixed git を受理、flag とその値 (`-m <msg>` 等) を skip し、後続の非 merge コマンドの語を誤って target にしない (`git merge a && echo b` は a のみ)。既知の限界 (quote 内の separator metachar) は lib 冒頭に明示。
+  - TDD: 回帰テストを先に Red 確認 (複合で素通し / path-prefixed で素通し) → lib 実装 → 両 gate を loop へ載せ替え → 全 29 suite green。`tests/hooks/merge-targets.test.bash` (engine 単体 15 ケース) + 両 gate test に回帰 3 ケースずつ。hook 数は不変 (新規は lib、hook entry 追加なし)。
+- **`skills/project-bootstrap/SKILL.md` の自己矛盾を解消**。「subagent と並列開発」節が、ADR 0004 による read-only ルール撤回を述べた直後に「実体を書き換える作業を subagent に委譲しない」を**現在形の規則**として残しており、直下の form ③ (Workflow/subagent の mutation lane) と矛盾していた。frontmatter は既に「mutation は隔離 worktree + 統合関所つきで可」と正しいので、body をそれに整合させた (= mutation は隔離 + 関所つきで公認、main session 自身の TDD core loop のみ直接)。
+- **`hooks/README.md` の hook 台帳ドリフトを修正** (14 → 17)。`block-uniso-main-edit` (ADR 0005 guard 2) / `block-over-wip-parallel` (guard 3) / `sprint-trigger-reminder` (UserPromptSubmit) の 3 節が欠落し、「発火順」も stale だった。全 17 hook を `hooks.json` の結線順で列挙し直した (`plugin.json` / `marketplace.json` / root README は既に 17 で整合済み)。
+
+### Added
+
+- **`hooks/README.md` に「Claude Code 契約への依存 (harness contract)」節**。各 gate が依存する payload key (`command` / `file_path` / `transcript_path` / `cwd`) と、Anthropic が key を rename したときの **gate ごとの挙動** (`command` = fail-closed で即発覚 / `file_path`・`transcript_path` = fail-open で無音バイパス) を表で明示し、CC アップグレード時の手動再検証を促す (隠れた外部前提の可視化 = ③ 配備の可視化 を CC 契約そのものに適用)。runtime 自動警告を**あえて足さない**理由 (key rename と surface 差を区別できず cry-wolf になる — 本 repo の test fixture 自体が `transcript_path` を持たない正当な payload) も記録。
+- **`/deep-research` を read-only の「外部オラクル腕」として skills に編入** (ADR 0008 #1)。`skills/plan` (前提検証 Step) / `skills/verification` (外部事実オラクル) / `skills/project-bootstrap` (癖 7) に、repo 外の事実 (3rd-party 挙動 / API 仕様 / 「X は可能か」) を記憶で推測せず web を多角照合して裏取りする経路を追加。「オラクルは AI の外」(verification skill) の web 版で advisory input 限定 (`HUMAN`/意図行を web claim で自動 close しない)。harness の bundled Workflow を呼ぶだけなので二重化・同梱しない。
+- **単一 orchestrator frontier を `④ 計測つきの取引` と `scripts/velocity.sh` に明記** (ADR 0008 / N=1 honesty)。採点者が 1 人の間は defect-rate metric とレビュー帯域の律速が同一人物なので、独立統制でなく self-report に近いと限界を名指し (③ の自己適用)。取引を否定せず限界を無音にしない。
+- **`docs/decisions/0008-*.md` 新設 (Accepted)** — Claude Code 新 primitive の採用方針。#1 編入済み / **#2 (`prompt`/`agent` hook で advisory 規律を確率 gate 化) は受諾 → opt-in pilot 実装済み** (warn 始動・誤検知 metric・CI テスト不能ゆえ pilot 限定・決定論 gate は置換しない の 4 条件つき) / **#3 exec-form は却下** (hook command に untrusted 入力が無く rent を払わない + 未検証で全 hook 破壊リスク) / **#4 saved workflow 同梱は却下** (plugin は workflow を配布不可と確認 — 公式 plugin structure に `workflows/` が無い)。
+- **cohort-audit の opt-in 確率 gate pilot を新設** (`templates/hooks/cohort-audit-pilot.json`、ADR 0008 #2)。本プラグイン**初の非決定論 (確率) gate**: 公式 docs で検証した `Stop` prompt hook (Haiku が毎ターン `{"ok",  "reason"}` を返す) が、user-facing bug fix で同根 cohort audit が無いときだけ **warn-only で nudge** する (`ok:false` の reason が Claude に戻り作業継続 = block しない。feature/refactor/不確実は `ok:true` で cry-wolf 抑制)。**default の 17 hook には入れない** — 確率 gate を全 consumer に毎ターン強制しないため opt-in にし、誤検知率を実運用で測ってから昇格判断 (CI テスト不能ゆえ実運用の手動観測が安全網)。`hooks/README.md` の opt-in pilot 節 + `skills/project-bootstrap/SKILL.md` 完遂責任節にミラー。
+
 ## [0.21.0] - 2026-06-21
 
 ### Added

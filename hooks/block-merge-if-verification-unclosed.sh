@@ -39,8 +39,10 @@ fi
 
 [ -z "$CMD" ] && exit 0
 
-# git merge でなければ素通し
-echo "$CMD" | grep -qE '(^|[[:space:]&|;()`]+)git[[:space:]]+merge([[:space:]]|$)' || exit 0
+# git merge でなければ素通し (path-prefixed git も含め共有エンジンで判定)。
+# shellcheck source=lib/merge-targets.sh
+. "$(dirname "$0")/lib/merge-targets.sh"
+cmd_has_git_merge "$CMD" || exit 0
 
 # repo root を解決。非 git は根拠不在 → fail-open。
 command -v git >/dev/null 2>&1 || exit 0
@@ -79,34 +81,20 @@ is_lane_branch() {
   return 1
 }
 
-# `git merge` 以降の引数から merge 対象 branch を探す (review gate と同じ解析)。
-ARGS=$(printf '%s' "$CMD" | sed -E 's/^.*git[[:space:]]+merge//')
-BRANCH=""
-SKIP_NEXT=0
-# shellcheck disable=SC2086
-set -- $ARGS
-while [ $# -gt 0 ]; do
-  tok="$1"; shift
-  if [ "$SKIP_NEXT" = 1 ]; then SKIP_NEXT=0; continue; fi
-  case "$tok" in
-    -m|--message|-F|--file|--into-name|-S|--gpg-sign|--strategy|-s|--strategy-option|-X) SKIP_NEXT=1; continue ;;
-    -*) continue ;;
-  esac
-  if is_lane_branch "$tok"; then
-    BRANCH="$tok"
-    break
-  fi
-done
-
-# merge 対象が並列 lane の branch でない → 根拠不在 → fail-open。
-[ -z "$BRANCH" ] && exit 0
-
+# merge 対象 branch を全 segment から enumerate する (review gate と同じ共有エンジン)。
+# 1 つでも「計画なし / 空 / 未解決」の lane branch があれば、その branch の理由で block する。
 # shellcheck source=lib/verification-plan.sh
 . "$(dirname "$0")/lib/verification-plan.sh"
-PLAN="$(vplan_path_for_branch "$TOP" "$BRANCH")"
 
-if [ ! -s "$PLAN" ]; then
-  cat >&2 <<EOF
+HAS_LANE=0
+while IFS= read -r BRANCH; do
+  [ -z "$BRANCH" ] && continue
+  is_lane_branch "$BRANCH" || continue
+  HAS_LANE=1
+  PLAN="$(vplan_path_for_branch "$TOP" "$BRANCH")"
+
+  if [ ! -s "$PLAN" ]; then
+    cat >&2 <<EOF
 project-bootstrap: blocking merge of "$BRANCH" — no verification plan.
 
 並列 lane の branch を、動作テスト計画なしに統合しようとした。verification flow を採用した
@@ -118,47 +106,50 @@ repo (docs/verification/) では、統合の precondition として計画が要�
 
 計画を skip したい例外時は /permissions で本 hook を一時 deny にする。
 EOF
-  exit 2
-fi
+    exit 2
+  fi
 
-ROWS="$(vplan_row_count "$PLAN")"
-if [ "$ROWS" = 0 ]; then
-  cat >&2 <<EOF
+  ROWS="$(vplan_row_count "$PLAN")"
+  if [ "$ROWS" = 0 ]; then
+    cat >&2 <<EOF
 project-bootstrap: blocking merge of "$BRANCH" — verification plan has no test cases.
 
 計画ファイル ($PLAN) は在るが、データ行 (STATUS | kind | behaviour | ...) が 1 つも無い。
 空の計画は「検証ゼロ」を緑に見せる儀式。検証すべき挙動を最低 1 行書く (テストしないと判断した
 ものは理由つき DROP 行で明示する — 無音で省かない)。
 EOF
-  exit 2
-fi
+    exit 2
+  fi
 
-OPEN="$(vplan_open_rows "$PLAN")"
-BAD="$(vplan_bad_drops "$PLAN")"
+  OPEN="$(vplan_open_rows "$PLAN")"
+  BAD="$(vplan_bad_drops "$PLAN")"
 
-if [ -n "$OPEN" ] || [ -n "$BAD" ]; then
-  cat >&2 <<EOF
+  if [ -n "$OPEN" ] || [ -n "$BAD" ]; then
+    cat >&2 <<EOF
 project-bootstrap: blocking merge of "$BRANCH" — verification plan is not closed.
 
 計画ファイル: $PLAN
 EOF
-  if [ -n "$OPEN" ]; then
-    echo "" >&2
-    echo "未解決の行 (TODO=未実施 / FAIL=失敗 / HUMAN=人間の実施待ち):" >&2
-    printf '  %s\n' "$OPEN" >&2
-  fi
-  if [ -n "$BAD" ]; then
-    echo "" >&2
-    echo "理由なき DROP (テストしない判断には理由が要る — 無音カット禁止):" >&2
-    printf '  %s\n' "$BAD" >&2
-  fi
-  cat >&2 <<'EOF'
+    if [ -n "$OPEN" ]; then
+      echo "" >&2
+      echo "未解決の行 (TODO=未実施 / FAIL=失敗 / HUMAN=人間の実施待ち):" >&2
+      printf '  %s\n' "$OPEN" >&2
+    fi
+    if [ -n "$BAD" ]; then
+      echo "" >&2
+      echo "理由なき DROP (テストしない判断には理由が要る — 無音カット禁止):" >&2
+      printf '  %s\n' "$BAD" >&2
+    fi
+    cat >&2 <<'EOF'
 
 対処: OPEN 行を PASS (オラクルで検証) / 理由つき DROP に解決してから統合する。
 PASS にする前に各行へ kill-question を一度問う: 「このテストが緑のまま、ユーザーが困る
 状態はありうるか?」— Yes ならオラクルが間違っている (mood の罠)。
 EOF
-  exit 2
-fi
+    exit 2
+  fi
+done < <(merge_target_branches "$CMD")
 
+# merge 対象に並列 lane の branch が無い → 根拠不在 → fail-open。
+[ "$HAS_LANE" = 0 ] && exit 0
 exit 0

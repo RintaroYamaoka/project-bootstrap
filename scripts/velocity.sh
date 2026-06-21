@@ -6,6 +6,11 @@
 # 率) の推移。倍率 (throughput) も感覚でなく数字で追う。user は複数プロジェクトを並行担当
 # するため、計測は単一 repo でなく **複数 repo 横断** で集計する。
 #
+# 限界 (採点者が 1 人の間は正直に名指しする): defect rate を測る人とレビュー帯域の律速が
+# 同一人物 (= 単一 orchestrator) なので、この数字は独立統制でなく self-report に近い (=
+# 自己採点の円環の throughput 版)。2 人目の独立した採点者が出るまでは「薄くして大丈夫」を
+# self-report として扱い過信しない。取引を否定するのでなく限界を無音にしない (③ の自己適用)。
+#
 # usage: bash scripts/velocity.sh [repo ...]   (省略時 cwd)
 #
 # 出力 (TSV, machine-greppable):

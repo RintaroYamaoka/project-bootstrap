@@ -36,6 +36,8 @@ gate は **proxy でなく行為そのもの** を信号にする (= sprint gate
 
 強制を **throughput と引き換えに意図的に緩める** 層がある。人間の全 diff 直列レビューはレビュー帯域が律速なので、一次レビューを read-only AI に移し人間は verdict + サンプルだけ読む (trust ladder Stage 2、`hooks/block-unreviewed-merge.sh`)。これは advisory への退行ではない — **客観 metric (`scripts/velocity.sh` の defect rate) で「いつ1段戻すか」を持つ管理された取引** である。計測なき緩和は盲信に戻る。
 
+ただし**採点者が 1 人 (= 単一 orchestrator) の間は、この取引の限界を正直に名指しする**: defect rate を測る人とレビュー帯域の律速が同一人物なので、独立統制でなく **self-report に近い** (= 自己採点の円環の throughput 版)。2 人目の独立した採点者が出るまでは「速くした」を self-report として扱い過信しない (= dogfood の単一 orchestrator frontier。`velocity.sh` の冒頭にも明記)。これは取引を否定するのでなく、その**限界を無音にしない** (③ の自己適用)。
+
 ## 最高レバレッジ — verification を必ず与える
 
 Production-affecting な変更 (= 外部 API write / DB write / repo push / 設定書込 / 公開サイトへの影響) を含む実装は、return / commit の前に **実体を read-back で検証** してから完了とする。これを欠くと「return value が success だが live は反映されていない」事故が起きる。
@@ -97,7 +99,7 @@ AI コーディングエージェントは放っておくと以下をやる。�
 4. **症状を隠す** — fallback / try-except / retry でバグを覆う。→ Fail-fast / 根本修正
 5. **既存パターン無視** — 新パターンを持ち込みたがる。→ 既存コードを先に読む
 6. **抽象用語に逃げる** — 「構造」「パターン」「集約」「再設計」「反転」「Bottom-up」のような語で実体不在の発言をする。→ **抽象用語を使ったら同時に具体物 (ファイル + 行番号 + 引用) を 1 つ以上添える。添えられないなら「読んでいないので発言できない」と返す**
-7. **「ない / 不可能 / 該当なし」を grep の不一致で断定する** — app code を grep して hit しない → 「機能不在」と結論する / 外部 API の error code を即座に「権限不足」「不可能」と一般化する。app code に無い ≠ 不可能 (= 設定 / 資格情報 / 外部リソース経由で可能なケースが残る)。→ **不在主張の前に、対象リソース自身への diagnostic を最低 1 回叩いてから断定する**
+7. **「ない / 不可能 / 該当なし」を grep の不一致で断定する** — app code を grep して hit しない → 「機能不在」と結論する / 外部 API の error code を即座に「権限不足」「不可能」と一般化する。app code に無い ≠ 不可能 (= 設定 / 資格情報 / 外部リソース経由で可能なケースが残る)。→ **不在主張の前に、対象リソース自身への diagnostic を最低 1 回叩いてから断定する**。外部の事実 (3rd-party の挙動 / API 仕様 / 「X は可能か」) なら、その diagnostic は **`/deep-research`** (web を多角検索し相互照合する read-only の breadth 腕、ADR 0005) — オラクルを AI の外に置く同じ原理
 8. **ルール / memory / fix を射程外まで過剰一般化する** — 一度立てた禁則を、本来除外すべき context まで適用してしまう (= 「X は NG」を文字通り全 X に適用、本来 OK だった subset まで潰す)。→ **ルールを記述するときは「射程: ~ のみ。~ は除外」を必ず添える。ルールを適用するときは射程条件を 1 文で読み返す**
 9. **共有環境を独占資源として扱う** — 同一 working tree で並走する別 Claude / 別ターミナル / IDE の WIP を `git add -A` / `git commit -a` / `git stash` で巻き込んで commit する。`git reset --hard` / `git push --force` / `git restore .` / `git clean -fd` / `git branch -D` で他人の commit / untracked を消す。→ **commit は個別 path 指定で add する / destructive git op は user 明示承認なしに実行しない / 並走するなら `git worktree add` で物理隔離する**
 
@@ -122,7 +124,7 @@ hook A (`hooks/hooks.json`) が「対応 test 不在の実装ファイル編集�
 
 **PreToolUse hook は subagent の tool 呼び出しにも発火する** (upstream `#21460` は 2026-05-29 に修正済み。2026-06-11 に実測検証: subagent の新規 source Write を TDD hook が exit 2 で blocking)。かつては発火せず「subagent は read-only 専用」だった (ADR 0001) — この回避は **ADR 0004 で撤回**。外部前提 (upstream issue) は閉じたら再検証する。
 
-帰結として本プラグインは「強制 = hook」を貫くため、**実体を書き換える作業 (Edit / Write / git commit) を subagent に委譲しない**:
+帰結として、**subagent / Workflow による mutation (Edit / Write / git commit) は禁止ではなく、隔離 worktree + 統合関所つきで公認する** (ADR 0004/0005)。強制は「誰が書いたか」ではなく統合の入口 (merge / PR) に掛かるので、方式 (= 誰が mutate するか) を縛る必要がない。ただし main session が抱える task の TDD core loop (Red→Green→Refactor) は引き続き直接回す (= 自分の作業を subagent に丸投げしない。上記「TDD は default 挙動」)。
 
 並列実装の形態は 3 つあり、**どれを選んでもよい** — 強制は方式ではなく統合の入口 (merge / PR) に掛かる:
 
@@ -338,6 +340,8 @@ user-facing bug を fix したら **同根 cohort を必ず audit する**。問
 - fix commit と同 PR に同根 cohort の SQL / grep / log scan 結果を含める
 - 「同根 N 件、内 K 件は既に自然解消、L 件は手動救済必要」を PR description に貼る
 - audit を欠くと「user が気付いた範囲だけ fix」が default になり、silent victim を放置する
+
+> この規律は決定論 hook で強制できない (= 「cohort audit を済ませたか」は確率判断)。**opt-in の確率 gate pilot** (`templates/hooks/cohort-audit-pilot.json`、ADR 0008 #2) が `Stop` prompt hook として warn-only で nudge する — default の 17 hook には入れず、誤検知率を測ってから昇格を判断する (初の非決定論 gate ゆえ慎重に)。
 
 ## 迷ったとき
 

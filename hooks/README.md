@@ -195,18 +195,60 @@ session を開いた瞬間に `scripts/doctor.sh` で project-bootstrap の採�
 
 スクリプト: [`block-merge-if-verification-unclosed.sh`](./block-merge-if-verification-unclosed.sh)
 
+### O. PreToolUse on `Edit | Write | MultiEdit` — mutation lane の worktree 隔離強制 (ADR 0005 guard 2)
+
+並列開発では各 lane は隔離 worktree で mutate する (ADR 0004/0005)。だが `block-out-of-lane-edit.sh` は `.bootstrap-lane` を持つ worktree の中でしか効かず、共有 main worktree で source を mutate する行為は素通しだった (= Workflow / subagent が隔離 worktree を使わず shared tree に書く collision に穴)。本 hook がそれを塞ぐ。
+
+**誤検知 > false negative** の方針で、全条件が揃ったときだけ `exit 2`:
+
+- (a) `docs/sprint/` 採用 (opt-in)
+- (b) **main worktree に居る** (lane worktree は `block-out-of-lane-edit.sh` が所有 → 譲る)
+- (c) **active な linked worktree lane が在る** (= 並列 mutation が物理的に存在)
+- (d) **統合操作中でない** (`MERGE_HEAD` / rebase / cherry-pick / revert — lead の conflict 解決は通す)
+- (e) 編集対象が **source 面** (docs / config / test / sprint state は通す。[`lib/source-face.sh`](./lib/source-face.sh) で判定)
+
+どれか曖昧なら fail-open。jq 非依存。
+
+スクリプト: [`block-uniso-main-edit.sh`](./block-uniso-main-edit.sh)
+
+### P. PreToolUse on `Bash` for `git worktree add` — WIP 上限の fail-closed 強制 (ADR 0005 guard 3)
+
+`.bootstrap-wip` はこれまで [`lib/resolve-wip-limit.sh`](./lib/resolve-wip-limit.sh) が checklist に**表示**するだけの値で、並列度が超えても何も block しなかった (= 強制なき宣言)。scrum の本質は WIP 制限であり、review 帯域 (= 複数 repo 共有の単一資源) を守るには lane を開く数そのものを縛る必要がある。本 hook は「並列 lane を 1 本開く行為」= `git worktree add` を信号に、既存 linked worktree が宣言 `wip_limit` に達していれば `exit 2`。
+
+- **限界 (ADR 0005)**: hook は Workflow 内部の isolation worktree 生成を観測できない (main session の Bash tool 呼び出しではないため)。縛るのは観測可能な `git worktree add` (skill / 人間 / lead が開く lane)。Workflow 内部 lane の暴走は統合の入口 (`block-unreviewed-merge.sh`: 各 lane に review 記録 + 実スイート) が review 帯域を守る最終 net
+- **fail-closed**: コマンド解析不能 ([`lib/parse-command.sh`](./lib/parse-command.sh) の契約)
+- **fail-open (根拠不在)**: 非 worktree-add / 非 git / `docs/sprint/` 未採用 (opt-in) / `.bootstrap-wip` 未宣言 or 整数として解析不能 (= 宣言した repo でだけ縛る)
+
+スクリプト: [`block-over-wip-parallel.sh`](./block-over-wip-parallel.sh)
+
+### Q. UserPromptSubmit — sprint 発火判定の早期ヒント (advisory)
+
+sprint 自動分解は SKILL.md の **advisory** (= Claude が探索結果から自分で判定して `sprint-plan` をロードする設計) だが、context から SKILL が抜ける / 長い会話で忘れられると判定そのものが走らず「全然起動しない」になる — プラグイン自身が他所で否定している「advisory は忘れられる」失敗モードそのもの。本 hook は feature 実装っぽい user prompt のときだけ、sprint 発火判定の **3 条件 checklist を毎ターン context に注入**して「判定し忘れ」を防ぐ。
+
+- **強制本体ではない**。sprint を hook で起動はできない (worktree 起動=人間、最終判定=Claude)。強制は `block-unplanned-feature-build.sh` (= 新規 source 面を作る行為を信号に fail-closed) が担う。本 hook は早期ヒント
+- 非該当 prompt では**無音** (ノイズを増やさない)。over-trigger しても reminder 1 つで安く、3 条件 gate が bug fix / 単一 file を弾くので害にならない (= false negative より false positive を許す設計)。**語彙 regex の取りこぼしはもう致命的でない** (= 行為信号の gate が最終的に必ず捕まえる)
+
+スクリプト: [`sprint-trigger-reminder.sh`](./sprint-trigger-reminder.sh)
+
 ## 発火順
+
+全 17 hook を `hooks.json` の結線順に列挙する (= 実際の発火順、可視化のための正本)。
 
 **SessionStart**:
 
-1. `bootstrap-session-doctor.sh` — 採用状態を audit し unadopted/partial のとき可視化
+1. `bootstrap-session-doctor.sh` — 採用状態 + repo drift + 未判断 trunk 変更を可視化
+
+**UserPromptSubmit**:
+
+1. `sprint-trigger-reminder.sh` — feature prompt のとき sprint 発火判定 3 条件を context 注入 (advisory 早期ヒント)
 
 **PreToolUse on `Edit | Write | MultiEdit`**:
 
 1. `block-out-of-lane-edit.sh`         — 並列 lane 外編集を block
-2. `block-unplanned-feature-build.sh`  — 新規 source 面を sprint 判定なしで作るのを block (opt-in)
-3. `block-cross-layer-import.sh`       — 依存方向違反 import を早期 block
-4. `require-test-companion.sh`         — 対応 test なき実装編集を block
+2. `block-uniso-main-edit.sh`          — active lane 中の main tree 未隔離 source 編集を block (ADR 0005 guard 2)
+3. `block-unplanned-feature-build.sh`  — 新規 source 面を sprint 判定なしで作るのを block (opt-in)
+4. `block-cross-layer-import.sh`       — 依存方向違反 import を早期 block
+5. `require-test-companion.sh`         — 対応 test なき実装編集を block
 
 **PreToolUse on `Bash`**:
 
@@ -214,11 +256,12 @@ session を開いた瞬間に `scripts/doctor.sh` で project-bootstrap の採�
 2. `block-dangerous-git-ops.sh`     — 他人の作業を消す op を block
 3. `block-cross-claude-wip.sh`      — commit 直前に巻き込み check (`--amend` 含む)
 4. `block-push-to-protected.sh`     — 宣言 branch への直接 push を block (opt-in)
-5. `block-unreviewed-merge.sh`      — レビュー記録なき並列 lane branch (board task / worktree) の merge を block (opt-in)
-6. `block-merge-if-verification-unclosed.sh` — verification plan が閉じていない lane branch の merge を block (opt-in)
-7. `block-arch-violations.sh`       — commit 時に依存方向を権威検証
-8. `block-commit-if-lint-fails.sh`  — commit 時に lint を回す
-9. `block-commit-if-tests-fail.sh`  — 最後に test を回す
+5. `block-over-wip-parallel.sh`     — `wip_limit` 超過の `git worktree add` を block (ADR 0005 guard 3, opt-in)
+6. `block-unreviewed-merge.sh`      — レビュー記録なき並列 lane branch (board task / worktree) の merge を block (opt-in)
+7. `block-merge-if-verification-unclosed.sh` — verification plan が閉じていない lane branch の merge を block (opt-in)
+8. `block-arch-violations.sh`       — commit 時に依存方向を権威検証
+9. `block-commit-if-lint-fails.sh`  — commit 時に lint を回す
+10. `block-commit-if-tests-fail.sh` — 最後に test を回す
 
 block 系を test 実行より前に置くのは、test 実行が成功しても巻き込んだ commit / 契約違反は事故源だから。
 
@@ -230,6 +273,33 @@ block 系を test 実行より前に置くのは、test 実行が成功しても
 - 全体: `.claude/settings.json` で hook を override
 
 bypass は **規律を壊す**。bypass する前に「なぜそれが必要なのか」を 1 文で説明できるか確認する。説明できないなら bypass せず別経路を選ぶ (= 個別 add に書き換える / `--force-with-lease` に変える / 等)。
+
+## opt-in pilot: cohort-audit (確率 gate、ADR 0008 #2)
+
+**default の 17 hook には含まれない実験的 opt-in。** これは本プラグイン初の**非決定論 (確率) gate** で、現状 advisory のままの「完遂責任 — bug fix と同 PR で同根 cohort audit」(SKILL.md) を gate 化する試み。
+
+- **形態**: `Stop` イベントの **prompt hook** (`type: "prompt"`)。各ターン終了時に Haiku が `$ARGUMENTS` を評価し `{"ok": bool, "reason": str}` を返す。
+- **warn-only (block しない)**: `Stop` で `ok:false` のとき reason が **Claude に戻り作業を継続**する (= deny でなく nudge)。「cohort audit を忘れたかも」を促すだけで止めない。
+- **cry-wolf 抑制**: prompt は「user-facing bug fix かつ cohort audit 不在のときだけ `ok:false` / feature・refactor・docs・test・config・不確実は `ok:true`」。誤検知は guard を無効化する (`docs/incidents/2026-05-29`) ので false negative 寄りに倒す。
+- **なぜ default にしないか**: 確率 gate を全 consumer に毎ターン強制するのは pilot でなく full rollout。opt-in で blast radius を絞り、誤検知率を実運用で観測してから default 昇格を判断する (ADR 0008 条件 b)。
+- **CI でテストできない** (モデルを呼ぶため `tests/hooks/` の射程外)。安全網は実運用の手動観測 — `scripts/velocity.sh` の defect-rate と並べ、誤検知が多ければ撤回する。
+
+**有効化** (opt-in): [`templates/hooks/cohort-audit-pilot.json`](../templates/hooks/cohort-audit-pilot.json) の `hooks` ブロックを settings ファイル (`.claude/settings.json` 等) にコピーする。無効化はそのブロックを消すだけ。`disableAllHooks` 下では他の hook 同様効かない。
+
+## Claude Code 契約への依存 (harness contract)
+
+これらの hook は Claude Code が PreToolUse / SessionStart で渡す **payload JSON の key 名**に依存する。Anthropic が key を rename / 削除すると、依存する gate の挙動が変わる — **変わり方は gate ごとに違う**ので明示しておく (= 隠れた外部前提を可視化する。move ③ を CC 契約そのものに適用)。
+
+| 依存 key | event | 依存する gate | rename されたときの挙動 |
+|---|---|---|---|
+| `tool_input.command` | PreToolUse `Bash` | 全 Bash gate ([`lib/parse-command.sh`](./lib/parse-command.sh) 経由) | **fail-closed (安全側)**: `parse_command` が rc≠0 → 各 hook が `exit 2`。全 Bash が止まるので**無音にならず即発覚**する |
+| `tool_input.file_path` / `path` | PreToolUse `Edit\|Write\|MultiEdit` | `require-test-companion` / `block-cross-layer-import` / `block-uniso-main-edit` | **fail-open (要注意)**: 直 grep が空 → `[ -z "$FILE" ] && exit 0` で素通し = **無音バイパス** |
+| `transcript_path` | PreToolUse `Bash` (`git commit`) | `block-cross-claude-wip` | **fail-open**: transcript を読めず巻き込み check が素通し (warning は出る) |
+| `cwd` | SessionStart | `bootstrap-session-doctor` | PWD に fallback (doctor の可視化が劣化するだけ) |
+
+**CC をアップグレードしたら再検証する** (= 外部前提は閉じたら再検証、ADR 0004 の原則)。とくに fail-open の 2 key (`file_path` / `transcript_path`) が現行 [docs](https://code.claude.com/docs/en/hooks) と一致するかを確認する。`tests/hooks/*.test.bash` は**期待スキーマ**を pin する (= 期待 key で parse できることを保証) が、合成入力ゆえ**実ハーネスの変更そのものは検出できない** — そこは本表 + アップグレード時の手動再検証が担う。
+
+**なぜ runtime で自動警告 (doctor の 4 軸目) を足さないか**: SessionStart で「key が rename されたか」を自動判定しようとすると、rename と「その surface では元々その key が無い」を区別できない (= 本 repo の test fixture 自体が `transcript_path` を持たない正当な SessionStart payload。surface ごとに差がある)。区別できない自動警告は**誤検知で gate 不信を生む** (cry-wolf。`docs/incidents/2026-05-29-cross-wip-bash-false-positive` が「cry-wolf は guard を無効化する」と記録)。だから自動 advisory を足さず、依存を**本表で明示**して人間のアップグレード再検証に委ねる方を選ぶ (= 強制できない判断を advisory に逃さず、可視化に留める ①②の境界)。
 
 ## 公式 docs
 
