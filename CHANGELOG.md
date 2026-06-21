@@ -7,6 +7,18 @@
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-06-21
+
+### Added
+
+- **SessionStart doctor が「未判断の trunk 変更」を可視化 (`hooks/lib/verification-drift.sh` 新設 + `bootstrap-session-doctor.sh` に第3 audit 軸を追加、ADR 0007 Amendment)**。dogfood で表面化した穴: ADR 0007 の verification gate は **lane branch の merge** を信号にするため、branch を切らず trunk を直接いじる**逐次変更は gate を一切通らず**、動作テストの要否判断が**無音で省かれた** (「プラグインで変更したのに verification を何も言って来ない」)。原則「要否判断を無音で省かない」と関所の配置 (lane merge 一経路) の**カバレッジ差** — memory `feedback_gate_distribution_coverage`「関所は全方式が必ず通る行為に置く」の逐次版。ADR 0007 は射程の境界で「逐次は doctor (可視化) が担う」と書いたが、その doctor 側が**未実装**だった。本リリースがその半分を実装する。
+  - **判定**: `docs/verification/` 採用済み repo で、current branch に source-face 変更 (未コミット ∪ main remote-tracking ref より先行する commit) があるのに verification 判断が記録されていない (plan 不在/空) とき、advisory を SessionStart context に注入する。source 面判定は `is_source_path` (source-face.sh)、main ref 解決と offline 比較は `drift_main_ref` (repo-drift.sh)、plan 判定は `vplan_*` (verification-plan.sh) を再利用。
+  - **可視化であって強制ではない** (merge gate のような fail-closed block にしない)。「ある変更に動作テストが要るか」は既約な判断 (ADR 0001 の残余) だが「要否判断すら記録していない」は FACT として surface できる (ADR 0003 の doctrine)。記録される判断は理由つき DROP だけでも良い — 強制するのは「テストを書くこと」でなく「判断を無音で省かないこと」。doctrine の 4 設計判断は 5 にしない (② 信号選び / ③ 配備の可視化 の適用)。
+  - **opt-in** (`docs/verification/` 不在なら無音) かつ **offline** (fetch せず local main ref と比較。ref 不解決の local-only repo は未コミット集合のみで判定 = fail-open に過小報告)。3 軸 (採用 / repo drift / 未判断) は独立で、いずれも無ければ無音 (advisory bloat ゼロ)。
+  - **意図的スコープ外**: ① 要否判断の**不在**だけを対象 (trunk 上で OPEN 放置された plan の closure を fail-closed に強制するのは push-time 拡張の領分 = universal 版、未実装)。② SessionStart は「開いた時点の state」を捕まえる net なので、同一 session 内で後から作った変更は次回 session まで surface されない (repo-drift と同性質。即時通知は同 engine 再利用の follow-up 余地)。
+  - **branch→plan パス導出を `hooks/lib/verification-plan.sh` の `vplan_path_for_branch` に括り出し**、merge gate と doctor が同一の信号を共有 (gate-signal drift 防止。`block-merge-if-verification-unclosed.sh` を載せ替え、挙動不変 = 既存 19 ケース緑)。
+  - `tests/hooks/verification-drift.test.bash` (engine 単体 10 ケース) + `bootstrap-session-doctor.test.bash` に注入 2 ケース + `verification-plan.test.bash` に `vplan_path_for_branch` 4 ケース。hook 数は不変 (新 lib は既存 SessionStart hook が source、新 hook entry なし)。`docs/decisions/0007-*.md` に Amendment 追記。この変更自体の verification plan を `docs/verification/main.md` に起こし bootstrap repo 自身が verification flow を採用 (dogfood)。
+
 ## [0.20.0] - 2026-06-21
 
 ### Added

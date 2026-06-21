@@ -111,4 +111,29 @@ run_hook "$HOOK" "$(session_input "$REPO")"
 assert_exit 0
 assert_stdout_contains "worktree remove"
 
+# 10. Unverified trunk change surfaces as a THIRD audit axis (independent of adoption/drift):
+#     docs/verification adopted + uncommitted source face + no plan => the nudge is injected.
+#     This is the sequential-work path the merge gate (lane-branch-only) cannot see.
+setup_repo
+mkdir -p "$REPO/docs/verification"
+git -C "$REPO" commit -q --allow-empty -m c0
+printf 'export const x = 1\n' > "$REPO/app.ts"
+RUN_DIR="$REPO"
+test_case "unverified trunk source change injects the verification-drift nudge"
+run_hook "$HOOK" "$(session_input "$REPO")"
+assert_exit 0
+assert_stdout_contains "未判断の trunk source"
+
+# 11. A recorded judgment (non-empty plan for the branch) suppresses the nudge => silent.
+setup_repo
+mkdir -p "$REPO/docs/verification"
+git -C "$REPO" commit -q --allow-empty -m c0
+printf 'export const x = 1\n' > "$REPO/app.ts"
+printf 'DROP | unit | trivial | n/a | ai | internal, low risk\n' > "$REPO/docs/verification/main.md"
+RUN_DIR="$REPO"
+test_case "recorded verification judgment keeps the doctor silent"
+run_hook "$HOOK" "$(session_input "$REPO")"
+assert_exit 0
+assert_stdout_empty
+
 finish

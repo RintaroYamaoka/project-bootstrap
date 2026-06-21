@@ -28,12 +28,26 @@
 #     a reason counts as unjustified (no silent caps — every dropped case is logged).
 #
 # Contract (no stdout pollution beyond the documented echoes; pure bash, BSD-safe):
+#   vplan_path_for_branch <dir> <branch>
+#                                -> echoes the plan path for <branch> under <dir>
+#                                   (docs/verification/<branch _-mapped>.md), or "" if
+#                                   <branch> is empty. Single authority for the mapping so
+#                                   the merge gate and the doctor can't drift on it.
 #   vplan_row_status <line>      -> echoes UPPERCASE status, or "" if not a data row
 #   vplan_is_open <line>         -> rc 0 if the row is OPEN (blocks integration)
 #   vplan_field <line> <n>       -> echoes the nth pipe field, trimmed
 #   vplan_row_count <file>       -> echoes integer count of data rows
 #   vplan_open_rows <file>       -> echoes each OPEN data row (trimmed), one per line
 #   vplan_bad_drops <file>       -> echoes each DROP row missing a reason (trimmed)
+
+# vplan_path_for_branch — see header. Maps a branch name to its plan file. The same
+# derivation the merge gate used inline; factored out so the doctor reuses it verbatim
+# (gate-signal drift is the silent-bypass class this repo treats as a first-class bug).
+vplan_path_for_branch() {
+  local dir="$1" branch="$2"
+  [ -n "$branch" ] || return 0
+  printf '%s/docs/verification/%s.md' "$dir" "$(printf '%s' "$branch" | tr '/' '_')"
+}
 
 # _vplan_trim — strip leading/trailing whitespace (pure bash, no sed).
 _vplan_trim() {

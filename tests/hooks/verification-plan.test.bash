@@ -73,5 +73,16 @@ assert_eq 0 "$(vplan_row_count "/no/such/file")"
 test_case "missing file: no open rows"
 assert_eq 0 "$(vplan_open_rows "/no/such/file" | grep -c .)"
 
+# --- vplan_path_for_branch: single authority for branch -> plan path (shared by the
+#     merge gate AND the SessionStart doctor so the two surfaces can't drift). ---
+test_case "plan path maps a slashed branch to an underscored filename"
+assert_eq "/tmp/r/docs/verification/feat_x.md" "$(vplan_path_for_branch /tmp/r feat/x)"
+test_case "plan path for a flat branch name"
+assert_eq "/tmp/r/docs/verification/main.md" "$(vplan_path_for_branch /tmp/r main)"
+test_case "plan path collapses every slash (nested branch)"
+assert_eq "/tmp/r/docs/verification/feat_foo_bar.md" "$(vplan_path_for_branch /tmp/r feat/foo/bar)"
+test_case "empty branch yields empty path (caller detects)"
+assert_eq "" "$(vplan_path_for_branch /tmp/r '')"
+
 rm -f "$PLAN" "$PLAN2"
 finish

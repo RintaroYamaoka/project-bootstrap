@@ -13,10 +13,12 @@
 #   - plugin が在る session でしか発火しない (= plugin 不在で vendored hook だけの repo は救えない)。
 #     その穴は CI template (templates/ci/bootstrap-doctor.yml) が plugin 非依存で塞ぐ。
 #   - 注入するのは actionable な状態だけ: 採用 audit は unadopted = 導入を聞く / partial = 穴を警告、
-#     repo drift audit は stale-vs-main / merge 済み worktree 残骸が在るときだけ。両方無ければ無音
-#     (= advisory bloat を増やさない)。
-#   - 採用 audit と drift audit は独立 — 採用が ok でも drift は出す (= 別軸の可視化。stale checkout
-#     と lane 撤去漏れは採用状態と無関係に session を蝕む)。判定エンジンは lib/repo-drift.sh。
+#     repo drift audit は stale-vs-main / merge 済み worktree 残骸が在るときだけ、verification drift
+#     audit は逐次 trunk 変更に動作テストの要否判断が無いときだけ。3 軸とも無ければ無音 (= advisory
+#     bloat を増やさない)。
+#   - 3 軸は独立 — 採用が ok でも drift は出す (= 別軸の可視化。stale checkout・lane 撤去漏れ・未判断の
+#     trunk 変更は採用状態と無関係に session を蝕む)。判定エンジンは lib/repo-drift.sh と
+#     lib/verification-drift.sh (後者は merge gate が捕まえない逐次経路を ADR 0007 の委任どおり可視化)。
 
 set -u
 
@@ -41,19 +43,28 @@ esac
 . "$DIR/lib/repo-drift.sh"
 DRIFT=$(drift_report "$CWD" 2>/dev/null)
 
-# どちらも無ければ無音で終わる。
-[ -z "$ADOPT" ] && [ -z "$DRIFT" ] && exit 0
+# (3) verification drift audit — 逐次 trunk 変更に動作テストの要否判断が記録されていない無音状態を
+#     可視化。merge gate (block-merge-if-verification-unclosed) は lane branch の merge しか信号に
+#     しないので branch を切らない逐次作業はその射程外 (ADR 0007 が doctor に委ねた半分)。採用
+#     (docs/verification/) していなければ空 (無音)。判定エンジンは lib/verification-drift.sh。
+# shellcheck source=lib/verification-drift.sh
+. "$DIR/lib/verification-drift.sh"
+VDRIFT=$(verification_drift_report "$CWD" 2>/dev/null)
 
-# 本文を組む (両方在れば空行で繋ぐ)。
-BODY="$ADOPT"
-if [ -n "$DRIFT" ]; then
+# 3 軸とも無ければ無音で終わる。
+[ -z "$ADOPT" ] && [ -z "$DRIFT" ] && [ -z "$VDRIFT" ] && exit 0
+
+# 本文を組む (在る軸を空行で繋ぐ — 軸どうしは独立なので順に append)。
+BODY=""
+for part in "$ADOPT" "$DRIFT" "$VDRIFT"; do
+  [ -n "$part" ] || continue
   if [ -n "$BODY" ]; then
     BODY="$BODY
-$DRIFT"
+$part"
   else
-    BODY="$DRIFT"
+    BODY="$part"
   fi
-fi
+done
 
 # 本文を JSON 文字列に pure-bash で escape (jq 非依存): \ → \\、" → \"、改行 → \n。
 ESC="$BODY"

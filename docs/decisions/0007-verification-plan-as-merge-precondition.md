@@ -57,7 +57,7 @@ doctrine の 4 設計判断への写像 (新軸でなく既存判断をテスト
 
 ### 悪い影響 / トレードオフ
 
-- **射程の境界**: gate は統合 (lane branch の merge) を信号にするので、branch を切らない逐次作業は捕まえない。そこは `verification` skill (plan 時の precondition) と doctor (可視化) が担う。trunk への全変更を縛る universal 版は push-to-protected への拡張余地 (本 ADR では未実装)。
+- **射程の境界**: gate は統合 (lane branch の merge) を信号にするので、branch を切らない逐次作業は捕まえない。そこは `verification` skill (plan 時の precondition) と doctor (可視化) が担う。**doctor (可視化) の半分は当初未実装だったが Amendment (2026-06-21) で実装した** — 下記参照。trunk への全変更を *fail-closed で* 縛る universal 版 (push-to-protected 拡張) は依然として拡張余地 (未実装)。
 - **PR 経路**: 手元 hook は GitHub PR 画面の merge を通らない (review gate と同じ穴)。`templates/ci/bootstrap-verification-gate.yml` が plugin 非依存・self-contained な CI net として全 PR に閉じた計画を要求する (lib の semantics をインラインで再現)。
 - 未知の未知 (層2) は plan に原理的に載らない。そこは実アウトカム計器 (本番モニタ) のまま — mood の PR#305 アラートがその例。
 - plan 自体に穴 (AI が跨いだと気づかなかった境界) は残る。完全でない。が「何も知らず統合する」より桁違いにマシ。
@@ -67,3 +67,21 @@ doctrine の 4 設計判断への写像 (新軸でなく既存判断をテスト
 
 - plan の ephemeral lifecycle を `integrate` skill が所有する (統合後に閉じた plan を archive。board/worktree 撤去と同じ終端責務 — memory「ephemeral state は活性で読み終端処理を所有 skill の責務に」)。
 - 新しい opt-in 機能を足したら doctor の vendored-coverage マッピングを更新する (require-test-companion の allowlist と同じ保守点)。
+
+---
+
+## Amendment (2026-06-21) — doctor が逐次経路の「未判断」を可視化する
+
+**動機**: 本 ADR は射程の境界 (上記) で「逐次作業は doctor (可視化) が担う」と書いたが、その doctor 側は当初**未実装**だった。結果、`docs/verification/` を採用した repo でも、lane branch を切らずに trunk を直接いじる逐次変更は merge gate (lane merge が信号) を一切通らず、動作テストの要否判断が**無音で省かれた** (dogfood で表面化: 「プラグインで変更したのに verification を何も言って来ない」)。これは原則「要否判断を無音で省かない」と関所の配置 (lane merge 一経路のみ) の**カバレッジ差** — memory `feedback_gate_distribution_coverage`「関所は全方式が必ず通る行為に置く」の逐次版。
+
+**決定 (本 ADR の ② 信号選び / ③ 配備の可視化 の適用、新軸ではない)**: SessionStart doctor に第3の audit 軸を足す。`docs/verification/` 採用済み repo で、current branch に source-face 変更 (未コミット ∪ main remote-tracking ref より先行する commit) があるのに verification 判断が記録されていない (plan 不在/空) とき、advisory を SessionStart context に注入する。判定エンジンは新 lib `hooks/lib/verification-drift.sh`。branch→plan パス導出は `verification-plan.sh` の `vplan_path_for_branch` に括り出し、merge gate と doctor が同一の信号を共有する (gate-signal drift 防止)。
+
+**信号と fail-mode**:
+- **可視化であって強制ではない** (merge gate のような fail-closed block にしない)。「ある変更に動作テストが要るか」は既約な判断 (ADR 0001 の残余) だが「要否判断すら記録していない」は FACT として surface できる (ADR 0003 の doctrine)。記録される判断は理由つき DROP だけでも良い — 強制するのは「テストを書くこと」でなく「判断を無音で省かないこと」。
+- **opt-in** (`docs/verification/` 不在なら無音) かつ **offline** (fetch せず local main ref と比較。ref 不解決の local-only repo は未コミット集合のみで判定 = fail-open に過小報告)。repo-drift と同じ沈黙基準で advisory bloat を増やさない。
+
+**残す穴 (意図的スコープ外)**:
+- **要否判断の不在**だけを対象。trunk 上で OPEN のまま放置された plan の closure は捕まえない (merge gate が無い trunk 経路でクローズを fail-closed に強制するのは push-time 拡張の領分 = 上記 universal 版、未実装)。non-empty plan が在れば「判断は進行中」とみなし無音。
+- **SessionStart は「開いた時点の state」を捕まえる net**。session を開いた後に同一 session 内で作った変更は次回 session まで surface されない (repo-drift と同性質)。同一 session 内の即時通知 (commit-time / prompt-time advisory) は同じ engine を再利用する follow-up 余地。
+
+**検証**: `tests/hooks/verification-drift.test.bash` (engine 単体) + `bootstrap-session-doctor.test.bash` (注入の統合) + `verification-plan.test.bash` (`vplan_path_for_branch`)。この変更自体の verification plan は `docs/verification/main.md` (dogfood)。

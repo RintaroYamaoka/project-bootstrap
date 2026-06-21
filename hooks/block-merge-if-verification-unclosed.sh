@@ -103,7 +103,7 @@ done
 
 # shellcheck source=lib/verification-plan.sh
 . "$(dirname "$0")/lib/verification-plan.sh"
-PLAN="$TOP/docs/verification/$(printf '%s' "$BRANCH" | tr '/' '_').md"
+PLAN="$(vplan_path_for_branch "$TOP" "$BRANCH")"
 
 if [ ! -s "$PLAN" ]; then
   cat >&2 <<EOF
