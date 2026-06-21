@@ -7,6 +7,12 @@
 
 ## [Unreleased]
 
+## [0.22.1] - 2026-06-22
+
+### Changed
+
+- **`skills/project-bootstrap/SKILL.md` に「16 並列の各レーンで自動なのは TDD だけ」の明確化を追加**。ultracode 全開 (`/effort ultracode`) 時、各レーンが自動で規律を保つのは **TDD のみ** (`require-test-companion` が subagent の Edit/Write にも発火 — ADR 0004)。**worktree 隔離・依存順・レビュー/検証は「自動」でなく「Claude が書くワークフローの質 + 統合関所」依存**、という区別を明文化した (spawn 時点で hook は内部を観測できない — ADR 0005 — ので 16 並列の安全は統合の入口 guard 1/2/3 が全面的に担う)。保証つきの規律が要るなら `sprint-plan`→`integrate`、最速で雑が許せるなら生 ultracode、どちらでも TDD は各レーンに届く。ADR 0005/0006 の既存記述を、よくある誤解 (「各レーンが規律の取れた状態で最速」) の根治として補強。
+
 ## [0.22.0] - 2026-06-22
 
 ### Fixed

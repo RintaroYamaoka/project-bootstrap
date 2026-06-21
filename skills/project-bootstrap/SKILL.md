@@ -154,6 +154,17 @@ hook A (`hooks/hooks.json`) が「対応 test 不在の実装ファイル編集�
 - **agent 判定のレビューは実検証を代替しない**。`block-unreviewed-merge.sh` は `verdict: approve` を確認後、検出したテストスイートを関所自身が回し fail なら block する (自由文の証拠行を信じない)。`.bootstrap-wip` は guard 3 (`block-over-wip-parallel.sh`) が `git worktree add` で実強制 (従来は表示のみ)。
 - mutation を伴う Workflow lane は `isolation:'worktree'` で走らせ、worktree は merge の**後**に撤去する (先に撤去すると関所信号が消える)。breadth ファンアウトは worktree 不要。隔離せず active lane 中に main tree で source を mutate すると `block-uniso-main-edit.sh` (guard 2) が block する (統合操作中の conflict 解決は通す)。
 
+#### 各レーンで「自動で効く規律」と「条件つきの規律」を混同しない
+
+ultracode を全開 (`/effort ultracode`) にすると各タスクが最大 `min(16, cores-2)` 並列のレーンにファンアウトする。だが「**各レーンが自動で規律を保つ**」は誤読 — 自動なのは 1 つだけ:
+
+- **自動で各レーンに届く = TDD のみ**。`require-test-companion` は subagent の Edit/Write にも発火する (ADR 0004 実測) ので、test なき実装は各レーンで構造的に不可能。
+- **"自動"でなく「良いワークフロー + 統合関所」依存 = 隔離・依存順・レビュー**:
+    - **worktree 隔離**は spawn 時に強制できない (Claude が書くワークフローが `isolation:'worktree'` を使うか次第。使わず shared tree に書けば衝突しうる)
+    - **依存順**は ultracode が sprint-plan を経由せず自前でワークフローを書くので、共有 spine を先に直列化するかはスクリプトの良し悪し次第 (自動保証なし)
+    - **レビュー・検証**は spawn では効かず、merge の関所 (guard 1) が唯一の網
+- 帰結: **spawn 時点で hook は内部を観測できない (ADR 0005) ため、16 並列の安全は統合の入口 (guard 1/2/3) が全面的に担う** — だからその関所の健全性が前提 (例: 複合 `git merge` の素通しは事故源)。よって **保証つきの規律が要るなら `sprint-plan`→`integrate`** (隔離・spine・関所を構造で保証)、**最速で雑が許せるなら生 ultracode** (Claude がその場で構造を書き、関所が網)。どちらでも TDD は各レーンに届く。
+
 ## バグは根本を修正する
 
 1. **Red**: バグを再現する failing test を書く (= 回帰テスト)
