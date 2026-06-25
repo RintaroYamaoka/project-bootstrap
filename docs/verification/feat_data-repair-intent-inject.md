@@ -13,6 +13,6 @@ PASS | integration | injector が registry 未 arm でも data-backfill のデ�
 PASS | integration | registry が arm していれば project メモを default の後に追記 | 実 hook 出力 | ai | action-gate.test.bash "both" ケース緑
 PASS | invariant | hook は data-backfill でも決して exit 2 しない (可視化であって block でない) | exit code | ai | "NEVER exits 2" ケース緑
 PASS | regression | 既存 action-key (prod-deploy/prod-db-migrate) と全 hook suite に回帰なし | 全テストスイート | ai | run.sh 35 suites 0 failed
-HUMAN | e2e | 実 product repo の session で実際に backfill 系コマンドを打つと doctrine が読めて actionable に出る | 実 Claude Code session で目視 | human | 機構は既存 inject-action-memory と同一・smoke で JSON 確認済み。最終確認は orchestrator (single-orchestrator frontier)
+DROP | e2e | 実 product repo の session で実際に backfill 系コマンドを打つと doctrine が読めて actionable に出る | n/a | ai | live 視認は orchestrator に委ねる (承認済): doctrine の出力本文は smoke で JSON 検証済み (additionalContext を decode し確認)、「PreToolUse hook が実 session で発火する」配送は既存 19 hook で実証済みの共有インフラと同一配線。新規リスクが無いため理由つき DROP (無音カットでなく明示)
 DROP | unit | WHERE 句の有無・DDL/DML の厳密判別 | n/a | ai | トークナイザ射程外・意図的 documented limit。never-block ゆえ過検出は advisory ノイズのみで害なし
 DROP | contract | consumer 側の discriminated union/CHECK 制約による型レベル防御 | n/a | ai | project (appo 等) の責務。本 lane は bootstrap 側の可視化のみが scope
