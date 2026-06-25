@@ -7,6 +7,18 @@
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-06-25
+
+appo-followup の incident 群から抽出した bootstrap 側欠陥 backlog の残り 4 件 (D1-D4) を、sprint flow 自体を dogfood して実装・統合 (sprint-plan で 3 disjoint lane に分解 → 隔離 worktree で並列 TDD → adversarial AI レビュー → integrate)。default hook 数は 17 → **19**。
+
+### Added
+
+- **D1 / trunk 鮮度 gate (`hooks/block-stale-write-to-protected.sh`, ADR 0009)**。stale checkout から trunk へ直 push する事故 (prod migration が 24-commit 遅れの tree から走った 2026-06-16、rebase が deploy commit を落とした事例) を、push の瞬間に **timeout 付き fetch + behind 判定**で塞ぐ。信号は `.bootstrap-protected` でなく `repo-drift.sh` の `drift_main_ref` が解決する **trunk branch** — `block-push-to-protected` (PR フロー強制) とは直交 (こちらは鮮度強制)。新エンジン `fetched_behind_count` を `repo-drift.sh` に追加 (online 鮮度の単一権威、offline doctor は不変)。fail-open: 非push / offline・fetch 失敗 / trunk 非該当 / behind==0。任意の本番スクリプトは決定的痕跡が無いため非対象 (SessionStart advisory に残す、ADR 0009 に明記)。根拠 incident 2 件を `docs/incidents/` に起票。
+- **D2 / 再発 action での memory 注入 (`hooks/inject-action-memory.sh` + `hooks/lib/action-gate.sh`, ADR 0010)**。memory に解決策があるのに同じ事故を繰り返す問題 (deploy-author bug が 7 回再発) に対し、**block せず** (exit 2 しない) repeat-prone action の直前に該当 memory を additionalContext 注入する。matcher は共有 tokenizer + plugin 所有の controlled-vocab action-key enum (per-entry 正規表現を持たない = string-proxy 回避)。registry は opt-in (`.bootstrap-actions`、`templates/bootstrap-actions.example`)、TTL は安全側、`doctor.sh` が registry の orphan を surface。
+- **D3 / cross-repo 契約 drift gate (`hooks/lib/cross-repo-contract.sh` + `block-merge-if-verification-unclosed.sh` 拡張, ADR 0011)**。sibling repo と暗黙共有する schema/値域がズレて全 CV 拒否 / silent no-op になる事故に対し、契約面を `docs/verification/contracts` で宣言し、**lane branch の delta** (cwd/HEAD でなく merge-base base..lane) が契約面に触れたら、その契約の **`[contract:<id>]` アンカー tag つき closed 行**を要求し、**consumer 側テストを実行**して赤なら block (自由文 PASS で閉じさせない、自動不能は HUMAN)。consumer 側のみ (sibling を diff しない = sibling 不在マシンで誤発火しない)。契約 id 照合は当初 raw substring (`booking` が `booking-payload` で誤 close する穴) だったが、レビューで検出しアンカー tag 照合に修正。
+- **D4 / 非同期・silent-skip の verification doctrine (ADR 0007 amend)**。read-back doctrine は同期前提だったため、cron の無音 skip (リマインダ未送) や heartbeat 生存下の queue 停止が射程外だった。`skills/verification/SKILL.md` に第 5 の継ぎ目 (filters/skips/drops に観測信号なし) と `kind=monitor` の外部オラクル行を追加、Step-6 を必須化。`verification-plan.sh` に `kind=async` 語彙 + `vplan_has_kind`、`verification-drift.sh` に doctor 分岐 (async 行ありで monitor 行なし → advisory)。**controlled-vocab の kind 欄だけをキーにし prose を走査しない** (DROP 行の 'drop' で誤発火した過去を踏まえる)。
+- **hook 台帳を 17 → 19 に更新** (`plugin.json` / `marketplace.json` / `README.md` / `hooks/README.md`、ledger drift 解消)。
+
 ## [0.23.0] - 2026-06-25
 
 ### Fixed
