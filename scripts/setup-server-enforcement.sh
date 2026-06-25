@@ -77,6 +77,14 @@ gh api -X PUT "repos/$REPO/branches/$BRANCH/protection" \
 JSON
 echo "  ✓ branch protection applied (enforce_admins=true — the orchestrator can't bypass; PR required, 0 human approvals so a solo dev isn't locked out)."
 
+# Belt-and-suspenders: the full-protection PUT has been observed to keep only the first
+# context in some cases. Assert the required contexts explicitly via the dedicated endpoint.
+gh api -X PATCH "repos/$REPO/branches/$BRANCH/protection/required_status_checks" \
+  --input - >/dev/null <<JSON
+{ "strict": true, "contexts": ["$CHECK_CONTEXT", "$EXTRA_CONTEXT"] }
+JSON
+echo "  ✓ required checks asserted: $(gh api "repos/$REPO/branches/$BRANCH/protection/required_status_checks" -q '.contexts | join(", ")')"
+
 # --- (opt-in) merge queue ------------------------------------------------------------------
 if [ "$WANT_QUEUE" = 1 ]; then
   echo "→ enabling merge queue (re-validate each PR against latest $BRANCH — catches stale-lane breakage, 穴 3)…"
