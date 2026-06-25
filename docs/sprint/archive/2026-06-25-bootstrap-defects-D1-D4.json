@@ -18,7 +18,7 @@
       "branch": "feat/D1-stale-write-protected-gate",
       "worktree": "../wt-D1-stale",
       "depends_on": [],
-      "status": "todo",
+      "status": "done",
       "claimed_by": null
     },
     {
@@ -36,7 +36,7 @@
       "branch": "feat/D2-action-inject",
       "worktree": "../wt-D2-inject",
       "depends_on": [],
-      "status": "todo",
+      "status": "done",
       "claimed_by": null
     },
     {
@@ -58,7 +58,7 @@
       "branch": "feat/D3D4-verification-contract-async",
       "worktree": "../wt-D3D4-verif",
       "depends_on": [],
-      "status": "todo",
+      "status": "done",
       "claimed_by": null
     }
   ]
