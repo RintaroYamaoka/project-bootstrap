@@ -1,0 +1,44 @@
+# .bootstrap-actions — arm a recorded memo to surface AT a repeat-prone action (project-bootstrap)
+#
+# WHY this file exists: a fix already documented in memory does no good if it is never in
+# front of the actor at the moment the action runs. A deploy-author bug recurred ~7 times
+# despite a memory documenting the exact fix, because the memo was never surfaced when the
+# prod deploy ran. Arming an action here makes inject-action-memory.sh (PreToolUse on Bash)
+# inject that memo as advisory context right before the matched action executes.
+#
+# This is OPT-IN: copy this file to your repo ROOT as `.bootstrap-actions`. With no file,
+# the injector is completely silent (non-adopting repos are never disturbed). It NEVER blocks
+# and NEVER acks — it only injects context; reading and applying the fix stays your job (an
+# ack token would be self-issuable by the very actor being gated, so it is not used — ADR 0010).
+#
+# FORMAT — one armed action per line, three pipe-separated fields:
+#
+#   <action-key> | <memory-slug-or-path> | <note>
+#
+#   <action-key>        MUST be one of the plugin's CLOSED, reviewed enum keys (below). You
+#                       pick a key from the enum — you do NOT write a match pattern. The
+#                       matcher is shared plugin code (hooks/lib/action-gate.sh): it tokenizes
+#                       the command (strips FOO=bar env-prefixes, accepts path-prefixed bins
+#                       and npx / bash -c wrappers, walks compound segments) and maps it to a
+#                       key. Per-line user regex is deliberately NOT supported — it would
+#                       re-import the unreviewed greedy-match / string-proxy bug class.
+#   <memory-slug-or-path>  the memory entry holding the fix, e.g. feedback_deploy_author_fix
+#                          (or docs/incidents/2026-06-20-deploy-author/README.md). Injected
+#                          verbatim as a pointer; the hook does not read the file for you.
+#   <note>              a one-line reminder of the actual fix, surfaced inline with the slug.
+#
+# Blank lines and lines starting with `#` are ignored. Surrounding whitespace is trimmed.
+#
+# CLOSED ACTION-KEY ENUM (the only keys the matcher can ever produce — see
+# hooks/lib/action-gate.sh ACTION_KEY_ENUM). Arming a key NOT in this list is an ORPHAN:
+# the memo can never fire, and scripts/doctor.sh reports it (surfaced, never blocked). Need a
+# new action covered? That is a reviewed plugin-level enum change (add the key + a matcher
+# arm in action-gate.sh + a test), not a new pattern in this file.
+#
+#   prod-deploy       a production deploy (e.g. `vercel deploy --prod`, incl. `--production`)
+#   prod-db-migrate   a production DB migration apply (e.g. `prisma migrate deploy`)
+#
+# EXAMPLES (delete and replace with your own armed actions):
+
+prod-deploy     | feedback_deploy_author_fix | always pass --build-env DEPLOY_AUTHOR=ci before --prod
+prod-db-migrate | feedback_migrate_window    | run only inside the maintenance window; take a snapshot first
