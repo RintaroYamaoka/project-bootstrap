@@ -25,6 +25,24 @@
 # branch を切らない逐次作業は捕まえない。そこは `verification` skill (plan 時の precondition) と
 # doctor (配備可視化) が担う。trunk への全変更を縛る universal 版は push-to-protected への拡張余地。
 #
+# ── cross-repo contract drift (D3・ADR 0011・fail-CLOSED 拡張) ───────────────────────
+# 既存 plan check の後に、もう 1 軸を見る: lane branch の OWN delta (= base..lane を OFFLINE で
+# 計算 — 後述) が docs/verification/contracts で宣言された local_face_glob に当たる契約 id ごとに、
+#   (1) その id を参照する CLOSED な plan 行 (PASS / 理由つき DROP) を要求し、無ければ block。
+#   (2) consumer 側の contract test を関所自身が実走し (detect-test-suite.sh + block-unreviewed-
+#       merge.sh と同じ「関所がスイートを回す」move)、red なら block。自動で回せない時は plan 行を
+#       STATUS=HUMAN にして OPEN のまま — 人間が PASS+証拠を記録するまで free-text PASS で閉じない。
+# 背景 (incidents): sibling repo がフォームから 1 項目落としたのに zod 必須のままで CV 全 reject /
+#   3 repo の 1 つで plan 値が変わり無音 no-op。共有スキーマの宣言も cross-repo test も無かった。
+# **OFFLINE な lane delta** が肝 (critique blocker): PreToolUse merge hook 時点で HEAD = 統合先
+#   (main) なので、cwd/HEAD を見る doctor の _vd_changed_sources は空集合 = gate が発火しない。
+#   だから lib/cross-repo-contract.sh の branch_changed_sources が base..lane を見る (no fetch)。
+# **consumer 側のみ**: 関所は sibling repo を読まない / diff しない (peer は人間の手掛かり)。
+#   sibling checkout が無いマシンでも誤発火しない。下流専用変更は本 repo に lane branch を生まない
+#   = 構造的に到達不能 (governing 側 no-op。「カバー」と無音で匂わせない)。
+# fail-OPEN (no-grounds): docs/verification 未採用 / contracts 不在・契約ゼロ / delta が宣言面に
+#   当たらない / lane branch でない / sibling 未読。← 通常 merge も非対象 lane も決して妨げない。
+#
 # bypass: 例外的に必要なら /permissions で本 hook を一時 deny。
 
 set -u
@@ -85,8 +103,11 @@ is_lane_branch() {
 # 1 つでも「計画なし / 空 / 未解決」の lane branch があれば、その branch の理由で block する。
 # shellcheck source=lib/verification-plan.sh
 . "$(dirname "$0")/lib/verification-plan.sh"
+# shellcheck source=lib/cross-repo-contract.sh
+. "$(dirname "$0")/lib/cross-repo-contract.sh"
 
 HAS_LANE=0
+NEEDS_CONTRACT_SUITE=0   # set when >=1 touched contract was acknowledged (run the suite once)
 while IFS= read -r BRANCH; do
   [ -z "$BRANCH" ] && continue
   is_lane_branch "$BRANCH" || continue
@@ -148,8 +169,63 @@ PASS にする前に各行へ kill-question を一度問う: 「このテスト�
 EOF
     exit 2
   fi
+
+  # ── D3 cross-repo contract axis (ADR 0011, fail-CLOSED) — AFTER the plan checks. ──
+  # The lane's OWN delta (base..lane, OFFLINE) intersected with declared local_face globs:
+  # each touched contract id must have a CLOSED plan row that REFERENCES it. A plan that is
+  # generically "closed" (its rows are all PASS/reasoned-DROP) can still silently no-op a
+  # cross-repo break if none of those rows acknowledge the touched contract — block on that.
+  # branch_changed_sources reads refs/heads/<branch>; a phantom lane (board branch with no
+  # ref) yields the empty set → this whole axis is a no-op for it (fail-open, as designed).
+  while IFS= read -r CID; do
+    [ -n "$CID" ] || continue
+    if crc_closed_row_references_id "$PLAN" "$CID"; then
+      NEEDS_CONTRACT_SUITE=1   # acknowledged → verify by RUNNING the suite (after the loop)
+      continue
+    fi
+    cat >&2 <<EOF
+project-bootstrap: blocking merge of "$BRANCH" — cross-repo contract "$CID" touched but not closed (D3, fail-closed).
+
+この lane は docs/verification/contracts で宣言された共有 face を変更しました (契約 id: $CID)
+が、$PLAN にその契約を CLOSED にした行がありません。宣言なき共有スキーマの片側変更は無音で割れます
+(sibling がフォーム項目を落としたのに zod 必須のまま → CV 全 reject、の同類 — ADR 0011)。対処:
+  1. consumer-driven な contract テストを起こす (オラクル = 相手 repo の実出力)。verification skill
+     の「両端を握っていない境界 → 契約テスト」。plan に行を足し id を参照する: "[contract:$CID]"。
+  2. 自動で回せるなら PASS に (関所が実スイートを回して裏取りします)。回せない (相手の実出力を人間が
+     確認する) なら STATUS=HUMAN にし、人間が実出力で照合して PASS+証拠を記録する。free-text PASS
+     では閉じません — 触れた契約は実走 or 人間の照合のどちらかでしか CLOSED にできません。
+  3. テストしないと判断したなら理由つき DROP で id を参照して明示する (= 無音で省かない)。
+EOF
+    exit 2
+  done < <(crc_touched_contract_ids "$TOP" "$BRANCH")
 done < <(merge_target_branches "$CMD")
 
 # merge 対象に並列 lane の branch が無い → 根拠不在 → fail-open。
 [ "$HAS_LANE" = 0 ] && exit 0
+
+# D3: 触れた契約が acknowledged-closed だった lane が 1 つでもあれば、関所自身が consumer 側の
+# 実スイートを 1 回回して裏取りする (free-text PASS を信じない — 信号は実テストの実行結果。
+# block-unreviewed-merge.sh の ADR 0005 guard 1 と同型)。runner 未検出は fail-open: その時は
+# plan 行を STATUS=HUMAN にして人間が実出力で照合するのが正路 (HUMAN は OPEN なので既存 check が
+# block する)。検出は commit/review gate と共有エンジン (lib/detect-test-suite.sh) で drift 防止。
+if [ "$NEEDS_CONTRACT_SUITE" = 1 ]; then
+  # shellcheck source=lib/detect-test-suite.sh
+  . "$(dirname "$0")/lib/detect-test-suite.sh"
+  if SUITE="$(cd "$TOP" && detect_test_command)"; then
+    echo "project-bootstrap: running $SUITE to verify the touched cross-repo contract(s) before merge (ADR 0011)..." >&2
+    if ! ( cd "$TOP" && $SUITE ) >&2; then
+      cat >&2 <<EOF
+project-bootstrap: blocking merge — the test suite fails (D3 cross-repo contract, fail-closed).
+
+触れた cross-repo 契約を CLOSED と記録した行があるが、関所が実行した実スイート ($SUITE) が
+fail しました。契約の PASS は「相手の実出力で裏が取れた」ことを意味すべきで、緑のスイートが
+その証拠です — 落ちるスイートを free-text の PASS で踏み越えて統合することは許可しません。対処:
+  1. lane で contract テストを緑にしてから re-review し、plan の行を更新する
+  2. 相手 repo (consumer 側でなく peer 側) が先に変わったのが原因なら、両側を同時に整合させる
+     (片側 relax の無音破壊を避ける — ADR 0011)。
+EOF
+      exit 2
+    fi
+  fi
+fi
 exit 0

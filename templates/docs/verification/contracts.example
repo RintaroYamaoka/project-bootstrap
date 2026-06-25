@@ -1,0 +1,40 @@
+# docs/verification/contracts — cross-repo contract declaration (project-bootstrap, ADR 0011)
+#
+# このファイルを各「参加 repo」の docs/verification/contracts に置く (commit する)。宣言なき
+# 共有スキーマは無音で割れる: sibling repo がフォームから 1 項目落としたのに、こちら repo の
+# zod は必須のままで CV が全 reject された (mood incident の同類) — どこ repo と何を共有して
+# いるかが「どこにも書かれていない」ことが事故の温床だった。この宣言が、その継ぎ目を
+# observable な FACT にする (= verification skill Step-2 の「両端を握っていない境界」の登記簿)。
+#
+# 行指向・jq 非依存。`#` 始まりと空行は無視。1 行 = 1 契約、フィールドは `|` 区切り:
+#
+#   id | local_face_glob | peer_repo | peer_face | note
+#
+#   id              … 契約の安定 ID。verification plan の contract 行がこの ID を参照する
+#                     (例: behaviour 列か note 列に "contract:demo-survey-schema" と書く)。
+#   local_face_glob … この repo 側で契約を背負う source face の glob (repo 相対)。lane branch の
+#                     delta がこの glob に当たったら、その契約の動作テストが要る、と gate が判定する。
+#                     複数 glob は ` ` (空白) でなく別行に分けるか、glob 自体を広く取る。
+#   peer_repo       … 相手 repo の識別子 (URL / slug / ディレクトリ名 — 人間が読めれば何でも)。
+#                     **gate は相手 repo を読まない / diff しない** — 相手 checkout が無いマシンでも
+#                     誤発火しないため。これは「こちら側 (consumer 側) の判断」を検証する登記。
+#   peer_face       … 相手 repo 側の対応する面 (相手のフォーム / API / スキーマ)。人間の手掛かり。
+#   note            … 自由記述 (consumer-driven contract test の在りか、最後に確認した日、等)。
+#
+# gate (block-merge-if-verification-unclosed.sh) の挙動:
+#   lane branch の OWN delta (= base..lane を offline で計算した自分の変更) が local_face_glob に
+#   当たった契約 id は、CLOSED な plan 行 (= その id を参照) AND consumer 側 contract test の実走
+#   (緑) が無いと merge を block する (fail-CLOSED)。オラクルが自動で回せない場合は plan 行を
+#   STATUS=HUMAN にして人間が PASS+証拠を記録するまで OPEN のまま (free-text PASS では閉じない)。
+#
+# fail-OPEN (無音・通常 merge を妨げない): 非 merge / 非 git / docs/verification 未採用 /
+#   このファイルが無い・契約ゼロ / delta が宣言面に当たらない / merge 先が lane branch でない /
+#   sibling 未読 (相手 diff は取らない)。下流専用変更はこちら repo に lane branch を生まない =
+#   構造的に到達不能 (= governing 側の no-op。「カバーしている」と無音で匂わせない)。
+#
+# doctor (verification-drift.sh) は OBSERVABLE な事実だけ可視化:
+#   宣言された local_face が今もう存在しない / 宣言面が current delta に在るのに契約行が無い。
+
+# --- 例 (appo-followup ↔ demo-site の mood incident をこの登記で表すと) ---
+demo-survey-schema | src/schemas/demoSiteSurvey.* | demo-site | apps/web/components/SurveyForm.tsx | consumer-driven: フォーム出力キー ⊆ schema 必須キー。実出力は demo-site の本番 HTML
+booking-payload    | src/api/booking/*.ts          | demo-site | apps/web/lib/postBooking.ts        | POST body の shape。relax は両側同時に

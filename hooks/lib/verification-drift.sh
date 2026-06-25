@@ -29,6 +29,20 @@
 # changes made later in the same session surface on the next session (same property as
 # repo-drift).
 #
+# AXIS 2 — async / silent-skip blind spot (D4 / ADR 0007 amendment). A DISTINCT advisory
+# that fires on a POPULATED plan (NOT behind the empty-plan early-return): when the plan has
+# >=1 kind=async row but NO kind=monitor row carrying a REAL oracle (field-4 != n/a). The
+# verification trap "read your own response back" was framed for SYNCHRONOUS callers only;
+# async paths (a cron that filtered-and-skipped a row with no log → the reminder never sent;
+# a daemon whose heartbeat was alive while its work queue stalled) have no own-response to
+# read. Their oracle must be EXTERNAL (a production alert / a daily aggregate). This axis
+# nudges when async work was declared but no real monitor backs it.
+#   CRITICAL anti-false-fire: key ONLY on the controlled-vocab `kind` field the AI
+#   deliberately set (vplan_has_kind), NEVER a prose lexicon scan — an earlier
+#   skip|drop|filter scan false-fired on this repo's OWN clean plan because its DROP rows
+#   contain the word "drop". Same source-face-change gate as axis 1, so it is silent on
+#   docs/config-only branches. Advisory only — never exits 2.
+#
 # Contract (takes the repo dir as $1 so the doctor audits the session cwd, not the plugin's
 # own dir; pure bash + git porcelain, jq-free, no network):
 #   verification_drift_report <dir>  echo the human-readable advisory block, or nothing;
@@ -64,9 +78,47 @@ _vd_changed_sources() {
   done < <(git -C "$dir" diff --name-only "$ref..HEAD" 2>/dev/null)
 }
 
+# _vd_has_real_monitor <plan-file> — rc 0 iff a kind=monitor data row carries a REAL oracle
+# (field 4 is non-empty AND not the literal "n/a", case-folded). A placeholder monitor row
+# (oracle = n/a) does NOT cover an async blind spot, so it does not count. Keyed on the
+# controlled-vocab kind field (vplan_field 2), never on prose.
+_vd_has_real_monitor() {
+  local file="$1" line kind oracle
+  [ -f "$file" ] || return 1
+  while IFS= read -r line || [ -n "$line" ]; do
+    [ -n "$(vplan_row_status "$line")" ] || continue
+    kind="$(vplan_field "$line" 2 | tr '[:upper:]' '[:lower:]')"
+    [ "$kind" = monitor ] || continue
+    oracle="$(vplan_field "$line" 4 | tr '[:upper:]' '[:lower:]')"
+    case "$oracle" in ''|n/a|na|none|-) continue ;; esac
+    return 0
+  done < "$file"
+  return 1
+}
+
+# _vd_async_blindspot_block <plan-file> <branch> — echo the async advisory block (or nothing).
+# Fires iff the plan has >=1 kind=async row AND no monitor row with a real oracle. The caller
+# guarantees a source-face change already gated this (so docs-only branches are silent).
+_vd_async_blindspot_block() {
+  local plan="$1" cur="$2"
+  vplan_has_kind "$plan" async || return 0           # no async work declared → nothing to say
+  _vd_has_real_monitor "$plan" && return 0           # a real monitor backs it → covered
+  printf 'async / scheduled な検証行があるのに、外部オラクルを持つ monitor 行がありません (silent-skip の盲点):\n'
+  printf '  branch %s の plan (docs/verification/%s.md) に kind=async 行があるが、kind=monitor で\n' \
+    "${cur:-?}" "$(printf '%s' "${cur:-?}" | tr '/' '_')"
+  printf '  実オラクル (field-4 ≠ n/a) を持つ行が無い。cron が無音で skip した / queue が live な\n'
+  printf '  heartbeat の裏で stall した、は同期の「自分の返答を読み返す」では捕まらない (async の盲点)。\n'
+  cat <<'EOF'
+  対処 (verification skill Step-3/6): async 行のオラクルは AI の外 = 本番計器に置く。
+  kind=monitor 行を 1 つ足し、field-4 に実オラクルを書く (本番アラート / 日次集計 "CV>0 かつ
+  予約=0" 等)。計器を当てないと決めたなら、その盲点を理由つきで明示的に白状する (= 無音にしない)。
+EOF
+  return 0
+}
+
 # verification_drift_report — see header.
 verification_drift_report() {
-  local dir="$1" cur plan changed count
+  local dir="$1" cur plan changed count async_block
   git -C "$dir" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
   [ -d "$dir/docs/verification" ] || return 0        # opt-in, same bar as the merge gate
 
@@ -75,8 +127,18 @@ verification_drift_report() {
 
   cur="$(git -C "$dir" rev-parse --abbrev-ref HEAD 2>/dev/null)"
   plan="$(vplan_path_for_branch "$dir" "$cur")"
+
+  # AXIS 2 (async blind spot) — a DISTINCT branch that fires on a POPULATED plan, BEFORE the
+  # empty-plan early-return below. Keyed only on the controlled-vocab kind field; already
+  # gated on a source-face change above (so docs-only branches stay silent). Advisory only.
+  if [ -n "$plan" ] && [ -s "$plan" ]; then
+    async_block="$(_vd_async_blindspot_block "$plan" "$cur")"
+    [ -n "$async_block" ] && printf '%s' "$async_block"
+  fi
+
   # a non-empty plan with >=1 data row means the decision is already being recorded → silent
   # (closure of an OPEN plan is the merge gate's job; surfacing ABSENCE is this lib's job).
+  # NOTE: this early-return is for AXIS 1 only — AXIS 2 above already ran on the populated plan.
   if [ -n "$plan" ] && [ -s "$plan" ] && [ "$(vplan_row_count "$plan")" != 0 ]; then
     return 0
   fi

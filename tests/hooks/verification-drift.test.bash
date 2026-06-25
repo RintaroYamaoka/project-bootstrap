@@ -94,4 +94,65 @@ NG="$(mktemp -d)"; mkdir -p "$NG/docs/verification"; printf 'x\n' > "$NG/app.ts"
 test_case "non-git dir is silent"
 assert_eq "" "$(verification_drift_report "$NG")"
 
+# ── D4: async / silent-skip blind spot (ADR 0007 amendment) ───────────────────────────
+# A POPULATED plan (>=1 data row) with an async-kind row but NO monitor row carrying a real
+# (field-4 != n/a) oracle is a blind spot: a cron skip / a stalled queue under a live
+# heartbeat goes unobserved. The doctor advises on exactly that shape, keyed ONLY on the
+# controlled-vocab kind field (never a prose scan), gated on a source-face change, advisory.
+
+# 10. async row, no monitor, with a source change => the async advisory fires.
+R="$(mkrepo)"; adopt "$R"
+printf 'export const x = 1\n' > "$R/app.ts"
+printf 'TODO | async | cron sends the reminder | n/a | ai |\n' > "$R/docs/verification/main.md"
+OUT="$(verification_drift_report "$R")"
+test_case "async-without-monitor advisory fires on a populated plan"
+case "$OUT" in *async*) assert_eq ok ok ;; *) assert_eq ok FAIL ;; esac
+
+# 11. async row WITH a monitor row carrying a real oracle => silent on the async axis.
+R="$(mkrepo)"; adopt "$R"
+printf 'export const x = 1\n' > "$R/app.ts"
+cat > "$R/docs/verification/main.md" <<'EOF'
+PASS | async   | cron sends the reminder        | n/a | ai | ran
+PASS | monitor | CV>0 but bookings==0 alarm     | daily rollup alert | ai | wired
+EOF
+test_case "async WITH a real monitor oracle is silent on the async axis"
+case "$(verification_drift_report "$R")" in *async*) assert_eq ok FAIL ;; *) assert_eq ok ok ;; esac
+
+# 12. A DROP row whose behaviour text contains the word 'drop' must NOT false-fire the
+#     async advisory (the old lexicon scan bug). No async kind here at all.
+R="$(mkrepo)"; adopt "$R"
+printf 'export const x = 1\n' > "$R/app.ts"
+cat > "$R/docs/verification/main.md" <<'EOF'
+PASS | unit | parse the row | known | ai | ok
+DROP | unit | drop / skip / filter the pixel exactness | n/a | ai | low risk, not worth it
+EOF
+test_case "a DROP row containing 'drop/skip/filter' does NOT fire the async advisory"
+case "$(verification_drift_report "$R")" in *async*) assert_eq ok FAIL ;; *) assert_eq ok ok ;; esac
+
+# 13. async row but the change is DOC-ONLY => silent (gated on a source-face change).
+R="$(mkrepo)"; adopt "$R"
+printf '# notes\n' > "$R/README.md"
+printf 'TODO | async | cron sends the reminder | n/a | ai |\n' > "$R/docs/verification/main.md"
+test_case "async advisory is silent on a docs-only branch"
+assert_eq "" "$(verification_drift_report "$R")"
+
+# 14. async row with a monitor row whose oracle is the literal 'n/a' => NOT a real oracle,
+#     so the async advisory still fires (a placeholder monitor does not cover the blind spot).
+R="$(mkrepo)"; adopt "$R"
+printf 'export const x = 1\n' > "$R/app.ts"
+cat > "$R/docs/verification/main.md" <<'EOF'
+TODO | async   | cron sends the reminder | n/a | ai |
+TODO | monitor | someday wire an alert   | n/a | ai |
+EOF
+test_case "async with a placeholder (n/a) monitor oracle still fires"
+case "$(verification_drift_report "$R")" in *async*) assert_eq ok ok ;; *) assert_eq ok FAIL ;; esac
+
+# 15. The async advisory is ADVISORY: verification_drift_report always returns 0 (never 2).
+R="$(mkrepo)"; adopt "$R"
+printf 'export const x = 1\n' > "$R/app.ts"
+printf 'TODO | async | cron sends the reminder | n/a | ai |\n' > "$R/docs/verification/main.md"
+verification_drift_report "$R" >/dev/null 2>&1
+test_case "verification_drift_report returns 0 even when the async advisory fires"
+assert_eq 0 "$?"
+
 finish

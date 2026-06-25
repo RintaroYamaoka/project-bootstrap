@@ -58,6 +58,7 @@ verification を「素朴な return チェック」で済ますと AI は以下 
 - `count == expected` を必ず assert (= 「0 件返ってきた = エラーなし」ではない)
 - HTTP `200` だけでなく content-type / body の構造まで assert
 - 「`success: true` が返った」だけで完了としない、書き込んだ key/id で実 read-back
+- **同期の「自分の返答を読み返す」だけでは async / scheduled の無音 skip を捕まえられない** — cron が条件で 1 件を弾いて何もログを残さない (リマインダが永遠に飛ばない) / daemon の heartbeat は生きているのに work queue が stall する、には *読み返す自分の返答が存在しない*。これらは AI の外の本番計器 (アラート / 日次集計「CV>0 かつ予約=0」) をオラクルにする (verification skill `kind=monitor`、async 行は実 monitor で裏打ち)
 
 ### 罠 2 — 既存リソースの actual capability を表記で推測する
 

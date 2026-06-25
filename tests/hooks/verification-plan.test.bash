@@ -84,5 +84,28 @@ assert_eq "/tmp/r/docs/verification/feat_foo_bar.md" "$(vplan_path_for_branch /t
 test_case "empty branch yields empty path (caller detects)"
 assert_eq "" "$(vplan_path_for_branch /tmp/r '')"
 
+# --- vplan_has_kind: exact field-2 (kind) match, case-folded, NOT a substring scan ---
+# (D4 / ADR 0007 amendment) The async/monitor doctor keys on the kind field the AI
+# deliberately set — never on prose — so a DROP row whose behaviour text contains the
+# word 'drop' or 'monitor' must NOT register as that kind.
+KPLAN="$(mktemp)"
+cat > "$KPLAN" <<'EOF'
+# verification plan — async work
+TODO  | async   | cron sends the reminder           | n/a | ai |
+PASS  | unit     | parse the row                     | known | ai | ok
+DROP  | unit     | drop the monitor pixel exactness  | n/a | ai | low risk, not worth monitoring
+EOF
+test_case "vplan_has_kind finds an exact async kind row"
+vplan_has_kind "$KPLAN" async; assert_eq 0 "$?"
+test_case "vplan_has_kind is case-insensitive on the kind field"
+vplan_has_kind "$KPLAN" ASYNC; assert_eq 0 "$?"
+test_case "vplan_has_kind does NOT match a word inside the behaviour prose (no substring scan)"
+vplan_has_kind "$KPLAN" monitor; assert_eq 1 "$?"
+test_case "vplan_has_kind absent kind returns non-zero"
+vplan_has_kind "$KPLAN" e2e; assert_eq 1 "$?"
+test_case "vplan_has_kind on a missing file returns non-zero"
+vplan_has_kind "/no/such/file" async; assert_eq 1 "$?"
+rm -f "$KPLAN"
+
 rm -f "$PLAN" "$PLAN2"
 finish
