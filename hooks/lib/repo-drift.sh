@@ -32,7 +32,16 @@
 #   drift_main_ref <dir>              echo the remote-tracking ref to compare against
 #                                     (origin/HEAD's target → origin/main → origin/master);
 #                                     return 1 + no stdout if none is resolvable.
-#   behind_count <dir> <ref>          echo integer = commits in <ref> not in HEAD (0 on error).
+#   behind_count <dir> <ref>          echo integer = commits in <ref> not in HEAD (0 on error,
+#                                     OFFLINE — never fetches; the doctor's no-network path).
+#   fetched_behind_count <dir> <remote> <branch>
+#                                     ONLINE twin of behind_count for the per-action gate
+#                                     (block-stale-write-to-protected): does an explicit,
+#                                     timeout-bounded fetch of <remote>/<branch> FIRST so the
+#                                     count is authoritative, then echoes behind. Returns 0
+#                                     only when the fetch succeeded; returns 1 (and the gate
+#                                     must fail OPEN) when the fetch failed/timed out — see
+#                                     its own header for why the two are separate authorities.
 #   merged_worktree_lines <dir> <ref> echo one indented line per LINKED worktree whose branch
 #                                     tip is an ancestor of <ref> (= merged), excluding the
 #                                     main branch itself and detached heads.
@@ -67,6 +76,53 @@ behind_count() {
     '' | *[!0-9]*) printf '0' ;;
     *) printf '%s' "$n" ;;
   esac
+}
+
+# fetched_behind_count — ONLINE staleness, the single authority the per-action gate
+# (block-stale-write-to-protected.sh) shares with this lib so the online gate and the
+# offline doctor cannot drift on what "behind" means.
+#
+# Why a SECOND function and not a flag on behind_count: behind_count is the SessionStart
+# doctor's path and MUST stay no-network (the header's OFFLINE & FAST contract — session
+# start must never block on a fetch). The gate, by contrast, is about to allow an
+# IRREVERSIBLE trunk push and needs the AUTHORITATIVE count, so it MUST fetch. Folding a
+# "maybe fetch" branch into behind_count would put a network call on the doctor's hot path
+# by accident the first time someone passes the wrong arg. Keeping them as two named
+# functions makes the network/no-network choice explicit at every call site (same reason
+# is_protected takes its file path explicitly instead of a hidden global).
+#
+# The fetch is EXPLICIT-refspec and timeout-bounded:
+#   git -C <dir> fetch --quiet <remote> +refs/heads/<branch>:refs/remotes/<remote>/<branch>
+# - explicit refspec (not a bare `git fetch`) so we update EXACTLY the one tracking ref we
+#   are about to compare against and nothing else — a misconfigured remote.fetch or a huge
+#   remote can't turn this into an unbounded sync, and the leading + force-updates the
+#   tracking ref so a rewound/rebased remote tip still yields a correct count.
+# - `timeout` if present (absence tolerated — older/minimal boxes lack coreutils timeout):
+#   a hung auth prompt or dead host must not wedge the gate. A timeout kill counts as a
+#   FETCH FAILURE (return 1), so the gate fails OPEN — network unavailability must NEVER
+#   block work (no-grounds = fail-OPEN; non-target/offline repos are never disturbed).
+#
+# Return contract (the fail-mode the gate keys on):
+#   fetch SUCCEEDED -> echo behind (>=0), return 0  (only here may the gate block, iff >0)
+#   fetch FAILED/timed out -> echo nothing, return 1 (gate fails OPEN, announced)
+# behind itself is `git rev-list --count HEAD..<remote>/<branch>` after the fetch.
+fetched_behind_count() {
+  local dir="$1" remote="$2" branch="$3" n
+  local refspec="+refs/heads/$branch:refs/remotes/$remote/$branch"
+  if command -v timeout >/dev/null 2>&1; then
+    # 10s wall clock: long enough for a real LAN/HTTPS fetch, short enough that a dead
+    # host or stuck credential prompt can't wedge a PreToolUse gate. timeout's own exit
+    # (124 on kill, 126/127 if it can't run) all fall into the non-zero = fail-OPEN arm.
+    timeout 10 git -C "$dir" fetch --quiet "$remote" "$refspec" >/dev/null 2>&1 || return 1
+  else
+    git -C "$dir" fetch --quiet "$remote" "$refspec" >/dev/null 2>&1 || return 1
+  fi
+  n=$(git -C "$dir" rev-list --count "HEAD..refs/remotes/$remote/$branch" 2>/dev/null)
+  case "$n" in
+    '' | *[!0-9]*) printf '0' ;;
+    *) printf '%s' "$n" ;;
+  esac
+  return 0
 }
 
 # _rd_emit_merged — print the line for one worktree record if it is a merged lane.
