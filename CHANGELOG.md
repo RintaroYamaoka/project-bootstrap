@@ -7,6 +7,20 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **保護ブランチ push gate (`block-push-to-protected.sh`) の迂回穴を塞いだ — 0.22.0 で merge gate を直したのと同型の「行為の文字列 proxy」(② 信号選び) バグが push gate に残っていた**。push 対象を貪欲 `sed 's/^.*git push//'` で抽出していたため、複合コマンド `git push origin main && git push origin feat/x` では**最後の feat/x しか検査されず保護 main への push が無検査で素通り**した。さらに検出が先頭 `/` 非対応で `/usr/bin/git push` / `./git push` を**素通し**した。どちらも稼働中の保護を実際に無音バイパスできる live bug だった。
+  - 共有エンジン `hooks/lib/protected-branch.sh` を新設 (`merge-targets.sh` と同型の単一権威)。複合コマンドの**全** `git push` segment を走査し、path-prefixed git を受理、flag とその値 (`--repo`/`-o`/`--receive-pack`/`--exec`/`--flag=value`) を skip し、refspec の destination (`src:dst`→`dst`、先頭 `+`・`refs/heads/` を正規化) を列挙する。`is_protected` も lib に移して 2 経路の単一権威に。既知の限界 (quote 内 separator) は lib 冒頭に明示。
+  - TDD: `tests/hooks/protected-branch.test.bash` (engine 31 assertions) + 実 hook の end-to-end (sandbox repo に `.bootstrap-protected`) で両バグクラスが exit 2 で block・benign が exit 0・unparseable で fail-closed を確認。全 31 suite green、hook 数不変 (新規は lib、entry 追加なし)。旧挙動と message/exit は byte 互換の厳密改善。
+
+### Added
+
+- **統合 gate (`block-unreviewed-merge.sh`) に「lane が merge 先を含む (= rebase 済) か」の fail-closed 検査 (D6) と、merge 時の残置 worktree 大声 advisory (D5) を追加**。stale base の lane を統合すると merge 済み修正を無音で revert する事故 (`git diff`/`status` が HEAD 基準で revert が見えない — appo-followup dogfood 2026-06-25) を、**行為の瞬間 (統合) で rebase を強制**して塞ぐ。
+  - D6 (fail-closed): 各 lane target `L` について merge 先 (HEAD) が `L` に含まれるか `git merge-base --is-ancestor` で検査し、stale なら merge-base 基準の乖離数つきで block。レビュー未記録より**先に** stale を理由に止める。根拠不在 (非 lane / ref 解決不能 / 非 work-tree) は fail-open、offline (stale ローカル ref は黙らせるだけで false-alarm しない)。`hooks/lib/repo-drift.sh` を read-only 再利用 (HEAD-vs-main 定義の単一権威、signal drift 防止)。
+  - D5 (advisory・**決して block しない**): merge 時に merge 済み残置 worktree を stderr に大声表示し撤去を促す (未コミットを持つ木の強制削除 = cry-wolf を避ける)。残置が無いとき無音。
+  - TDD: `tests/hooks/block-unreviewed-merge-drift.test.bash` (temp git repo 上で 15 assertions: stale block / 順序 / no-false-block / fail-open / D5 advisory が exit code 不変) + 既存 28 挙動を全維持。
+- これらは sprint flow 自体の dogfood で実装 (`sprint-plan` で scope 非重複 2 lane に分解 → 隔離 worktree で並列 TDD → adversarial AI レビューで approve → `integrate` で verification 起票・依存順 merge・統合 verify・worktree 撤去・board archive)。appo-followup の incident 群から抽出した bootstrap 側欠陥 backlog の P0 + D5/D6。
+
 ## [0.22.1] - 2026-06-22
 
 ### Changed
