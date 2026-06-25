@@ -36,7 +36,7 @@
 # registry line may only ARM a key listed here; an armed key NOT in this list is an orphan
 # (doctor reports it — see registry_orphan_keys). Extending the vocabulary is a reviewed
 # edit to THIS array (and the matcher arm below), never a consumer-side regex.
-ACTION_KEY_ENUM="prod-deploy prod-db-migrate"
+ACTION_KEY_ENUM="prod-deploy prod-db-migrate data-backfill"
 
 # action_key_is_known <key> — return 0 if <key> is a member of the CLOSED enum.
 action_key_is_known() {
@@ -120,6 +120,13 @@ _action_tokenize() {
 # command string is turned into a key; consumers never pattern-match raw commands themselves.
 action_key_for_command() {
   local head="" base want_prod=0 has_deploy=0 has_migrate_sub=0 t
+  # data-backfill facts (ADR 0013 — "rewrite existing data" acts). Broad, deterministic,
+  # never-block detection: a backfill/data-migrate-named bin/script, a raw-SQL apply
+  # (prisma db execute), an inline UPDATE/DELETE via a sql client, or a generic
+  # data-migration tool run. We can't tell DDL (schema) from DML (data repair) off the
+  # command line, so a schema-only migration may also match — acceptable for a visibility
+  # advisory (documented limit; this hook never blocks).
+  local has_backfill_name=0 has_db=0 has_execute=0 has_sql_write=0 has_migrate_kw=0
   # We accumulate per-segment facts, then decide at each ;SEP; boundary (and at end).
   _decide() {
     case "$head" in
@@ -130,29 +137,74 @@ action_key_for_command() {
       prisma)
         # prod db migrate = `prisma migrate deploy` (the apply-to-prod form; `migrate dev`
         # and `generate` are dev-only and must NOT match).
-        if [ "$has_migrate_sub" = 1 ] && [ "$has_deploy" = 1 ]; then printf 'prod-db-migrate'; return 0; fi ;;
+        if [ "$has_migrate_sub" = 1 ] && [ "$has_deploy" = 1 ]; then printf 'prod-db-migrate'; return 0; fi
+        # raw-SQL apply = `prisma db execute` -> rewrites data.
+        if [ "$has_db" = 1 ] && [ "$has_execute" = 1 ]; then printf 'data-backfill'; return 0; fi ;;
+      psql|mysql|mysqlsh|mariadb)
+        # an inline write statement through a sql client.
+        if [ "$has_sql_write" = 1 ]; then printf 'data-backfill'; return 0; fi ;;
+      knex|sequelize|typeorm|alembic)
+        # a generic data-migration tool run (migrate/migration:run/db:migrate/upgrade).
+        if [ "$has_migrate_kw" = 1 ]; then printf 'data-backfill'; return 0; fi ;;
     esac
+    # a backfill/data-migrate-named binary or script anywhere in the segment, regardless of
+    # the launcher (tsx scripts/backfill-x.ts, npm run backfill, ./.bin/backfill-cv).
+    if [ "$has_backfill_name" = 1 ]; then printf 'data-backfill'; return 0; fi
     return 1
   }
   while IFS= read -r t; do
     if [ "$t" = ';SEP;' ]; then
       _decide && return 0
       head=""; want_prod=0; has_deploy=0; has_migrate_sub=0
+      has_backfill_name=0; has_db=0; has_execute=0; has_sql_write=0; has_migrate_kw=0
       continue
     fi
     if [ -z "$head" ]; then
       base="${t##*/}"            # strip any path prefix -> bare binary name
       head="$base"
+      # the binary itself is a backfill/data-migrate tool (./.bin/backfill-cv).
+      case "$base" in *backfill*|*data-migrate*) has_backfill_name=1 ;; esac
       continue
     fi
+    # backfill/data-migrate name in an ARG: only count it as a real signal when it is a
+    # script path (has a slash or a script extension) or a package-runner target — a bare
+    # word like `echo backfill done` must NOT match (visibility noise control).
+    case "${t##*/}" in
+      *backfill*|*data-migrate*)
+        case "$t" in
+          */*|*.ts|*.js|*.mjs|*.cjs|*.sql|*.py|*.rb|*.sh) has_backfill_name=1 ;;
+          *) case "$head" in npm|pnpm|yarn|bun) has_backfill_name=1 ;; esac ;;
+        esac ;;
+    esac
     case "$t" in
       --prod|--production|--prod=*|prod|production) want_prod=1 ;;
       deploy) has_deploy=1 ;;
       migrate) has_migrate_sub=1 ;;
     esac
+    # data-backfill sub-signals (subcommands / SQL verbs within the segment).
+    case "$t" in
+      db) has_db=1 ;;
+      execute) has_execute=1 ;;
+      UPDATE|update|DELETE|delete|TRUNCATE|truncate|UPSERT|upsert) has_sql_write=1 ;;
+      migrate|migrate:*|migration:*|db:migrate|db:migrate:*|upgrade) has_migrate_kw=1 ;;
+    esac
   done < <(_action_tokenize "$1")
   _decide && return 0
   return 0
+}
+
+# action_default_memo <key> — the PLUGIN-OWNED universal doctrine for <key>, or nothing.
+# Most keys are project-specific and carry NO default (their memo comes only from a repo's
+# opt-in .bootstrap-actions). `data-backfill` is the exception (ADR 0013): the "repair vs
+# spec" lesson is project-agnostic, so the injector surfaces this floor even when the repo
+# has not armed the key. A repo MAY still arm data-backfill to ADD a project-specific memo
+# (the injector appends it after this default).
+action_default_memo() {
+  case "$1" in
+    data-backfill)
+      printf '%s' '既存データを書き換えようとしている。その値が「欠けている/間違っている」と判断した根拠は? 欠け方が ~100% 系統的なら、それは defect でなく spec の徴候 (その経路はそもそもその値を扱わない)。意図のオラクルは data でなく domain owner — 直す前に確認せよ。同じ値でもレーンで妥当性が真逆になりうる (例: service=null が片方では異常・片方では仕様)。' ;;
+    *) return 0 ;;
+  esac
 }
 
 # --- the per-repo registry (opt-in) -------------------------------------------------

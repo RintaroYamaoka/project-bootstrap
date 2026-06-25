@@ -58,6 +58,8 @@ description: 動作テスト (behavioral verification) を「意図と跨いだ�
 
 **オラクルは必ず AI の外に置く。** 期待値が書けない → プロパティ/メタモルフィック。跨ぐ → 契約 or 実アウトカム。意図レベル (「これが欲しかったか」) → **人間にフラグ (`HUMAN`)**。オラクルが見つからない挙動を「pass と仮定」で埋めない。
 
+> **修復の前の kill-question = 「これは欠陥か、仕様か?」** (ADR 0013、demo-proposal lane incident)。値が「欠けている/間違っている」ように見えて backfill/修復しようとした時、一度問う: **(a) その欠け方は systematic か?** 100% 系統的 (例: ある経路の全行で空) は **defect でなく spec の徴候** — その経路はそもそもその値を扱わない設計かもしれない。**(b) 同じ値でもレーンで妥当性が真逆になりうる** (service=null が triage 経路では異常・demo 提案経路では仕様)。**意図のオラクルは data でなく domain owner** — 実装/データのパターンを自分で「異常」と断定する (著者=採点者の円環) 前に人間に確認する。確認前に多段修正を組むな。この問いは `inject-action-memory` が backfill/UPDATE/migration の瞬間に機械的に表面化する (ADR 0013、block しない可視化)。
+
 > **6 番目の seam = 「テストの検出力」(緑の嘘)。** これまでの 5 seam は「どこを跨ぐか (どこをテストすべきか)」を網羅するが、**テストスイートが緑なのにバグを逃す**という別軸の欠陥を測らない。mood incident の zod test はまさにこれ — 緑のまま全予約を弾いた。行カバレッジ 100% でも mutation score が数 % (注入バグの大半を見逃す) は普通に起きる。**カバレッジはバグ検出力を測っていない。** kill-question 「このテストが緑のままユーザーが困る状態はありうるか?」が Yes を示す経路 (= 過去に false confidence を配った critical path、特に form→backend 契約) には、**mutation testing で「緑の嘘」を定量化**し、metamorphic / property を少数の多様な MR/property で当てる (オラクル不在 seam = 要件捏造 / 実物未確認 に効く。MR は数より多様性が効く)。mutation は実行コストが重いので**全面でなく critical path 限定**。
 
 > **async seam は heartbeat 単独では不足。** 「存在」(ping が来た) だけでは「動いたが無意味な仕事をした」を逃す。`kind=monitor` 行は (1) **dead-man's-switch** = 不在そのものをアラート (一度も走らなかったも捕まる)、(2) **payload アサーション** = ping に実質仕事の検証を載せる (`予約数>0`)、(3) **grace time** = 期待 jitter と真の沈黙を分離、の 3 点を満たす。Healthchecks.io 等で制度化し、monitor 行を場当たりでなく**全 async job の既定責務**に昇格させる。低頻度/低トラフィック job は「沈黙=正常」と区別しにくい (実信号不足) ので grace 調整 or 人工トラフィックで補償する。
