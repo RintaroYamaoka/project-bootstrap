@@ -1,0 +1,40 @@
+# Server-side verification gate (ADR 0012) — TEMPLATE for repos that adopt project-bootstrap.
+#
+# WHY: the local PreToolUse merge gate only fires on a local `git merge`. The GitHub "Merge
+# pull request" button runs server-side and never invokes a local hook, so an OPEN verification
+# plan could be merged via the web UI / API. This workflow runs the SAME judgement on CI so the
+# gate covers every merge path. Register it as a REQUIRED status check on your protected branch
+# with enforce_admins=true (scripts/setup-server-enforcement.sh does this).
+#
+# Single authority: the judgement lives in project-bootstrap's hooks/lib (verification-plan.sh +
+# verification-ci-check.sh). This workflow checks the plugin out at a PINNED ref and runs that
+# lib against THIS repo's checkout — so the rule can never drift from the local hook.
+#
+# SETUP:
+#   1. Copy this file to .github/workflows/verification-gate.yml in your repo.
+#   2. Pin PLUGIN_REF below to a tag/sha of RintaroYamaoka/project-bootstrap.
+#   3. Add "verification-closed" to your branch's required status checks (or use the setup script).
+name: verification-gate
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+env:
+  PLUGIN_REPO: RintaroYamaoka/project-bootstrap
+  PLUGIN_REF: main   # PIN to a tag/sha for reproducibility (e.g. 0.24.1)
+jobs:
+  verification-closed:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout this repo
+        uses: actions/checkout@v4
+      - name: Checkout project-bootstrap (the judgement authority)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.PLUGIN_REPO }}
+          ref: ${{ env.PLUGIN_REF }}
+          path: .bootstrap-plugin
+          sparse-checkout: hooks/lib
+      - name: Verification plan must be closed
+        # cwd is this repo's root, so verification-ci-check resolves THIS repo's plan files;
+        # the lib it sources is the plugin's single authority.
+        run: bash .bootstrap-plugin/hooks/lib/verification-ci-check.sh "${GITHUB_HEAD_REF}"

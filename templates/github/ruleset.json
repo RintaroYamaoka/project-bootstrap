@@ -1,0 +1,44 @@
+{
+  "_comment": "GitHub repository ruleset (ADR 0012) — server-side enforcement for repos that adopt project-bootstrap. Rulesets are server-side, aggregate across rules ('most restrictive wins'), and carry an explicit bypass_actors list (default empty = nobody bypasses, including admins — closes 穴 2). Apply with: gh api -X POST repos/OWNER/REPO/rulesets --input templates/github/ruleset.json . Prefer this over the REST branch-protection endpoint when rolling out across many repos.",
+  "name": "verification-gate",
+  "target": "branch",
+  "enforcement": "active",
+  "bypass_actors": [],
+  "conditions": {
+    "ref_name": {
+      "include": ["~DEFAULT_BRANCH"],
+      "exclude": []
+    }
+  },
+  "rules": [
+    { "type": "pull_request",
+      "parameters": {
+        "required_approving_review_count": 1,
+        "dismiss_stale_reviews_on_push": false,
+        "require_code_owner_review": false,
+        "require_last_push_approval": false,
+        "required_review_thread_resolution": false
+      }
+    },
+    { "type": "required_status_checks",
+      "parameters": {
+        "strict_required_status_checks_policy": true,
+        "required_status_checks": [
+          { "context": "verification-closed" }
+        ]
+      }
+    },
+    { "type": "merge_queue",
+      "parameters": {
+        "merge_method": "SQUASH",
+        "max_entries_to_build": 5,
+        "max_entries_to_merge": 5,
+        "min_entries_to_merge": 1,
+        "min_entries_to_merge_wait_minutes": 5,
+        "check_response_timeout_minutes": 60,
+        "grouping_strategy": "ALLGREEN"
+      }
+    },
+    { "type": "non_fast_forward" }
+  ]
+}
