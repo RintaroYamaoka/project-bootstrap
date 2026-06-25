@@ -39,6 +39,7 @@ description: 動作テスト (behavioral verification) を「意図と跨いだ�
 - **無音で skip/drop/filter する経路** / **scheduler・queue・heartbeat の裏で動く所** ← async seam。cron が条件で 1 件を弾いて何もログを残さない (リマインダが永遠に飛ばない) / daemon の heartbeat は生きているのに work queue が stall する。同期の「自分の返答を読み返す」では捕まらない — 観測点 (signal) が存在しないのが本質
 
 > **cross-repo seam を持つ repo は、共有面を `docs/verification/contracts` に登記する** (ADR 0011)。`id | local_face_glob | peer_repo | peer_face | note`。宣言なき共有スキーマは片側変更で無音に割れる (mood と同型)。登記された面を lane で触ると、その契約の動作テスト (consumer-driven) が統合の precondition になる (`block-merge-if-verification-unclosed.sh` が lane の OWN delta で判定)。
+> **注意: Pact (中央 Broker 型 consumer-driven) には寄せない** — 中央 Broker が並列開発の**直列化点・単一障害点**になり、二重メンテ・外部 provider 不適合でレビュー帯域律速の単一 orchestrator には重い。この repo の登記方式は軽量な行指向 FACT に留め、フル契約管理が要るなら **Specmatic/OpenAPI 型 spec-as-contract** を比較検討する (要自己検証)。
 
 ### Step 3: 挙動ごとに技法とオラクルを選ぶ
 
@@ -50,11 +51,16 @@ description: 動作テスト (behavioral verification) を「意図と跨いだ�
 | 正解が一意に書けない (生成物・非決定的) | メタモルフィックテスト (入力を変えたら出力がこう変わるべき、の*関係*) | 不変関係 |
 | 全入力で成り立つ法則 | プロパティテスト | 不変量 |
 | **両端を握ってない境界** | **契約テスト (consumer-driven)** | 相手の実出力 |
+| **テストが緑なのにバグを逃す (検出力欠如 = 6 番目の seam)** | **mutation testing** (critical path 限定) | **注入した変異をテストが殺すか** (= テスト自身が外オラクル) |
 | 異常系・想定外 | ネガティブ / エラー推測 | 落ち方が安全 |
-| **無音で skip/drop する経路・queue/heartbeat の裏で stall** (async seam) | **本番計器 (`kind=monitor`)** | **AI の外の実信号** = 本番アラート / 日次集計 (例「CV>0 かつ予約=0」) |
+| **無音で skip/drop する経路・queue/heartbeat の裏で stall** (async seam) | **本番計器 (`kind=monitor`) + dead-man's-switch** | **AI の外の実信号** = 不在そのものをアラート (期待 ping が来なければ down) + **payload アサーション** (例「CV>0 かつ予約=0」「rows_exported>0」)。grace time で jitter と真の沈黙を分ける |
 | 未知の未知 | 探索的テスト (人間) + 本番計器 | 実アウトカム |
 
 **オラクルは必ず AI の外に置く。** 期待値が書けない → プロパティ/メタモルフィック。跨ぐ → 契約 or 実アウトカム。意図レベル (「これが欲しかったか」) → **人間にフラグ (`HUMAN`)**。オラクルが見つからない挙動を「pass と仮定」で埋めない。
+
+> **6 番目の seam = 「テストの検出力」(緑の嘘)。** これまでの 5 seam は「どこを跨ぐか (どこをテストすべきか)」を網羅するが、**テストスイートが緑なのにバグを逃す**という別軸の欠陥を測らない。mood incident の zod test はまさにこれ — 緑のまま全予約を弾いた。行カバレッジ 100% でも mutation score が数 % (注入バグの大半を見逃す) は普通に起きる。**カバレッジはバグ検出力を測っていない。** kill-question 「このテストが緑のままユーザーが困る状態はありうるか?」が Yes を示す経路 (= 過去に false confidence を配った critical path、特に form→backend 契約) には、**mutation testing で「緑の嘘」を定量化**し、metamorphic / property を少数の多様な MR/property で当てる (オラクル不在 seam = 要件捏造 / 実物未確認 に効く。MR は数より多様性が効く)。mutation は実行コストが重いので**全面でなく critical path 限定**。
+
+> **async seam は heartbeat 単独では不足。** 「存在」(ping が来た) だけでは「動いたが無意味な仕事をした」を逃す。`kind=monitor` 行は (1) **dead-man's-switch** = 不在そのものをアラート (一度も走らなかったも捕まる)、(2) **payload アサーション** = ping に実質仕事の検証を載せる (`予約数>0`)、(3) **grace time** = 期待 jitter と真の沈黙を分離、の 3 点を満たす。Healthchecks.io 等で制度化し、monitor 行を場当たりでなく**全 async job の既定責務**に昇格させる。低頻度/低トラフィック job は「沈黙=正常」と区別しにくい (実信号不足) ので grace 調整 or 人工トラフィックで補償する。
 
 外部の事実がオラクルになる行 (3rd-party 契約 / 挙動 / 仕様) は、**`/deep-research`** (web を多角検索し主張を相互照合する read-only の breadth 腕、ADR 0005) で**引用つきの外部証拠**を取れる — ただし **advisory input に留め、`HUMAN`/意図行を web claim で自動 close しない** (stale / hallucinated な引用が偽オラクルになりうる)。「外から事実を取る」までが breadth 腕の仕事で、「これが欲しかったか」の最終採点は人間に残る。
 
@@ -95,7 +101,7 @@ cross-repo 契約を CLOSED にする行は、note か behaviour に**必ずア�
 
 ## 関所と射程
 
-`block-merge-if-verification-unclosed.sh` が、lane branch の merge に対し plan の存在・非空・OPEN 行ゼロ・理由なき DROP ゼロを fail-closed で要求する (opt-in = `docs/verification/` を置く)。**加えて (ADR 0011)**: lane の OWN delta (= base..lane を offline で計算) が `docs/verification/contracts` の登記面に当たった契約 id ごとに、その id を CLOSED にした plan 行 + consumer 側スイートの実走 (緑) を要求する。自動で回せない契約は `HUMAN` 行にして人間が相手の実出力で照合するまで OPEN。consumer 側のみ判定し相手 repo は読まない (相手 checkout が無いマシンで誤発火しない)。
+`block-merge-if-verification-unclosed.sh` が、lane branch の merge に対し plan の存在・非空・OPEN 行ゼロ・理由なき DROP ゼロを fail-closed で要求する (opt-in = `docs/verification/` を置く)。**ただしこのローカル hook は「速い feedback 層」であって権威ではない** (ADR 0012): ローカル `git merge` しか捕まえず、GitHub の Merge ボタン (サーバ側) は素通りする。**恒久 enforcement はサーバ側に二層化する** — 同じ判定を `hooks/lib/verification-ci-check.sh` が CI で再実行し (`templates/github/workflows/verification-gate.yml`)、それを **required status check + branch protection (`enforce_admins=true`) + merge queue** に登録する (`scripts/setup-server-enforcement.sh`)。これで全マージ経路を覆い、単一 orchestrator が自分の関所を admin で素通りする穴と stale lane の統合破壊を塞ぐ。判定ロジックは `verification-plan.sh` の単一権威のまま (ローカル/CI が同じ lib を呼ぶ = drift しない)。**加えて (ADR 0011)**: lane の OWN delta (= base..lane を offline で計算) が `docs/verification/contracts` の登記面に当たった契約 id ごとに、その id を CLOSED にした plan 行 + consumer 側スイートの実走 (緑) を要求する。自動で回せない契約は `HUMAN` 行にして人間が相手の実出力で照合するまで OPEN。consumer 側のみ判定し相手 repo は読まない (相手 checkout が無いマシンで誤発火しない)。
 
 **SessionStart doctor (`verification-drift.sh`)** は逐次経路と async 盲点を可視化する (advisory・強制ではない): ① 採用済み repo で未判断の source 変更がある / ② plan に `async` 行があるのに実オラクルの `monitor` 行が無い。どちらも kind フィールドだけを見る (prose を走査しない)。
 

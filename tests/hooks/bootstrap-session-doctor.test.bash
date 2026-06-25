@@ -15,6 +15,11 @@ HOOK=bootstrap-session-doctor.sh
 setup_repo() {
   local tmp; tmp="$(mktemp -d)"
   git -C "$tmp" init -q
+  # Force the branch to `main` deterministically. `git init` honours the runner's
+  # init.defaultBranch (ubuntu CI defaults to `master`), which made the verification-drift
+  # case look for master.md while the test writes main.md -> false FAIL on CI only. Pin it
+  # so the doctor's branch->plan path (vplan_path_for_branch) matches what the test writes.
+  git -C "$tmp" symbolic-ref HEAD refs/heads/main
   REPO="$(git -C "$tmp" rev-parse --show-toplevel)"
   git -C "$REPO" config user.email t@t.test
   git -C "$REPO" config user.name tester

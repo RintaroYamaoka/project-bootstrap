@@ -1,0 +1,16 @@
+# Server-side twin of the local merge gate (ADR 0012) — dogfood copy for project-bootstrap.
+# The local PreToolUse hook only fires on a local `git merge`; the GitHub Merge button runs
+# server-side and skips it. This required check runs the SAME judgement (verification-plan.sh
+# is the single authority) on every PR, so an OPEN verification plan can't be merged via the
+# web UI / API. Wire it as a required status check with enforce_admins=true (setup script).
+name: verification-gate
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+jobs:
+  verification-closed:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verification plan must be closed
+        run: bash hooks/lib/verification-ci-check.sh "${GITHUB_HEAD_REF}"
