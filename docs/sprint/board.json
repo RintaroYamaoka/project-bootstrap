@@ -1,0 +1,65 @@
+{
+  "sprint": "2026-06-25-bootstrap-defects-D1-D4",
+  "wip_limit": 3,
+  "_wip_note": "3 disjoint lane (D1 / D2 / D3+D4)。tokenizer 依存は P0(0.23.0) で解消済み=全 lane depends_on 空。共有 manifest hooks.json への新 hook 結線は lead が integrate 時に実施 (lane は hooks.json を触らない=競合回避)。D3 と D4 は verification-drift.sh / skills/verification/SKILL.md を共有するため 1 lane に統合。",
+  "tasks": [
+    {
+      "id": "D1",
+      "title": "push 瞬間の fetch+behind freshness gate (block-stale-write-to-protected) + ADR 0009",
+      "scope": [
+        "hooks/block-stale-write-to-protected.sh",
+        "hooks/lib/repo-drift.sh",
+        "tests/hooks/block-stale-write-to-protected.test.bash",
+        "tests/hooks/repo-drift.test.bash",
+        "docs/decisions/0009-*.md",
+        "docs/incidents/2026-06-16-prod-migration-from-stale-checkout/**",
+        "docs/incidents/2026-06-25-stale-staged-commit/**"
+      ],
+      "branch": "feat/D1-stale-write-protected-gate",
+      "worktree": "../wt-D1-stale",
+      "depends_on": [],
+      "status": "todo",
+      "claimed_by": null
+    },
+    {
+      "id": "D2",
+      "title": "再発 action 直前に memory 注入 (block しない / controlled-vocab) + ADR 0010",
+      "scope": [
+        "hooks/lib/action-gate.sh",
+        "hooks/block-repeat-action-inject.sh",
+        "tests/hooks/action-gate.test.bash",
+        "scripts/doctor.sh",
+        "skills/incident/SKILL.md",
+        "templates/bootstrap-actions.example",
+        "docs/decisions/0010-*.md"
+      ],
+      "branch": "feat/D2-action-inject",
+      "worktree": "../wt-D2-inject",
+      "depends_on": [],
+      "status": "todo",
+      "claimed_by": null
+    },
+    {
+      "id": "D3D4",
+      "title": "cross-repo 契約宣言+実テスト closure (D3, ADR 0011) + async/silent-skip doctrine (D4, ADR 0007 amend)",
+      "scope": [
+        "hooks/lib/cross-repo-contract.sh",
+        "hooks/block-merge-if-verification-unclosed.sh",
+        "hooks/lib/verification-plan.sh",
+        "hooks/lib/verification-drift.sh",
+        "skills/verification/SKILL.md",
+        "skills/project-bootstrap/SKILL.md",
+        "templates/docs/verification/contracts.example",
+        "tests/hooks/cross-repo-contract.test.bash",
+        "tests/hooks/verification-plan.test.bash",
+        "tests/hooks/verification-drift.test.bash",
+        "docs/decisions/0011-*.md"
+      ],
+      "branch": "feat/D3D4-verification-contract-async",
+      "worktree": "../wt-D3D4-verif",
+      "depends_on": [],
+      "status": "todo",
+      "claimed_by": null
+    }
+  ]
+}
