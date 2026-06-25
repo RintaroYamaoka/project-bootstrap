@@ -7,6 +7,17 @@
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-06-25
+
+### Added
+
+- **サーバ側 enforcement への二層化 (ADR 0012)**。ローカルの merge gate は `git merge` しか捕まえられず GitHub の「Merge pull request」ボタン (サーバ側) を素通りする穴を、deep-research で外部一次資料化した 3 穴 (Merge ボタン経路 / branch protection のデフォルト admin 非適用 = 単一 orchestrator の自己素通り / lane 限定 pre-merge の stale 統合破壊) とともに塞ぐ。同じ判定 (`verification-plan.sh` 単一権威) を CI で再実行する `hooks/lib/verification-ci-check.sh` (merge gate の CI twin)、`templates/github/workflows/verification-gate.yml` (配布) + `.github/workflows/verification-gate.yml` (dogfood)、`scripts/setup-server-enforcement.sh` (`gh` で required checks `verification-closed`+`hooks` / `enforce_admins=true` / PR 必須・人間承認 0 を冪等設定、`--check` で admin 素通り監査)、`templates/github/ruleset.json` (複数 repo 横展開) を追加。ローカル hook は「速い feedback 層」に再定義 (権威はサーバ側)。
+- **データ修復時の「修復か仕様か」意図確認 inject (ADR 0013)**。AI が「値の欠落=バグ」と推測し domain owner 確認前に多段 backfill を組んだ incident (appo-followup `demo-proposal-lane-cv-notify-misfire`) を根に。100% 系統的な欠落は defect でなく **spec の徴候**・同じ値でもレーンで妥当性が真逆・意図のオラクルは data でなく人間。`inject-action-memory` (ADR 0010) の CLOSED enum に `data-backfill` を追加 (backfill/data-migrate スクリプト名 + `prisma db execute` + sql-client inline UPDATE/DELETE + knex/sequelize/typeorm/alembic を検出)。`action_default_memo` で plugin 所有の普遍 doctrine を **registry 未 arm でも常時発火** (opt-in を 1 キーだけ緩和)。`verification` skill に修復前 kill-question を追記。block しない可視化 (意図確認は既約 = ADR 0001)。
+
+### Fixed
+
+- **`tests/hooks/bootstrap-session-doctor.test.bash` の CI サイレント赤を根治**。`setup_repo` の `git init` が runner の `init.defaultBranch` を尊重し、ubuntu CI が `master` を既定にするため、verification-drift ケースが `master.md` を探す一方テストは `main.md` を書き込み不一致 → CI のみ false FAIL になっていた (main で気づかれず赤のまま)。`git symbolic-ref HEAD refs/heads/main` でブランチを決定論的に固定。
+
 ## [0.24.1] - 2026-06-25
 
 ### Fixed
