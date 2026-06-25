@@ -214,4 +214,99 @@ test_case "compound merge of two closed-plan lanes passes"
 run_hook "$HOOK" "$(merge_input 'git merge feat/T1-auth && git merge feat/T2-api')"
 assert_exit 0
 
+# ── D3: cross-repo contract drift (ADR 0011) ──────────────────────────────────────
+# A REAL lane branch whose OWN delta touches a declared local_face_glob must, to merge,
+# have a CLOSED plan row referencing that contract id. The lane delta is computed OFFLINE
+# against the merge-base (HEAD is on main during the merge hook), so the gate must inspect
+# base..lane, not cwd/HEAD. Build the lane on a real branch; checkout main before the hook.
+
+# setup a repo on main with docs/verification adopted and a base commit on a source face.
+# An active board registers the lane branch as a lane (so is_lane_branch matches it) — the
+# branch must ALSO exist as a real git ref for branch_changed_sources to compute its delta.
+setup_contract_repo() {
+  setup_repo
+  adopt_verify
+  git -C "$REPO" symbolic-ref HEAD refs/heads/main   # name the unborn branch 'main'
+  mkdir -p "$REPO/src/schemas"
+  printf 'export const base = 1\n' > "$REPO/src/schemas/base.ts"
+  git -C "$REPO" add -A
+  git -C "$REPO" commit -q -m base
+  # main remote-tracking ref so branch_changed_sources bases its diff on main, not HEAD.
+  git -C "$REPO" update-ref refs/remotes/origin/main "$(git -C "$REPO" rev-parse HEAD)"
+}
+# register <branch> on an active board so the gate treats it as a lane branch.
+board_lane() { # board_lane <branch>
+  mkdir -p "$REPO/docs/sprint"
+  printf '{"sprint":"s","wip_limit":2,"tasks":[{"id":"T1","title":"x","branch":"%s","status":"in-review"}]}' "$1" \
+    > "$REPO/docs/sprint/board.json"
+}
+# create a real lane branch that edits a declared face, then return to main.
+lane_touch_face() { # lane_touch_face <branch>
+  git -C "$REPO" checkout -q -b "$1"
+  printf 'export const survey = {a:1}\n' > "$REPO/src/schemas/demoSiteSurvey.ts"
+  git -C "$REPO" add -A
+  git -C "$REPO" commit -q -m "lane: survey schema"
+  git -C "$REPO" checkout -q main
+  board_lane "$1"
+}
+write_contracts() { mkdir -p "$REPO/docs/verification"; printf '%s\n' "$@" > "$REPO/docs/verification/contracts"; }
+
+# 19. Lane touches a declared face but the plan has NO closed row for that contract => block.
+setup_contract_repo
+lane_touch_face lane/survey
+write_contracts 'demo-survey-schema | src/schemas/demoSiteSurvey.* | demo-site | x | y'
+# a plan that is "closed" by the generic checks (a reasoned DROP unrelated to the contract)
+# but does NOT reference the touched contract id — must still block on the contract axis.
+write_plan lane/survey 'DROP | unit | unrelated | n/a | ai | low risk'
+RUN_DIR="$REPO"
+test_case "touched contract with no referencing closed row blocks the merge"
+run_hook "$HOOK" "$(merge_input 'git merge lane/survey')"
+assert_exit 2
+assert_stderr_contains 'demo-survey-schema'
+
+# 20. Lane touches a declared face AND a PASS row references it; no test suite present =>
+#     passes (the contract is acknowledged-closed; suite is fail-open when undetectable).
+setup_contract_repo
+lane_touch_face lane/survey
+write_contracts 'demo-survey-schema | src/schemas/demoSiteSurvey.* | demo-site | x | y'
+write_plan lane/survey 'PASS | contract | keys ⊆ schema [contract:demo-survey-schema] | site output | ai | green'
+RUN_DIR="$REPO"
+test_case "touched contract with a referencing PASS row passes (no suite to run)"
+run_hook "$HOOK" "$(merge_input 'git merge lane/survey')"
+assert_exit 0
+
+# 21. No contracts file => contract axis is a no-op (fail-open), plan checks still apply.
+setup_contract_repo
+lane_touch_face lane/survey
+write_plan lane/survey 'PASS | contract | x | y | ai | ok'
+RUN_DIR="$REPO"
+test_case "no contracts file: contract axis silent, closed plan passes"
+run_hook "$HOOK" "$(merge_input 'git merge lane/survey')"
+assert_exit 0
+
+# 22. Lane touches NO declared face => contract axis silent (no-grounds fail-open).
+setup_contract_repo
+git -C "$REPO" checkout -q -b lane/other
+mkdir -p "$REPO/src/util"; printf 'export const u = 1\n' > "$REPO/src/util/helper.ts"
+git -C "$REPO" add -A; git -C "$REPO" commit -q -m "lane: util"; git -C "$REPO" checkout -q main
+board_lane lane/other
+write_contracts 'demo-survey-schema | src/schemas/demoSiteSurvey.* | demo-site | x | y'
+write_plan lane/other 'PASS | contract | x | y | ai | ok'
+RUN_DIR="$REPO"
+test_case "lane touching no declared face passes (contract no-grounds)"
+run_hook "$HOOK" "$(merge_input 'git merge lane/other')"
+assert_exit 0
+
+# 23. Touched contract closed by a HUMAN row stays OPEN => blocked (free-text PASS can't
+#     close a touched contract; the irreducible oracle must be human-recorded). The HUMAN
+#     row is OPEN so the existing plan check blocks; assert the merge does not pass.
+setup_contract_repo
+lane_touch_face lane/survey
+write_contracts 'demo-survey-schema | src/schemas/demoSiteSurvey.* | demo-site | x | y'
+write_plan lane/survey 'HUMAN | contract | keys ⊆ schema [contract:demo-survey-schema] | sibling real output | human |'
+RUN_DIR="$REPO"
+test_case "touched contract with an unresolved HUMAN row blocks the merge"
+run_hook "$HOOK" "$(merge_input 'git merge lane/survey')"
+assert_exit 2
+
 finish

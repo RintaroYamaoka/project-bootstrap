@@ -36,6 +36,9 @@ description: 動作テスト (behavioral verification) を「意図と跨いだ�
 - AI が要件を**言い直した**所 (原典を指していない)
 - 「完了」を**実物を見ずに**主張する所
 - 環境が前提と**違いうる**所 (checkout / branch / .env)
+- **無音で skip/drop/filter する経路** / **scheduler・queue・heartbeat の裏で動く所** ← async seam。cron が条件で 1 件を弾いて何もログを残さない (リマインダが永遠に飛ばない) / daemon の heartbeat は生きているのに work queue が stall する。同期の「自分の返答を読み返す」では捕まらない — 観測点 (signal) が存在しないのが本質
+
+> **cross-repo seam を持つ repo は、共有面を `docs/verification/contracts` に登記する** (ADR 0011)。`id | local_face_glob | peer_repo | peer_face | note`。宣言なき共有スキーマは片側変更で無音に割れる (mood と同型)。登記された面を lane で触ると、その契約の動作テスト (consumer-driven) が統合の precondition になる (`block-merge-if-verification-unclosed.sh` が lane の OWN delta で判定)。
 
 ### Step 3: 挙動ごとに技法とオラクルを選ぶ
 
@@ -48,6 +51,7 @@ description: 動作テスト (behavioral verification) を「意図と跨いだ�
 | 全入力で成り立つ法則 | プロパティテスト | 不変量 |
 | **両端を握ってない境界** | **契約テスト (consumer-driven)** | 相手の実出力 |
 | 異常系・想定外 | ネガティブ / エラー推測 | 落ち方が安全 |
+| **無音で skip/drop する経路・queue/heartbeat の裏で stall** (async seam) | **本番計器 (`kind=monitor`)** | **AI の外の実信号** = 本番アラート / 日次集計 (例「CV>0 かつ予約=0」) |
 | 未知の未知 | 探索的テスト (人間) + 本番計器 | 実アウトカム |
 
 **オラクルは必ず AI の外に置く。** 期待値が書けない → プロパティ/メタモルフィック。跨ぐ → 契約 or 実アウトカム。意図レベル (「これが欲しかったか」) → **人間にフラグ (`HUMAN`)**。オラクルが見つからない挙動を「pass と仮定」で埋めない。
@@ -62,13 +66,16 @@ description: 動作テスト (behavioral verification) を「意図と跨いだ�
 # verification plan — <意図を 1 文>
 # 落とした範囲: <テストしないと決めたもの — 無音カット禁止>
 # STATUS | kind | behaviour | oracle | by | evidence/note
-TODO  | contract | form 出力キー ⊆ schema 必須キー | サイトの実出力 | ai |
+TODO  | contract | form 出力キー ⊆ schema 必須キー [contract:demo-survey-schema] | サイトの実出力 | ai |
 HUMAN | e2e      | デモ予約を最後まで通す           | submissions に行が立つ | human |
+TODO  | async    | cron がリマインダを送る (skip 経路も) | n/a | ai | ← 実オラクルは下の monitor 行で
 TODO  | monitor  | 当日CV>0 かつ予約=0 を検知       | 日次集計アラート | ai |
 DROP  | unit     | css のピクセル厳密一致           | n/a | ai | low risk, 価値<コスト
 ```
 
-STATUS 語彙: `TODO` (未実施) / `FAIL` (失敗) / `HUMAN` (人間の実施待ち) = **OPEN**。`PASS` (オラクルで検証済) / `DROP` (テストしない・**理由必須**) = CLOSED。`kind` = unit / contract / e2e / manual / monitor (テストピラミッド。AI 開発の残余は下 3 つに偏る)。
+STATUS 語彙: `TODO` (未実施) / `FAIL` (失敗) / `HUMAN` (人間の実施待ち) = **OPEN**。`PASS` (オラクルで検証済) / `DROP` (テストしない・**理由必須**) = CLOSED。`kind` = unit / contract / e2e / manual / monitor / **async** (テストピラミッド。AI 開発の残余は下に偏る)。`async` = 無音 skip / scheduler・queue の裏の経路 (オラクルが同期で取れない)。**`async` 行は必ず実オラクルを持つ `monitor` 行で裏打ちする** — async 行があって実オラクル (`field-4 ≠ n/a`) の monitor が無いと、SessionStart doctor が盲点 advisory を出す (`verification-drift.sh` axis 2、kind フィールドだけを見る = prose を走査しない)。
+
+cross-repo 契約を CLOSED にする行は、note か behaviour に**必ずアンカー付きタグ `[contract:<id>]` を書く** (`docs/verification/contracts` の id を角括弧で囲んで参照)。関所はこの角括弧タグを**リテラル一致**で探す — 素の id を prose に書いただけや、別 id の substring (例: `booking` の行が `booking-payload` を参照しているだけ) では**閉じない**。fail-closed の関所に「文字列が含まれていればいい」という穴を空けないため (kind フィールドと同じ「統制語彙トークンだけを見る・prose を走査しない」D4 ドクトリン)。lane が登記面を触ったとき、その id をアンカー付きで CLOSED にした行が無ければ統合は通らない (free-text PASS では閉じない — 関所が consumer 側スイートを実走するか、人間が相手の実出力で照合して HUMAN→PASS にする)。
 
 ### Step 5: 実行して閉じる (人間と共同記録)
 
@@ -84,13 +91,15 @@ STATUS 語彙: `TODO` (未実施) / `FAIL` (失敗) / `HUMAN` (人間の実施�
 1. **何ができたか** (機能・挙動)
 2. **何を跨いだか** (境界 = テストした行)
 3. **あなたが手で確認すべきもの** (`HUMAN` 行 = 人間しか採点できない意図・整合)
-4. **未知用に何を計器化したか / 盲点** (`monitor` 行、未実装なら盲点と白状)
+4. **未知用に何を計器化したか / 盲点** (`monitor` 行) — **明言必須 (MANDATORY-to-state)**: 実オラクルを持つ `monitor` 行が在るか、無いなら盲点を文章で白状する、のどちらかを必ず述べる。とくに async / scheduled / 無音 skip の経路 (cron・queue・heartbeat) は同期の読み返しで捕まらないので、計器が無いと事故が無音で起きる (cron が 1 件 skip してリマインダが飛ばない、queue が stall する)。「盲点なし」を黙って素通りさせない。
 
 ## 関所と射程
 
-`block-merge-if-verification-unclosed.sh` が、lane branch の merge に対し plan の存在・非空・OPEN 行ゼロ・理由なき DROP ゼロを fail-closed で要求する (opt-in = `docs/verification/` を置く)。
+`block-merge-if-verification-unclosed.sh` が、lane branch の merge に対し plan の存在・非空・OPEN 行ゼロ・理由なき DROP ゼロを fail-closed で要求する (opt-in = `docs/verification/` を置く)。**加えて (ADR 0011)**: lane の OWN delta (= base..lane を offline で計算) が `docs/verification/contracts` の登記面に当たった契約 id ごとに、その id を CLOSED にした plan 行 + consumer 側スイートの実走 (緑) を要求する。自動で回せない契約は `HUMAN` 行にして人間が相手の実出力で照合するまで OPEN。consumer 側のみ判定し相手 repo は読まない (相手 checkout が無いマシンで誤発火しない)。
 
-**射程の境界**: gate は統合 (merge) を信号にするので branch を切らない逐次作業は捕まえない。そこはこの skill (plan 時の precondition) が担う。未知の未知は plan に載らない → 本番計器のまま (例: mood の予約棄却アラート PR#305)。最終オラクル (意図・整合) は人間に残る。
+**SessionStart doctor (`verification-drift.sh`)** は逐次経路と async 盲点を可視化する (advisory・強制ではない): ① 採用済み repo で未判断の source 変更がある / ② plan に `async` 行があるのに実オラクルの `monitor` 行が無い。どちらも kind フィールドだけを見る (prose を走査しない)。
+
+**射程の境界**: gate は統合 (merge) を信号にするので branch を切らない逐次作業は捕まえない。そこはこの skill (plan 時の precondition) と doctor (可視化) が担う。未知の未知は plan に載らない → 本番計器のまま (例: mood の予約棄却アラート PR#305)。最終オラクル (意図・整合) は人間に残る。
 
 ## ライフサイクル
 

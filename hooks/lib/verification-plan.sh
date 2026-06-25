@@ -39,6 +39,19 @@
 #   vplan_row_count <file>       -> echoes integer count of data rows
 #   vplan_open_rows <file>       -> echoes each OPEN data row (trimmed), one per line
 #   vplan_bad_drops <file>       -> echoes each DROP row missing a reason (trimmed)
+#   vplan_has_kind <file> <kind> -> rc 0 iff a data row's KIND field (field 2) EXACTLY
+#                                   equals <kind>, case-folded. NOT a substring scan of
+#                                   prose — keyed only on the controlled-vocab kind field
+#                                   the author deliberately set (D4 / ADR 0007 amendment).
+#
+# kind controlled vocabulary (the test pyramid; AI-dev residue skews to the lower rows):
+#   unit / contract / e2e / manual / monitor / async
+#   - monitor = a row whose oracle is a PRODUCTION instrument (an alert / a daily aggregate
+#     like "CV>0 but bookings==0"); the oracle is external to the AI and to the test suite.
+#   - async  = a path that filters/skips/drops with no observable signal, or work behind a
+#     scheduler/queue/heartbeat. An async row WITHOUT a real monitor oracle is a blind spot
+#     (a cron that skips silently, a daemon alive while its queue stalls) — verification-
+#     drift.sh advises on exactly that shape, keyed on this field, never on prose.
 
 # vplan_path_for_branch — see header. Maps a branch name to its plan file. The same
 # derivation the merge gate used inline; factored out so the doctor reuses it verbatim
@@ -106,4 +119,22 @@ vplan_bad_drops() {
     reason="$(vplan_field "$line" 6)"
     [ -z "$reason" ] && printf '%s\n' "$(_vplan_trim "$line")"
   done < "$file"
+}
+
+# vplan_has_kind — see header. EXACT match on the kind field (field 2), case-folded. We
+# only consider lines that are data rows (vplan_row_status non-empty), and we compare the
+# whole trimmed field — so a behaviour/note column that happens to contain the word
+# ('drop a row', 'monitoring') can never register as that kind. This is the deliberate
+# fix for the lexicon-scan false-fire: key on the controlled-vocab field the AI SET, not
+# on prose it happened to write.
+vplan_has_kind() {
+  local file="$1" want kind line
+  want="$(printf '%s' "$2" | tr '[:upper:]' '[:lower:]')"
+  [ -f "$file" ] || return 1
+  while IFS= read -r line || [ -n "$line" ]; do
+    [ -n "$(vplan_row_status "$line")" ] || continue       # data rows only
+    kind="$(vplan_field "$line" 2 | tr '[:upper:]' '[:lower:]')"
+    [ "$kind" = "$want" ] && return 0
+  done < "$file"
+  return 1
 }
