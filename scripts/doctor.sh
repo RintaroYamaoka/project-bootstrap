@@ -125,10 +125,42 @@ fi
 
 SUM="arch=$ARCH protected=$PROT lint=$LINT lane=$LANE sprint=$SPRINT verify=$VERIFY memory=$MEM vendored=$VENDORED"
 
+# --- action-memory registry audit (lane D2 / ADR 0010) ---
+# Surface-only (never flips status / never exits 2): report whether the repo arms any
+# repeat-prone action (.bootstrap-actions, opt-in) and list ORPHAN entries — an armed key
+# that is NOT in the plugin's CLOSED enum, so its memo can NEVER fire (a silent dead arm).
+# Also surface a repeat-action incident that has NO registered key when it is cheaply
+# detectable (an incident dir tagged `repeat-action` while the registry is absent/empty):
+# that is the very gap this lane closes (a fix recorded but never armed to re-surface).
+# The judge is hooks/lib/action-gate.sh — same authority the injector uses, so doctor and
+# the hook cannot drift on what a valid key is.
+ACTIONS_LINE=""
+AGLIB="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd)/hooks/lib/action-gate.sh"
+if [ -f "$AGLIB" ]; then
+  # shellcheck source=../hooks/lib/action-gate.sh
+  . "$AGLIB"
+  if [ -f "$REPO/.bootstrap-actions" ]; then
+    ARMED_N=$(grep -cE '^[[:space:]]*[^#[:space:]]' "$REPO/.bootstrap-actions" 2>/dev/null || echo 0)
+    ORPHANS=$(registry_orphan_keys "$REPO" 2>/dev/null | paste -sd, - )
+    if [ -n "$ORPHANS" ]; then
+      ACTIONS_LINE="actions: .bootstrap-actions present ($ARMED_N armed) — ORPHAN keys not in the plugin enum: $ORPHANS (memo can never fire; fix the key or add it to action-gate.sh)"
+    else
+      ACTIONS_LINE="actions: .bootstrap-actions present ($ARMED_N armed, no orphans)"
+    fi
+  else
+    # No registry. If an incident is tagged as a repeat-prone action, the fix it records is
+    # not armed to re-surface — point at .bootstrap-actions. Cheap grep over incident dirs.
+    if [ -d "$REPO/docs/incidents" ] && grep -rilE 'repeat[- ]?action' "$REPO/docs/incidents" >/dev/null 2>&1; then
+      ACTIONS_LINE="actions: no .bootstrap-actions, but a docs/incidents entry is tagged repeat-action — arm its action-key (templates/bootstrap-actions.example) so the recorded fix re-surfaces at the action"
+    fi
+  fi
+fi
+
 if [ "${#ISSUES[@]}" -gt 0 ]; then
   echo "STATUS: partial"
   echo "project-bootstrap 採用済みだが整合しない点がある ($SUM):"
   for i in "${ISSUES[@]}"; do echo "  - $i"; done
+  [ -n "$ACTIONS_LINE" ] && echo "  - $ACTIONS_LINE"
   if [ "$VENDORED" = no ]; then
     echo "(plugin 経由採用は plugin の install/版を repo から検証不能。team-wide に強制するなら .claude/hooks/ への vendoring か templates/ci/bootstrap-doctor.yml を CI に置く)"
   fi
@@ -137,6 +169,7 @@ fi
 
 echo "STATUS: ok"
 echo "project-bootstrap 採用済み・整合 ($SUM)。"
+[ -n "$ACTIONS_LINE" ] && echo "  - $ACTIONS_LINE"
 if [ "$VENDORED" = no ]; then
   echo "注: hook は plugin 経由 (repo に vendoring 無し)。plugin が未 install / 旧版の環境では gate が静かに効かない —"
   echo "    team-wide net には .claude/hooks/ への vendoring か templates/ci/bootstrap-doctor.yml (plugin 非依存) を検討。"

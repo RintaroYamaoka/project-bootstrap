@@ -111,6 +111,15 @@ incident が **複数プロジェクトで共通する AI の癖** であれば�
 
 検出が false positive 多発しそうなら hook 化はせず A/B で済ませる。
 
+#### E. repeat-prone な ACTION なら action-key を arm する (= 再発の瞬間に memo を出す)
+
+incident が **特定の操作 (= prod deploy / prod DB migrate 等) を打つたびに再発する型** なら、A で書いた memory を `.bootstrap-actions` に arm する。これをしないと「fix は memory に在るのに、その操作を打つ瞬間には目の前に出ない」= まさに deploy-author bug が ~7 回再発した穴が残る (ADR 0010)。
+
+- plugin の CLOSED action-key enum (`hooks/lib/action-gate.sh` の `ACTION_KEY_ENUM` / 現状 `prod-deploy` / `prod-db-migrate`) から該当キーを 1 つ選ぶ。**自前の match regex は書かない** (= 未レビューの greedy-match 事故を呼ぶ。matcher は共有 plugin code)。
+- repo root の `.bootstrap-actions` (opt-in、雛形 `templates/bootstrap-actions.example`) に 1 行追記: `<action-key> | <memory-slug> | <fix の 1 行>`。次にその操作を打つと `inject-action-memory.sh` (PreToolUse) が memo を advisory context として注入する (block しない / ack も取らない = 理解は irreducible)。
+- 該当する enum キーが無い操作なら、それは reviewed な plugin-level enum 追加 (`action-gate.sh` にキー + matcher arm + test)。incident 側で regex を足して済ませない。
+- `scripts/doctor.sh` の `actions:` 行が arm 漏れ (= repeat-action タグの incident なのに registry 不在) と orphan (= enum に無いキーを arm) を可視化する。
+
 ### Step 5: 関連 doc とリンクする
 
 - 関連する handoff (= 事故が起きた session の) → 本 incident からリンク
