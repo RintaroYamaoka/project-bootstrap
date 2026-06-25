@@ -46,7 +46,7 @@ scope を disjoint に切れていれば file conflict はほぼ出ない。出�
 
 ### Step 4: cohort / verification の最終確認
 
-各 task の `docs/verification/<branch>.md` が閉じている (OPEN 行ゼロ・理由なき DROP ゼロ) ことを確認する。`block-merge-if-verification-unclosed.sh` が lane branch の merge で fail-closed に要求するが、計画の設計と `HUMAN` 行の実施は `verification` skill (ADR 0007) で済ませておく — 統合フェーズで初めて書くものではない。統合後、production-affecting な変更があれば `project-bootstrap` SKILL の verification 4 罠を最終 gate として確認する。user-facing bug fix を含むなら同根 cohort audit も。
+各 task の `docs/verification/<branch>.md` が閉じている (OPEN 行ゼロ・理由なき DROP ゼロ) ことを確認する。`block-merge-if-verification-unclosed.sh` が lane branch の merge で fail-closed に要求するが、計画の設計と `HUMAN` 行の実施は `verification` skill (ADR 0007) で済ませておく — 統合フェーズで初めて書くものではない。さらに lane の delta が登記済みの cross-repo 契約 (`docs/verification/contracts`) の面を触っているなら、同 gate はその契約に対し `[contract:<id>]` タグつきの CLOSED plan 行 + consumer 側スイートの緑 (関所自身が実走) も要求する (ADR 0011) ので、これも閉じていることを確認する。統合後、production-affecting な変更があれば `project-bootstrap` SKILL の verification 4 罠を最終 gate として確認する。user-facing bug fix を含むなら同根 cohort audit も。
 
 ### Step 5: claim を閉じ、worktree を撤去
 

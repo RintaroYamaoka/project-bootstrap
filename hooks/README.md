@@ -198,7 +198,10 @@ session を開いた瞬間に `scripts/doctor.sh` で project-bootstrap の採�
 
 コードレベルのバグは TDD hook + レビューで潰れたが、残余の事故は**継ぎ目 (cross-repo 契約 / 要件 / 「実物を見ずの完了」/ 環境)** に移動した — repo 内 unit test の射程外で、緑のテストが誤った契約を固定して false confidence を配る (mood incident: zod `min(1)` の test が緑のまま全予約 reject、ADR 0007)。本 hook は review gate と同じ lane 信号 (活性 board task branch ∪ linked worktree branch) を使い、**lane branch を `git merge` する行為**を信号に、その branch の verification plan が閉じていることを fail-closed で要求する。フォーマット権威は [`lib/verification-plan.sh`](./lib/verification-plan.sh) に集約 (gate/doctor/skill 共有 = drift 防止)。
 
+さらに **cross-repo 契約拡張** (ADR 0011): 既存 plan check の後、lane の OWN delta (`base..lane` を offline 計算) が `docs/verification/contracts` の登記面 (`local_face_glob`) を触ったら、その契約に対し **`[contract:<id>]` タグつきの CLOSED plan 行** + **consumer 側スイートの関所自身による実走 (緑)** を追加で要求する (どちらも無ければ block)。登記の parse と lane delta の計算は単一権威 [`lib/cross-repo-contract.sh`](./lib/cross-repo-contract.sh) に集約 (gate/doctor 共有 = drift 防止)。gate は相手 repo を読まない (consumer 側のみ)、自動で回せない契約は plan 行を `STATUS=HUMAN` にして人間の実出力照合まで OPEN のままにする (free-text PASS では touched 契約を閉じさせない)。
+
 - precondition = `docs/verification/<branch の `/`→`_`>.md` が存在し、データ行を 1 つ以上持ち、OPEN 行 (TODO/FAIL/HUMAN) がゼロ、理由なき DROP がゼロ
+- **cross-repo 契約 (ADR 0011)**: lane delta が登記面を触ったら、その契約 id を CLOSED にした `[contract:<id>]` 行 AND consumer スイートの実走 (緑) も追加 precondition。無ければ block
 - **plan 不在は fail-open に逃さず block** (= 「計画を書かない」で gate を素通りさせない。ADR 0002 の教訓)
 - **fail-closed**: コマンド解析不能 / 採用済み lane branch の plan 不在・空・OPEN 行残存・理由なき DROP
 - **fail-open (根拠不在)**: 非 merge / 非 git / `docs/verification/` 未採用 (opt-in) / merge 対象が lane branch でない
@@ -320,7 +323,7 @@ bypass は **規律を壊す**。bypass する前に「なぜそれが必要な�
 | `tool_input.command` | PreToolUse `Bash` | 全 Bash gate ([`lib/parse-command.sh`](./lib/parse-command.sh) 経由) | **fail-closed (安全側)**: `parse_command` が rc≠0 → 各 hook が `exit 2`。全 Bash が止まるので**無音にならず即発覚**する |
 | `tool_input.file_path` / `path` | PreToolUse `Edit\|Write\|MultiEdit` | `require-test-companion` / `block-cross-layer-import` / `block-uniso-main-edit` | **fail-open (要注意)**: 直 grep が空 → `[ -z "$FILE" ] && exit 0` で素通し = **無音バイパス** |
 | `transcript_path` | PreToolUse `Bash` (`git commit`) | `block-cross-claude-wip` | **fail-open**: transcript を読めず巻き込み check が素通し (warning は出る) |
-| `cwd` | SessionStart | `bootstrap-session-doctor` | PWD に fallback (doctor の可視化が劣化するだけ) |
+| `cwd` | SessionStart / PreToolUse `Bash` | `bootstrap-session-doctor` / `inject-action-memory` | PWD に fallback (doctor の可視化が劣化 / injector が別 repo の registry を読む可能性 — どちらも block しないので無音劣化のみ) |
 
 **CC をアップグレードしたら再検証する** (= 外部前提は閉じたら再検証、ADR 0004 の原則)。とくに fail-open の 2 key (`file_path` / `transcript_path`) が現行 [docs](https://code.claude.com/docs/en/hooks) と一致するかを確認する。`tests/hooks/*.test.bash` は**期待スキーマ**を pin する (= 期待 key で parse できることを保証) が、合成入力ゆえ**実ハーネスの変更そのものは検出できない** — そこは本表 + アップグレード時の手動再検証が担う。
 

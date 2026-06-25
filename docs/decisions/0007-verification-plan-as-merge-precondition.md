@@ -85,3 +85,16 @@ doctrine の 4 設計判断への写像 (新軸でなく既存判断をテスト
 - **SessionStart は「開いた時点の state」を捕まえる net**。session を開いた後に同一 session 内で作った変更は次回 session まで surface されない (repo-drift と同性質)。同一 session 内の即時通知 (commit-time / prompt-time advisory) は同じ engine を再利用する follow-up 余地。
 
 **検証**: `tests/hooks/verification-drift.test.bash` (engine 単体) + `bootstrap-session-doctor.test.bash` (注入の統合) + `verification-plan.test.bash` (`vplan_path_for_branch`)。この変更自体の verification plan は `docs/verification/main.md` (dogfood)。
+
+---
+
+## Amendment (2026-06-25) — async / silent-skip seam
+
+本 ADR の verification trap 1 / read-back doctrine は **同期の呼び出し側**を前提に書かれており、async / scheduled な経路 (cron が条件で 1 件を無音 filter-and-skip / live heartbeat の裏で stall する work queue) は *読み返す自分の返答が存在しない* ため射程外だった。この穴を埋める D4 変更は、本 ADR の amendment であるべき内容だが、実装した lane が 0007 本文を編集 scope に持たなかったため **ADR 0011 末尾の「Amendment ノート — D4」に記録された**。
+
+要点 (正本は ADR 0011 / `skills/verification/SKILL.md` / `hooks/lib/verification-plan.sh` / `hooks/lib/verification-drift.sh`):
+- `verification-plan.sh`: kind 語彙に `async` を追加 + pure helper `vplan_has_kind` (field-2 の厳密一致・case-fold・substring 走査しない) を追加。
+- `verification-drift.sh`: 新 doctor 軸 — plan に `kind=async` 行が在り、かつ実オラクル (field-4 ≠ n/a) を持つ `kind=monitor` 行が無いとき advisory を 1 行出す独立ブランチ。controlled-vocab の kind フィールドだけを信号にし prose を走査しない。advisory only・決して exit 2 しない。
+- `skills/verification/SKILL.md`: Step-2 に 5 つ目の named seam (無音 skip/drop/filter / live heartbeat 裏の stall queue / cron の skip 分岐)、Step-3 オラクル表に `kind=monitor` + AI の外の実オラクル行を追加。
+
+詳細・fail-mode は **ADR 0011** を参照 (そこに記録された経緯どおり)。

@@ -37,7 +37,7 @@ read-only の web 照合腕を `skills/plan` (前提検証 Step) / `skills/verif
 
 受諾されたら cohort-audit pilot を実装する。本 ADR は「確率 gate を入れてよい条件」と「決定論 gate を置換しない線引き」を固定する。
 
-**受諾・実装 (2026-06-21)**: スキーマを公式 docs で検証した — `type: "prompt"` hook は `Stop` イベントで動き、model (既定 Haiku) は `{"ok": bool, "reason": str}` を返す。`Stop` で `ok:false` のとき **reason が Claude に戻り作業を継続** (= block でなく warn nudge、条件 a を満たす)。これを `templates/hooks/cohort-audit-pilot.json` に実装。**default の 17 hook には入れない** — 確率 gate を全 consumer に毎ターン強制するのは pilot でなく full rollout なので、**opt-in テンプレ**にして blast radius を絞り、enable した repo で誤検知率を観測してから default 昇格を判断する (条件 b/c)。prompt は「user-facing bug fix かつ cohort audit 不在のときだけ ok:false / それ以外と不確実は ok:true」で cry-wolf を抑える。CI テスト不能 (条件 c) ゆえ measurement は実運用の手動観測 — `velocity.sh` の defect-rate と並べて誤検知が多ければ撤回する。`hooks/README.md` の「opt-in pilot」節と `skills/project-bootstrap/SKILL.md` の完遂責任節にミラー (ADR→SKILL、ADR 0003)。
+**受諾・実装 (2026-06-21)**: スキーマを公式 docs で検証した — `type: "prompt"` hook は `Stop` イベントで動き、model (既定 Haiku) は `{"ok": bool, "reason": str}` を返す。`Stop` で `ok:false` のとき **reason が Claude に戻り作業を継続** (= block でなく warn nudge、条件 a を満たす)。これを `templates/hooks/cohort-audit-pilot.json` に実装。**default の 17 hook (当時; 0.24.0 で 19) には入れない** — 確率 gate を全 consumer に毎ターン強制するのは pilot でなく full rollout なので、**opt-in テンプレ**にして blast radius を絞り、enable した repo で誤検知率を観測してから default 昇格を判断する (条件 b/c)。prompt は「user-facing bug fix かつ cohort audit 不在のときだけ ok:false / それ以外と不確実は ok:true」で cry-wolf を抑える。CI テスト不能 (条件 c) ゆえ measurement は実運用の手動観測 — `velocity.sh` の defect-rate と並べて誤検知が多ければ撤回する。`hooks/README.md` の「opt-in pilot」節と `skills/project-bootstrap/SKILL.md` の完遂責任節にミラー (ADR→SKILL、ADR 0003)。
 
 ### 3. exec-form hook (`args[]`) — **却下**
 
