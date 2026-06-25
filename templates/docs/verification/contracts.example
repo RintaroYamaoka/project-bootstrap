@@ -10,8 +10,13 @@
 #
 #   id | local_face_glob | peer_repo | peer_face | note
 #
-#   id              … 契約の安定 ID。verification plan の contract 行がこの ID を参照する
-#                     (例: behaviour 列か note 列に "contract:demo-survey-schema" と書く)。
+#   id              … 契約の安定 ID。verification plan の contract 行がこの ID を参照する。
+#                     **参照は必ずアンカー付きタグ `[contract:<id>]` で書く** (behaviour 列か
+#                     note 列に。例: `[contract:demo-survey-schema]`)。gate はこの角括弧タグを
+#                     リテラル一致で探す — 素の id を prose に書いただけ / 別 id の substring
+#                     ('booking' が 'booking-payload' 行に巻き込まれる) では閉じない (fail-closed
+#                     の関所に substring の穴を空けない。verification-plan.sh の kind と同じ
+#                     「統制語彙トークンだけを見る・prose を走査しない」D4 ドクトリン)。
 #   local_face_glob … この repo 側で契約を背負う source face の glob (repo 相対)。lane branch の
 #                     delta がこの glob に当たったら、その契約の動作テストが要る、と gate が判定する。
 #                     複数 glob は ` ` (空白) でなく別行に分けるか、glob 自体を広く取る。

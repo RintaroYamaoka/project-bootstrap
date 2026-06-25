@@ -47,12 +47,20 @@
 #   crc_touched_contract_ids <dir> <lane> -> echo the id of each declared contract whose
 #                                          local_face_glob matches a path in the lane delta
 #   crc_closed_row_references_id <plan> <id> -> rc 0 iff a CLOSED (PASS / reasoned DROP)
-#                                          plan row's text references <id>. An OPEN row that
-#                                          names the id does NOT close it — that row already
-#                                          blocks via the plan's OPEN-row check, and a touched
-#                                          contract may not be silently closed by a free-text
-#                                          PASS the gate did not run. The gate ALSO runs the
-#                                          consumer-side suite; this only checks the ack row.
+#                                          plan row carries the ANCHORED tag `[contract:<id>]`.
+#                                          NOT a raw substring scan of the row (that holed the
+#                                          gate: 'booking' was falsely closed by a row tagging
+#                                          the superstring 'booking-payload', and 'survey' by
+#                                          prose merely mentioning the word). We key ONLY on the
+#                                          literal bracketed token the repo conventions — the id
+#                                          is matched as a LITERAL, never a regex, never prose
+#                                          (same D4 doctrine as vplan_has_kind: controlled-vocab
+#                                          token, not a lexicon scan). An OPEN row carrying the
+#                                          tag does NOT close it — that row already blocks via
+#                                          the plan's OPEN-row check, and a touched contract may
+#                                          not be silently closed by a free-text PASS the gate
+#                                          did not run. The gate ALSO runs the consumer-side
+#                                          suite; this only checks for the anchored ack row.
 
 # Resolve sibling libs (idempotent — pure-function libs, re-sourcing is harmless).
 _crc_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -160,18 +168,41 @@ EOF
 }
 
 # crc_closed_row_references_id <plan-file> <id> — see header. A CLOSED row is PASS or a
-# reasoned DROP; "references" = the contract id appears anywhere in the row's text (the
-# convention is to write `contract:<id>` in the behaviour or note field). Substring match
-# is intentional here (the id is an explicit, author-chosen token in the row), NOT a
-# lexicon scan of prose. Returns 1 (not closed) on a missing/empty plan.
+# reasoned DROP; it "references" the contract iff it carries the ANCHORED tag `[contract:<id>]`
+# (the repo's documented convention — written in the behaviour or note field). We match that
+# LITERAL bracketed token, NOT a raw substring of the id, so:
+#   - id 'booking' is NOT closed by a row tagging the superstring 'booking-payload'
+#     (`[contract:booking]` ≠ `[contract:booking-payload]` — the `]` delimiter is part of the
+#     needle, so the boundary is enforced for free);
+#   - prose merely mentioning a common word ('survey', 'booking') never closes a contract.
+# The id is treated as a LITERAL: it is folded into the `case` PATTERN with every glob
+# metacharacter (* ? [ \) escaped, so an id containing such a char can neither match more
+# broadly nor break the pattern (defensive — contract ids are author-chosen tokens, but the
+# fail-CLOSED gate must not be widened by a stray char). Returns 1 on a missing/empty plan.
 crc_closed_row_references_id() {
-  local plan="$1" id="$2" line status
+  local plan="$1" id="$2" line status needle pat c i
   [ -n "$id" ] || return 1
   [ -f "$plan" ] || return 1
+  # Build the literal needle `[contract:<id>]` with the id's glob metacharacters escaped so
+  # the `case` pattern matches it verbatim (no regex/glob injection through the id).
+  pat=""
+  i=0
+  while [ "$i" -lt "${#id}" ]; do
+    c="${id:i:1}"
+    case "$c" in
+      '*'|'?'|'['|']'|'\') pat="$pat\\$c" ;;
+      *) pat="$pat$c" ;;
+    esac
+    i=$((i + 1))
+  done
+  # The surrounding brackets must be LITERAL, not a `case` bracket-expression: escape them
+  # (`\[ ... \]`) so the pattern matches the verbatim string `[contract:<id>]`.
+  needle="*\\[contract:$pat\\]*"
   while IFS= read -r line || [ -n "$line" ]; do
     status="$(vplan_row_status "$line")"
     case "$status" in PASS|DROP) ;; *) continue ;; esac
-    case "$line" in *"$id"*) return 0 ;; esac
+    # shellcheck disable=SC2254
+    case "$line" in $needle) return 0 ;; esac
   done < "$plan"
   return 1
 }

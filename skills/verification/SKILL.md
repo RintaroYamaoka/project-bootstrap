@@ -75,7 +75,7 @@ DROP  | unit     | css のピクセル厳密一致           | n/a | ai | low ri
 
 STATUS 語彙: `TODO` (未実施) / `FAIL` (失敗) / `HUMAN` (人間の実施待ち) = **OPEN**。`PASS` (オラクルで検証済) / `DROP` (テストしない・**理由必須**) = CLOSED。`kind` = unit / contract / e2e / manual / monitor / **async** (テストピラミッド。AI 開発の残余は下に偏る)。`async` = 無音 skip / scheduler・queue の裏の経路 (オラクルが同期で取れない)。**`async` 行は必ず実オラクルを持つ `monitor` 行で裏打ちする** — async 行があって実オラクル (`field-4 ≠ n/a`) の monitor が無いと、SessionStart doctor が盲点 advisory を出す (`verification-drift.sh` axis 2、kind フィールドだけを見る = prose を走査しない)。
 
-cross-repo 契約を検証する行は note か behaviour に `[contract:<id>]` で `docs/verification/contracts` の id を参照する。lane が登記面を触ったとき、その id を CLOSED にした行が無ければ統合は通らない (free-text PASS では閉じない — 関所が consumer 側スイートを実走するか、人間が相手の実出力で照合して HUMAN→PASS にする)。
+cross-repo 契約を CLOSED にする行は、note か behaviour に**必ずアンカー付きタグ `[contract:<id>]` を書く** (`docs/verification/contracts` の id を角括弧で囲んで参照)。関所はこの角括弧タグを**リテラル一致**で探す — 素の id を prose に書いただけや、別 id の substring (例: `booking` の行が `booking-payload` を参照しているだけ) では**閉じない**。fail-closed の関所に「文字列が含まれていればいい」という穴を空けないため (kind フィールドと同じ「統制語彙トークンだけを見る・prose を走査しない」D4 ドクトリン)。lane が登記面を触ったとき、その id をアンカー付きで CLOSED にした行が無ければ統合は通らない (free-text PASS では閉じない — 関所が consumer 側スイートを実走するか、人間が相手の実出力で照合して HUMAN→PASS にする)。
 
 ### Step 5: 実行して閉じる (人間と共同記録)
 
