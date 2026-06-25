@@ -20,6 +20,12 @@ set -u
 INPUT=$(cat)
 # shellcheck source=lib/parse-command.sh
 . "$(dirname "$0")/lib/parse-command.sh"
+# shellcheck source=lib/protected-branch.sh
+# Single authority for `git push` detection, refspec-destination enumeration, and the
+# protected-branch glob match — shared so the gate cannot drift from the lib (and the lib
+# fixes the two LIVE bugs: path-prefixed git was invisible, and a greedy sed inspected
+# only the LAST push of a compound command). See lib/protected-branch.sh.
+. "$(dirname "$0")/lib/protected-branch.sh"
 if ! CMD="$(printf '%s' "$INPUT" | parse_command)"; then
   echo "project-bootstrap: could not parse the tool command from hook input — blocking to fail safe (fail-closed). If this is a false positive, disable this hook via /permissions." >&2
   exit 2
@@ -27,8 +33,8 @@ fi
 
 [ -z "$CMD" ] && exit 0
 
-# git push でなければ素通し
-echo "$CMD" | grep -qE '(^|[[:space:]&|;()`]+)git[[:space:]]+push([[:space:]]|$)' || exit 0
+# git push でなければ素通し (path-prefixed git も検出する: cmd_has_git_push)
+cmd_has_git_push "$CMD" || exit 0
 
 # `.bootstrap-protected` を解決。無ければ opt-out として fail-open。
 command -v git >/dev/null 2>&1 || exit 0
@@ -36,55 +42,29 @@ TOP=$(git rev-parse --show-toplevel 2>/dev/null | tr '\\\\' '/' | tr -s '/')
 [ -z "$TOP" ] && exit 0
 PROTECTED_FILE="$TOP/.bootstrap-protected"
 [ -f "$PROTECTED_FILE" ] || exit 0
+# protected 判定 (is_protected) は lib/protected-branch.sh の single authority に委譲する。
 
-# protected 判定: 宣言 glob のいずれかに一致するか (空行 / # コメントは無視)
-is_protected() {
-  local b="$1" pat
-  while IFS= read -r pat || [ -n "$pat" ]; do
-    pat="${pat#"${pat%%[![:space:]]*}"}"; pat="${pat%"${pat##*[![:space:]]}"}"
-    [ -z "$pat" ] && continue
-    case "$pat" in \#*) continue ;; esac
-    # shellcheck disable=SC2053
-    [[ "$b" == $pat ]] && return 0
-  done < "$PROTECTED_FILE"
-  return 1
-}
-
-# `git push` 以降の引数を取り出して word 分割
-ARGS=$(printf '%s' "$CMD" | sed -E 's/^.*git[[:space:]]+push//')
-
-# 引数を走査: flag をスキップ、positional の 1 個目を remote、以降を refspec とみなす。
-# refspec の destination (src:dst の dst、無ければ token 自体) が protected なら block。
-POSITIONAL=0
+# `git push` の refspec destination を全 segment 分 列挙する (push_destination_branches)。
+# greedy sed の旧実装と違い compound command の各 push を漏れなく見るので、
+# `git push origin main && git push origin feat/x` の保護 branch main も block される。
+# 1 つでも protected な destination があればそこで block (first protected hit)。
 HAS_REFSPEC=0
-# shellcheck disable=SC2086
-set -- $ARGS
-while [ $# -gt 0 ]; do
-  tok="$1"; shift
-  case "$tok" in
-    -*) continue ;;   # flag (-u / --force / --set-upstream 等) はスキップ
-  esac
-  POSITIONAL=$((POSITIONAL + 1))
-  if [ "$POSITIONAL" -eq 1 ]; then
-    continue          # 1 個目の positional = remote (origin 等)
-  fi
+while IFS= read -r dst; do
+  [ -z "$dst" ] && continue
   HAS_REFSPEC=1
-  # refspec の destination 部分を取り出す (src:dst なら dst)
-  case "$tok" in
-    *:*) dst="${tok##*:}" ;;
-    *)   dst="$tok" ;;
-  esac
-  if is_protected "$dst"; then
-    REASON="refspec '$tok' → protected branch '$dst'"
+  if is_protected "$dst" "$PROTECTED_FILE"; then
+    REASON="refspec destination → protected branch '$dst'"
     break
   fi
-done
+done <<EOF
+$(push_destination_branches "$CMD")
+EOF
 
 # refspec が無い push は現在 branch を見る
 if [ -z "${REASON:-}" ] && [ "$HAS_REFSPEC" -eq 0 ]; then
   if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     CUR=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
-    if is_protected "$CUR"; then
+    if is_protected "$CUR" "$PROTECTED_FILE"; then
       REASON="現在 branch '$CUR' への暗黙 push"
     fi
   fi
