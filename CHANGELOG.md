@@ -7,6 +7,8 @@
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-06-25
+
 ### Fixed
 
 - **保護ブランチ push gate (`block-push-to-protected.sh`) の迂回穴を塞いだ — 0.22.0 で merge gate を直したのと同型の「行為の文字列 proxy」(② 信号選び) バグが push gate に残っていた**。push 対象を貪欲 `sed 's/^.*git push//'` で抽出していたため、複合コマンド `git push origin main && git push origin feat/x` では**最後の feat/x しか検査されず保護 main への push が無検査で素通り**した。さらに検出が先頭 `/` 非対応で `/usr/bin/git push` / `./git push` を**素通し**した。どちらも稼働中の保護を実際に無音バイパスできる live bug だった。
