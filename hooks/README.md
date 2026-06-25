@@ -152,6 +152,18 @@ linter が解決できない (script 無し / runner 不在) 場合は warn し�
 
 スクリプト: [`block-push-to-protected.sh`](./block-push-to-protected.sh)
 
+### R. PreToolUse on `Bash` — stale な checkout からの trunk push を freshness gate で block
+
+`git push` の destination が **trunk** (= [`lib/repo-drift.sh`](./lib/repo-drift.sh) の `drift_main_ref` が解決する `origin/main` → `main` 等) に一致するときだけ、timeout 付き fetch を**先に**行ってから `HEAD..<remote>/<branch>` の behind 数を測り、**behind > 0 なら `exit 2`**。stale-checkout class の本番化事故が 2 件続いた (`origin/main` より 24 commit 遅れた checkout から prod migration / 進んだ remote を取りこぼす整合化) のを、コメント止まりだった drift advisory から **enforceable な precondition** に昇格させる (ADR 0009)。
+
+- **Hook F (`block-push-to-protected`) と直交**。あちらは opt-in `.bootstrap-protected` で **PR-flow** を強制し宣言 branch への直接 push を outright で block する (freshness 無関係)。本 gate は **otherwise-allowed な trunk push の freshness** を強制する。信号は `drift_main_ref` が解決する trunk であって `.bootstrap-protected` membership ではない (= `.bootstrap-protected` を持たない本プラグイン自身の release flow でも効く)
+- **順序**: Hook F の**後**に走る。trunk を保護している repo では直 push はそちらで既に止まり、本 gate はあちらが意図的に許す「`.bootstrap-protected` 無しの直接 trunk push」を freshness で守る net
+- **fail-closed (安全側)**: コマンド解析不能 ([`lib/parse-command.sh`](./lib/parse-command.sh) の契約) → BLOCKING gate が入力を読めないなら push を通さない
+- **fail-open (根拠不在)**: 非 git push / git も work-tree も無い / trunk ref 解決不能 / destination が trunk でない / **fetch 失敗・timeout (offline / no remote / auth fail)** / behind == 0 — block しかけたときだけ stderr で announce し無音 no-op にしない。network 不通が work を止めることは絶対にあってはならない
+- 唯一 **fetch (network) を行う PreToolUse gate**。`timeout` で bound し失敗を fail-open にする。push 引数の列挙・force・refspec 無し (暗黙 current branch) は [`lib/protected-branch.sh`](./lib/protected-branch.sh) を Hook F と共有。staleness 判定は online (`fetched_behind_count`) / offline (`behind_count`、SessionStart doctor 用) を `repo-drift.sh` の**隣り合う関数**にして単一権威に保つ (= gate 信号の drift を防ぐ)
+
+スクリプト: [`block-stale-write-to-protected.sh`](./block-stale-write-to-protected.sh)
+
 ### H. PreToolUse on `Bash` — commit 時の依存方向検証 (staged のみ)
 
 `git commit` 直前に、`.bootstrap-arch` で宣言された依存方向違反を **staged file の中から検出**し、あれば `exit 2` で blocking。staged のみ検査するので (= 正しい pre-commit セマンティクス)、既存 debt のあるリポでも adopt でき、新規/変更分の違反だけ捕まえる (全 repo 網羅 scan は CI の領分)。edit 時の早期 gate は Hook I。`.bootstrap-arch` 不在なら fail-open。エンジンは [`lib/arch-check.sh`](./lib/arch-check.sh) を共有。
@@ -230,9 +242,20 @@ sprint 自動分解は SKILL.md の **advisory** (= Claude が探索結果から
 
 スクリプト: [`sprint-trigger-reminder.sh`](./sprint-trigger-reminder.sh)
 
+### S. PreToolUse on `Bash` — 再発しやすい action 直前に記録済み memory を注入 (block しない)
+
+Bash command が plugin 所有の **action-key enum** ([`lib/action-gate.sh`](./lib/action-gate.sh) の `ACTION_KEY_ENUM` = 現状 `prod-deploy` / `prod-db-migrate`) に共有トークナイザでマッチし、かつ opt-in registry `.bootstrap-actions` (雛形 [`templates/bootstrap-actions.example`](../templates/bootstrap-actions.example)) が当該キーを **arm** していれば、対応する memory を `hookSpecificOutput.additionalContext` (= `bootstrap-session-doctor.sh` と同形) として出して **exit 0**。memory に正しい fix が記録されていても効くのは「次の session 開始時に読む」ときだけで、操作を打つ瞬間には目の前に無い — その空白で deploy author 渡し忘れ型の bug が fix 記録済みのまま ~7 回再発した。本 hook は「記録したのに想起されない」を**操作の瞬間の visibility** で埋める (ADR 0010)。
+
+- **決して `exit 2` しない / ack も取らない**。理解は強制不能で (ADR 0001)、ここで課せる前進行為が無い (deploy 自体は正当、fix を**忘れている**だけ)。必要なのは block ではなく想起のタイミング = 「強制を 4 設計判断に作り替える」②(信号選び) の **visibility 版**
+- **controlled-vocabulary なマッチャ** (per-entry regex でない)。マッチ条件は共有 plugin code (`action-gate.sh` のトークナイザ + CLOSED な enum) に集約し、消費先は **enum からキーを選んで arm するだけ**。`merge-targets.sh` / `protected-branch.sh` と同じ正規化 (env-prefix 除去 / path-prefixed bin / `npx` / `bash -c` unwrap / compound walk) を踏み、消費先のインライン正規表現による未レビュー greedy-match / string-proxy 事故を構造的に締め出す
+- **全面 fail-open / silent**。何も block しないので fail-closed にすべき不安全側が存在しない: パース失敗 / トークナイズ mis-split (quote 内 separator の既知限界) / enum キー未一致 / registry 不在 / 当該キー未 arm — すべて exit 0 silent (= 採用していない repo は一切撹乱されない)
+- **TTL は SAFE-side**。armed entry に self-disarm な期限を付けない (= 最も再発を抑えたい古い arm が無音で死ぬのを禁止)。終端所有者は人間で、`scripts/doctor.sh` の `actions:` 行が orphan (enum に無いキーの arm) / arm 漏れ (`repeat-action` タグの incident が在るのに registry 不在) を surface する (status は flip しない)
+
+スクリプト: [`inject-action-memory.sh`](./inject-action-memory.sh)
+
 ## 発火順
 
-全 17 hook を `hooks.json` の結線順に列挙する (= 実際の発火順、可視化のための正本)。
+全 19 hook を `hooks.json` の結線順に列挙する (= 実際の発火順、可視化のための正本)。
 
 **SessionStart**:
 
@@ -256,12 +279,14 @@ sprint 自動分解は SKILL.md の **advisory** (= Claude が探索結果から
 2. `block-dangerous-git-ops.sh`     — 他人の作業を消す op を block
 3. `block-cross-claude-wip.sh`      — commit 直前に巻き込み check (`--amend` 含む)
 4. `block-push-to-protected.sh`     — 宣言 branch への直接 push を block (opt-in)
-5. `block-over-wip-parallel.sh`     — `wip_limit` 超過の `git worktree add` を block (ADR 0005 guard 3, opt-in)
-6. `block-unreviewed-merge.sh`      — レビュー記録なき並列 lane branch (board task / worktree) の merge を block (opt-in)
-7. `block-merge-if-verification-unclosed.sh` — verification plan が閉じていない lane branch の merge を block (opt-in)
-8. `block-arch-violations.sh`       — commit 時に依存方向を権威検証
-9. `block-commit-if-lint-fails.sh`  — commit 時に lint を回す
-10. `block-commit-if-tests-fail.sh` — 最後に test を回す
+5. `block-stale-write-to-protected.sh` — stale な checkout からの trunk push を fetch+behind で freshness block (ADR 0009)
+6. `block-over-wip-parallel.sh`     — `wip_limit` 超過の `git worktree add` を block (ADR 0005 guard 3, opt-in)
+7. `block-unreviewed-merge.sh`      — レビュー記録なき並列 lane branch (board task / worktree) の merge を block (opt-in)
+8. `block-merge-if-verification-unclosed.sh` — verification plan が閉じていない lane branch の merge を block (opt-in)
+9. `block-arch-violations.sh`       — commit 時に依存方向を権威検証
+10. `block-commit-if-lint-fails.sh`  — commit 時に lint を回す
+11. `block-commit-if-tests-fail.sh` — 最後に test を回す
+12. `inject-action-memory.sh`       — 再発しやすい action 直前に記録済み memory を additionalContext 注入 (block しない、opt-in、ADR 0010)
 
 block 系を test 実行より前に置くのは、test 実行が成功しても巻き込んだ commit / 契約違反は事故源だから。
 
@@ -276,7 +301,7 @@ bypass は **規律を壊す**。bypass する前に「なぜそれが必要な�
 
 ## opt-in pilot: cohort-audit (確率 gate、ADR 0008 #2)
 
-**default の 17 hook には含まれない実験的 opt-in。** これは本プラグイン初の**非決定論 (確率) gate** で、現状 advisory のままの「完遂責任 — bug fix と同 PR で同根 cohort audit」(SKILL.md) を gate 化する試み。
+**default の 19 hook には含まれない実験的 opt-in。** これは本プラグイン初の**非決定論 (確率) gate** で、現状 advisory のままの「完遂責任 — bug fix と同 PR で同根 cohort audit」(SKILL.md) を gate 化する試み。
 
 - **形態**: `Stop` イベントの **prompt hook** (`type: "prompt"`)。各ターン終了時に Haiku が `$ARGUMENTS` を評価し `{"ok": bool, "reason": str}` を返す。
 - **warn-only (block しない)**: `Stop` で `ok:false` のとき reason が **Claude に戻り作業を継続**する (= deny でなく nudge)。「cohort audit を忘れたかも」を促すだけで止めない。

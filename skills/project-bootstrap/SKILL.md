@@ -353,7 +353,7 @@ user-facing bug を fix したら **同根 cohort を必ず audit する**。問
 - 「同根 N 件、内 K 件は既に自然解消、L 件は手動救済必要」を PR description に貼る
 - audit を欠くと「user が気付いた範囲だけ fix」が default になり、silent victim を放置する
 
-> この規律は決定論 hook で強制できない (= 「cohort audit を済ませたか」は確率判断)。**opt-in の確率 gate pilot** (`templates/hooks/cohort-audit-pilot.json`、ADR 0008 #2) が `Stop` prompt hook として warn-only で nudge する — default の 17 hook には入れず、誤検知率を測ってから昇格を判断する (初の非決定論 gate ゆえ慎重に)。
+> この規律は決定論 hook で強制できない (= 「cohort audit を済ませたか」は確率判断)。**opt-in の確率 gate pilot** (`templates/hooks/cohort-audit-pilot.json`、ADR 0008 #2) が `Stop` prompt hook として warn-only で nudge する — default の 19 hook には入れず、誤検知率を測ってから昇格を判断する (初の非決定論 gate ゆえ慎重に)。
 
 ## 迷ったとき
 
