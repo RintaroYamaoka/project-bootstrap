@@ -97,4 +97,64 @@ case "$REP" in *"worktree remove"*) assert_eq spoke spoke ;; *) assert_eq "teard
 test_case "non-git dir → report silent"
 assert_eq "" "$(drift_report "$(mktemp -d)")"
 
+# --- fetched_behind_count ------------------------------------------------------------
+# Unlike behind_count (offline, no-fetch, doctor-side), fetched_behind_count does an
+# EXPLICIT-refspec fetch FIRST so the ONLINE gate (block-stale-write-to-protected) gets
+# the AUTHORITATIVE count, then echoes behind and returns fetch success/failure distinctly
+# so the gate can fail OPEN on offline/no-remote. We model a "remote" as a second on-disk
+# repo wired in as a real named remote (no network — fetch over a filesystem path).
+#
+# mkpair — clone-like pair: a "remote" repo and a "local" clone with origin pointing at it.
+# Echoes "<local> <remote>". The local's HEAD branch is main and it has origin/main fetched.
+mkpair() {
+  local rem loc
+  rem="$(mktemp -d)/remote"
+  git init -q -b main "$rem"
+  git -C "$rem" -c user.email=t@e.x -c user.name=t commit -q --allow-empty -m c0
+  loc="$(mktemp -d)/local"
+  git clone -q "$rem" "$loc" 2>/dev/null
+  printf '%s %s' "$loc" "$rem"
+}
+
+read -r LOC REM <<<"$(mkpair)"
+test_case "fresh clone level with remote → fetched behind 0, fetch ok"
+OUT="$(fetched_behind_count "$LOC" origin main)"; RC=$?
+assert_eq "0" "$OUT"
+assert_eq "0" "$RC"
+
+# advance the REMOTE main by 3 commits; the local clone is now 3 behind, but only a fetch
+# reveals it (the local refs/remotes/origin/main is still at c0 until fetched).
+git -C "$REM" -c user.email=t@e.x -c user.name=t commit -q --allow-empty -m r1
+git -C "$REM" -c user.email=t@e.x -c user.name=t commit -q --allow-empty -m r2
+git -C "$REM" -c user.email=t@e.x -c user.name=t commit -q --allow-empty -m r3
+test_case "remote advanced 3 → fetched_behind_count fetches and reports 3"
+OUT="$(fetched_behind_count "$LOC" origin main)"; RC=$?
+assert_eq "3" "$OUT"
+assert_eq "0" "$RC"
+
+# offline behind_count (no fetch) still under-reports until something fetches — proves the
+# two engines are distinct authorities and the offline doctor path is untouched.
+test_case "offline behind_count still 0 before any prior fetch (distinct from fetched)"
+read -r LOC2 REM2 <<<"$(mkpair)"
+git -C "$REM2" -c user.email=t@e.x -c user.name=t commit -q --allow-empty -m r1
+assert_eq "0" "$(behind_count "$LOC2" origin/main)"
+test_case "...and fetched_behind_count on the same repo sees the 1 commit"
+OUT="$(fetched_behind_count "$LOC2" origin main)"; RC=$?
+assert_eq "1" "$OUT"
+assert_eq "0" "$RC"
+
+# fetch FAILURE must be a DISTINCT signal (non-zero return) so the gate fails OPEN. Point
+# origin at a path that does not exist; the fetch cannot succeed.
+read -r LOC3 REM3 <<<"$(mkpair)"
+git -C "$LOC3" remote set-url origin "$(mktemp -d)/nonexistent-remote-xyz"
+test_case "fetch failure → distinct non-zero return (gate fails OPEN)"
+OUT="$(fetched_behind_count "$LOC3" origin main)"; RC=$?
+assert_eq "1" "$RC"
+
+# a branch that does not exist on the remote also yields a fetch failure (fail-open signal).
+read -r LOC4 REM4 <<<"$(mkpair)"
+test_case "nonexistent remote branch → fetch failure non-zero return"
+fetched_behind_count "$LOC4" origin no-such-branch >/dev/null; RC=$?
+assert_eq "1" "$RC"
+
 finish
