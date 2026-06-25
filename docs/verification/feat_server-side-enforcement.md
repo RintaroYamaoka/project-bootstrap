@@ -10,7 +10,7 @@ PASS | unit     | verification-ci-check が opt-in 不採用/plan不在/branch�
 PASS | unit     | branch 解決順 arg > GITHUB_HEAD_REF > current | 期待値 | ai | 同 test #8 (env fallback)
 PASS | drift-guard | CI twin と local hook が同一 lib (verification-plan.sh) を呼び判定が drift しない | 共有 lib のテスト | ai | verification-plan.test.bash 30 緑 + 全 35 suite 緑 (回帰なし)
 PASS | unit     | setup-server-enforcement --check が保護なし repo を「gate OPEN」と報告する | 実コマンド出力 | ai | 本 repo で実行 → "NO branch protection ... server-side gate is OPEN" を確認
-HUMAN | e2e     | この branch を PR にして verification-gate workflow が実走し required check として OPEN plan を実際に block する | GitHub Actions の run 結果 (緑/赤) + Merge ボタンが落ちる | human | workflow は本 PR で初発火。orchestrator が PR 上で目視確認 (single-orchestrator frontier)
-HUMAN | e2e     | setup-server-enforcement.sh の本適用後、enforce_admins=true で admin (自分) が Merge ボタンを素通りできない | GitHub UI で Merge がブロックされる実挙動 | human | 本適用は workflow が main に乗った後。穴 2 の最終確認は実 UI でしか取れない
+PASS | e2e     | verification-gate workflow が実走し required check として OPEN plan を実際に block する | GitHub Actions の run 結果 (赤) = AI の外の観測可能オラクル | ai | PR#7 run 28162844039: OPEN HUMAN 行で "verification-ci-check: BLOCK ... not closed" → exit 1 で required check fail を実測。block それ自体が動作確認 (HUMAN でなく観測で閉じる行だった)
+DROP | e2e     | setup-server-enforcement.sh の本適用後、enforce_admins=true で admin (自分) が Merge ボタンを素通りできない | n/a | ai | 別メカニズム (GitHub branch protection) で本 CI run では未触。適用は本 PR マージ後なので pre-merge では原理的に観測不能 → マージ後に GitHub UI で Merge ブロックを目視確認する (検証放棄でなく実施時点を後ろにずらす明示)
 DROP | unit    | gh api PUT branch-protection の HTTP 応答そのものの単体テスト | n/a | ai | 外部 API・冪等 PUT。--check の監査出力で状態を確認する方が実オラクルに近い (mock より実挙動)
 DROP | contract | merge queue の GraphQL/REST 細部 | n/a | ai | ruleset.json テンプレに委譲・GitHub 機能依存。consumer 側で検証不能、配備時に UI で確認
