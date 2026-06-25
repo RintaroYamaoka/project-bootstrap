@@ -4,9 +4,13 @@
 # merge done via the GitHub "Merge pull request" button (server-side). This script makes the
 # durable layer:
 #   1. Branch protection on the protected branch with:
-#        - required status check  = "verification-closed"  (the CI twin of the merge gate)
+#        - required status checks = "verification-closed" + "hooks"  (CI twin of the merge
+#                                   gate + the hook test suite)
 #        - enforce_admins = true   (穴 2: a single orchestrator must NOT bypass their own gate)
-#        - required PR review      (1 approval)
+#        - require a PR before merging, but 0 required approvals — a SOLO orchestrator can't
+#          approve their own PR, so requiring a human approval would lock them out. The PR +
+#          required checks still force every change through the gate; AI review is enforced
+#          separately by the local block-unreviewed-merge hook (trust ladder Stage 2).
 #   2. (opt-in) Merge queue — re-validates each PR against the LATEST target branch, catching
 #      stale-lane integration breakage the local pre-merge hook can't see (穴 3).
 #
@@ -22,7 +26,7 @@
 
 set -euo pipefail
 
-REPO="" BRANCH="main" CHECK_CONTEXT="verification-closed" WANT_QUEUE=0 CHECK_ONLY=0
+REPO="" BRANCH="main" CHECK_CONTEXT="verification-closed" EXTRA_CONTEXT="hooks" WANT_QUEUE=0 CHECK_ONLY=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -59,19 +63,19 @@ if [ "$CHECK_ONLY" = 1 ]; then
   exit 0
 fi
 
-# --- APPLY: branch protection with required check + enforce_admins + review -----------------
-echo "→ setting branch protection (required check '$CHECK_CONTEXT', enforce_admins=true, 1 review)…"
+# --- APPLY: branch protection with required checks + enforce_admins + PR-required ----------
+echo "→ setting branch protection (required checks '$CHECK_CONTEXT'+'$EXTRA_CONTEXT', enforce_admins=true, PR required, 0 approvals)…"
 gh api -X PUT "repos/$REPO/branches/$BRANCH/protection" \
   -H "Accept: application/vnd.github+json" \
   --input - >/dev/null <<JSON
 {
-  "required_status_checks": { "strict": true, "contexts": ["$CHECK_CONTEXT"] },
+  "required_status_checks": { "strict": true, "contexts": ["$CHECK_CONTEXT", "$EXTRA_CONTEXT"] },
   "enforce_admins": true,
-  "required_pull_request_reviews": { "required_approving_review_count": 1 },
+  "required_pull_request_reviews": { "required_approving_review_count": 0 },
   "restrictions": null
 }
 JSON
-echo "  ✓ branch protection applied (enforce_admins=true — the orchestrator can't bypass)."
+echo "  ✓ branch protection applied (enforce_admins=true — the orchestrator can't bypass; PR required, 0 human approvals so a solo dev isn't locked out)."
 
 # --- (opt-in) merge queue ------------------------------------------------------------------
 if [ "$WANT_QUEUE" = 1 ]; then

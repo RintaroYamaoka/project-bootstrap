@@ -41,7 +41,7 @@ merge gate は lane branch を信号にする (ADR 0004)。ローカル pre-merg
 
 ### ② branch protection / rulesets + `include administrators` (穴 1, 2)
 
-- `scripts/setup-server-enforcement.sh` — `gh` で対象 repo に branch protection (required check = verification-gate / **enforce_admins = true** / required PR review) を冪等に設定する再利用スクリプト。ruleset 派には `templates/github/ruleset.json` も提供 (複数 repo 横展開・「最も制限的版が勝つ」集約)。
+- `scripts/setup-server-enforcement.sh` — `gh` で対象 repo に branch protection (required checks = `verification-closed` + `hooks` / **enforce_admins = true** / **PR 必須・人間承認 0**) を冪等に設定する再利用スクリプト。ruleset 派には `templates/github/ruleset.json` も提供 (複数 repo 横展開・「最も制限的版が勝つ」集約)。**人間承認を 0 にするのは単一 orchestrator 前提ゆえ** — solo は自分の PR を自分で承認できず、承認 1 件必須にすると自分をロックアウトする。PR + required check で全変更を関所に通すことは保ち、AI レビューはローカルの `block-unreviewed-merge` (trust ladder Stage 2) が別途担う。第二レビュアが入ったら承認数を上げる。
 - bootstrap repo に適用。**enforce_admins を必ず on** にする (穴 2 の本丸)。
 
 ### ③ merge queue (穴 3)

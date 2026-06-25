@@ -68,7 +68,7 @@
 | `templates/docs/verification/contracts.example` | cross-repo 契約宣言の雛形 (ADR 0011)。各参加 repo の `docs/verification/contracts` に置く。1 行 = `id \| local_face_glob \| peer_repo \| peer_face \| note`。宣言なき共有スキーマの無音破壊 (mood incident) を observable な FACT にする。plan 行は `[contract:<id>]` タグで参照、gate は相手 repo を読まない |
 | `templates/github/workflows/verification-gate.yml` | サーバ側 verification gate の配布雛形 (ADR 0012)。adopting repo の `.github/workflows/` にコピーし、plugin を pin ref で checkout して `verification-ci-check.sh` を回す (判定の単一権威を plugin に残しローカル hook と drift させない)。`verification-closed` を required status check に登録する |
 | `templates/github/ruleset.json` | GitHub repository ruleset 雛形 (ADR 0012)。複数 repo 横展開用。`gh api -X POST repos/OWNER/REPO/rulesets --input` で適用。`bypass_actors: []` (admin も含め誰も素通りしない = 穴 2) + required check + merge queue + non_fast_forward を集約 (「最も制限的版が勝つ」) |
-| `scripts/setup-server-enforcement.sh` | `gh` で branch protection (required check = `verification-closed` / **`enforce_admins=true`** / 1 review) を冪等設定する再利用スクリプト (ADR 0012)。`--merge-queue` で merge queue、`--check` で現状監査 (admin 素通り検出)。サーバ側恒久層の配備を 1 コマンド化 |
+| `scripts/setup-server-enforcement.sh` | `gh` で branch protection (required checks = `verification-closed` + `hooks` / **`enforce_admins=true`** / PR 必須・人間承認 0 = solo を lock out しない) を冪等設定する再利用スクリプト (ADR 0012)。`--merge-queue` で merge queue、`--check` で現状監査 (admin 素通り検出)。サーバ側恒久層の配備を 1 コマンド化 |
 
 ## 使い方
 
