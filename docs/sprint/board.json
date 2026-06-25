@@ -1,0 +1,34 @@
+{
+  "sprint": "2026-06-25-integration-gate-hardening",
+  "wip_limit": 3,
+  "_wip_note": "wip_limit=3 (.bootstrap-wip) に対し 2 lane。両 lane は file glob 完全 disjoint・depends_on 無しの並列 leaf。残りの backlog (D1/D2/D3/D4) は別 sprint。",
+  "tasks": [
+    {
+      "id": "P0",
+      "title": "保護ブランチ push gate の greedy-sed 実バグ修正 + 単一 walker 抽出 (lib/protected-branch.sh)",
+      "scope": [
+        "hooks/lib/protected-branch.sh",
+        "hooks/block-push-to-protected.sh",
+        "tests/hooks/protected-branch.test.bash"
+      ],
+      "branch": "feat/P0-protected-branch-tokenizer",
+      "worktree": "../wt-P0-protected",
+      "depends_on": [],
+      "status": "todo",
+      "claimed_by": null
+    },
+    {
+      "id": "MG",
+      "title": "統合 gate に lane-rebase 強制 (D6) + merge 後の残置 worktree 大声 advisory (D5) を追加",
+      "scope": [
+        "hooks/block-unreviewed-merge.sh",
+        "tests/hooks/block-unreviewed-merge-drift.test.bash"
+      ],
+      "branch": "feat/MG-merge-rebase-leftover",
+      "worktree": "../wt-MG-merge",
+      "depends_on": [],
+      "status": "todo",
+      "claimed_by": null
+    }
+  ]
+}

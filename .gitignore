@@ -1,0 +1,3 @@
+# sprint flow の ephemeral state (commit しない)
+.bootstrap-lane
+docs/sprint/.gate
