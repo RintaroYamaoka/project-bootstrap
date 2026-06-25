@@ -14,7 +14,7 @@
       "branch": "feat/P0-protected-branch-tokenizer",
       "worktree": "../wt-P0-protected",
       "depends_on": [],
-      "status": "todo",
+      "status": "done",
       "claimed_by": null
     },
     {
@@ -27,7 +27,7 @@
       "branch": "feat/MG-merge-rebase-leftover",
       "worktree": "../wt-MG-merge",
       "depends_on": [],
-      "status": "todo",
+      "status": "done",
       "claimed_by": null
     }
   ]
