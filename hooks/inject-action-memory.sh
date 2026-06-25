@@ -61,14 +61,26 @@ if command -v git >/dev/null 2>&1; then
   [ -n "$GITTOP" ] && REPO="$GITTOP"
 fi
 
-# If the registry arms this key, fetch the memo; else silent exit 0 (opt-in / unarmed).
-MEMO="$(registry_memo_for_key "$REPO" "$KEY")"
+# Two memo sources (ADR 0013):
+#   - DEFAULT: a plugin-owned universal doctrine for this key (currently only data-backfill).
+#     Fires even when the repo has NOT armed the key — a project-agnostic safety floor.
+#   - REGISTRY: the repo's opt-in .bootstrap-actions memo for this key (project-specific).
+# We surface whichever exist (default first, then the project memo appended). If neither
+# exists (a project-specific key in an unarmed repo), stay silent (opt-in preserved).
+DEFAULT_MEMO="$(action_default_memo "$KEY")"
+REG_MEMO="$(registry_memo_for_key "$REPO" "$KEY")"
+if [ -n "$DEFAULT_MEMO" ] && [ -n "$REG_MEMO" ]; then
+  MEMO="$DEFAULT_MEMO
+  + this repo: ${REG_MEMO}"
+else
+  MEMO="${DEFAULT_MEMO}${REG_MEMO}"
+fi
 [ -n "$MEMO" ] || exit 0
 
 # Build the injected body. We name the action-key explicitly so the actor knows WHICH
-# repeat-prone action tripped this, then hand the recorded pointer + reminder.
+# repeat-prone action tripped this, then hand the recorded guidance/reminder.
 BODY="[project-bootstrap] repeat-prone action detected: ${KEY}.
-A fix for this action is recorded in memory — apply it BEFORE running:
+Recorded guidance for this action — read it BEFORE running:
   ${MEMO}
 (This is advisory context, NOT a block. Nothing is required of you but to read it.)"
 

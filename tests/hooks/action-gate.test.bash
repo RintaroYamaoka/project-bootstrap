@@ -181,4 +181,70 @@ else
   TESTS_RUN=$((TESTS_RUN + 1)); echo "  ok   [$CURRENT_TEST] did not exit 2 (exit $HOOK_EXIT)"
 fi
 
+# --- data-backfill key: broad detection of "rewrite existing data" acts (ADR 0013) -------
+test_case "a backfill-named script maps to data-backfill"
+assert_eq 'data-backfill' "$(key 'tsx scripts/backfill-services.ts')"
+test_case "npm run backfill maps to data-backfill"
+assert_eq 'data-backfill' "$(key 'npm run backfill')"
+test_case "data-migrate-named script maps to data-backfill"
+assert_eq 'data-backfill' "$(key 'node scripts/data-migrate-rows.js')"
+test_case "prisma db execute maps to data-backfill"
+assert_eq 'data-backfill' "$(key 'prisma db execute --file ./fix.sql')"
+test_case "psql with an inline UPDATE maps to data-backfill"
+assert_eq 'data-backfill' "$(key 'psql -c "UPDATE appointments SET service = 1"')"
+test_case "psql with an inline DELETE maps to data-backfill"
+assert_eq 'data-backfill' "$(key 'psql $DATABASE_URL -c "DELETE FROM leads WHERE id=3"')"
+test_case "knex migrate maps to data-backfill"
+assert_eq 'data-backfill' "$(key 'knex migrate:latest')"
+test_case "alembic upgrade maps to data-backfill"
+assert_eq 'data-backfill' "$(key 'alembic upgrade head')"
+test_case "path-prefixed backfill bin still maps to data-backfill"
+assert_eq 'data-backfill' "$(key './node_modules/.bin/backfill-cv')"
+test_case "compound: backfill in the second segment is matched"
+assert_eq 'data-backfill' "$(key 'git pull && tsx scripts/backfill-x.ts')"
+
+# negatives: must NOT false-match (visibility noise control)
+test_case "a plain select via psql does NOT match (no UPDATE/DELETE)"
+assert_eq '' "$(key 'psql -c "SELECT * FROM leads"')"
+test_case "prisma generate does NOT match data-backfill"
+assert_eq '' "$(key 'prisma generate')"
+test_case "the word backfill inside an echo string does NOT match"
+assert_eq '' "$(key 'echo backfill done')"
+test_case "a benign build script does NOT match"
+assert_eq '' "$(key 'npm run build')"
+
+# --- action_default_memo: plugin-owned universal doctrine (fires WITHOUT a registry) ------
+test_case "data-backfill has a plugin default memo"
+case "$(action_default_memo data-backfill)" in
+  *systematic*|*系統的*|*domain*) assert_eq pass pass ;;
+  *) assert_eq 'a default memo' 'none' ;;
+esac
+test_case "prod-deploy has NO plugin default memo (project-specific, opt-in only)"
+assert_eq '' "$(action_default_memo prod-deploy)"
+
+# --- injector: data-backfill fires the default doctrine even with NO registry (ADR 0013) --
+test_case "data-backfill injects the default doctrine with NO registry (universal floor)"
+NOREG2="$(mktemp -d)"
+RUN_DIR="$NOREG2" run_hook inject-action-memory.sh "$(bash_input 'tsx scripts/backfill-x.ts' "$NOREG2")"
+assert_exit 0
+assert_stdout_contains '"hookEventName":"PreToolUse"'
+assert_stdout_contains 'data-backfill'
+
+test_case "data-backfill default NEVER exits 2"
+RUN_DIR="$NOREG2" run_hook inject-action-memory.sh "$(bash_input 'tsx scripts/backfill-x.ts' "$NOREG2")"
+[ "$HOOK_EXIT" = 2 ] && { TESTS_RUN=$((TESTS_RUN+1)); TESTS_FAILED=$((TESTS_FAILED+1)); echo "  FAIL [$CURRENT_TEST] exited 2"; } || { TESTS_RUN=$((TESTS_RUN+1)); echo "  ok   [$CURRENT_TEST] exit $HOOK_EXIT"; }
+
+test_case "data-backfill appends the project memo when the registry arms it (both)"
+BF_ARMED="$(mktemp -d)"
+printf 'data-backfill | project_demo_lane_service_null_is_spec | demo lane: service null は仕様\n' > "$BF_ARMED/.bootstrap-actions"
+RUN_DIR="$BF_ARMED" run_hook inject-action-memory.sh "$(bash_input 'tsx scripts/backfill-x.ts' "$BF_ARMED")"
+assert_exit 0
+assert_stdout_contains 'data-backfill'
+assert_stdout_contains 'project_demo_lane_service_null_is_spec'
+
+test_case "data-backfill is NOT an orphan when armed (it is in the enum)"
+BF_ORPH="$(mktemp -d)"
+printf 'data-backfill | slug | note\n' > "$BF_ORPH/.bootstrap-actions"
+assert_eq '' "$(registry_orphan_keys "$BF_ORPH")"
+
 finish

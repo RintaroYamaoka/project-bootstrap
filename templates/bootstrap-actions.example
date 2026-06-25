@@ -37,8 +37,15 @@
 #
 #   prod-deploy       a production deploy (e.g. `vercel deploy --prod`, incl. `--production`)
 #   prod-db-migrate   a production DB migration apply (e.g. `prisma migrate deploy`)
+#   data-backfill     rewriting existing data (backfill/data-migrate script, `prisma db execute`,
+#                     a sql-client inline UPDATE/DELETE, or a knex/sequelize/typeorm/alembic run).
+#                     SPECIAL (ADR 0013): this key ALSO carries a plugin-owned universal doctrine
+#                     ("repair vs spec — is the missingness systematic? the oracle is the domain
+#                     owner, not the data") that fires even if you do NOT arm it here. Arm it only
+#                     to ADD a project-specific memo, appended after the universal one.
 #
 # EXAMPLES (delete and replace with your own armed actions):
 
 prod-deploy     | feedback_deploy_author_fix | always pass --build-env DEPLOY_AUTHOR=ci before --prod
 prod-db-migrate | feedback_migrate_window    | run only inside the maintenance window; take a snapshot first
+# data-backfill | project_demo_lane_service_null_is_spec | demo提案レーンは service null が仕様 — backfillするな
