@@ -15,7 +15,7 @@
         "url": "https://github.com/RintaroYamaoka/project-bootstrap.git"
       },
       "description": "上位1％の AI 駆動開発を個人の規律でなく構造として default 化する Claude Code プラグイン。純粋な強制は到達不能なので強制を4つの設計判断に作り替える: ① 分解 (precondition を fail-closed で強制・判断は逃さない) / ② 信号選び (行為を信号に・fail-mode を選ぶ) / ③ 配備の可視化 / ④ 計測つきの取引。Anthropic 公式 best practice 整合。verification 4 罠 / AI の癖 9 個 / TDD / 依存方向の強制 (architecture) / 並列開発フロー (sprint) / ultracode・Workflow を governance する実行エンジンとして公認 (ADR 0005) / 動作テストを意図アンカーの verification plan として設計し統合の precondition にする (ADR 0007) / lint gate / cohort audit / external memory として docs/ 整備。19 hook: SessionStart で採用状態を audit し未採用なら導入提案・gate 配備漏れ (partial) なら警告、実装 edit 前に対応 test / 依存方向 import / lane 外編集を blocking、active lane 中の main tree 未隔離 source 編集を blocking (guard 2)、新規 source 面を sprint 発火判定なしで作るのを fail-closed で blocking、AI レビュー記録なき task branch の merge を blocking しつつ approve 後は検出スイートを関所自身が実行 (ADR 0005 guard 1)、verification plan が閉じていない lane branch の merge を blocking (ADR 0007)、wip_limit 超過の git worktree add を blocking (guard 3)、trunk への stale push を fetch + behind 数で freshness blocking (ADR 0009)、再発しやすい action 直前に該当 memory を additionalContext 注入 (block しない、ADR 0010)、commit 前に test + staged の依存方向検証、destructive git op / bulk-staging / cross-session WIP (--amend 含む) を blocking。lint / arch / lane / sprint / wip / verification gate / 宣言 branch 直 push は .bootstrap-* / docs/{sprint,verification}/ marker で opt-in。skills 7 個: project-bootstrap / plan / handoff / incident / sprint-plan / integrate / verification。",
-      "version": "0.24.0",
+      "version": "0.24.1",
       "homepage": "https://github.com/RintaroYamaoka/project-bootstrap",
       "repository": "https://github.com/RintaroYamaoka/project-bootstrap",
       "license": "MIT",

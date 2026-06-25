@@ -57,6 +57,8 @@ git worktree remove ../wt-<id>
 git branch -d feat/<id>-<topic>   # merge 済を確認してから
 ```
 
+> ⚠️ **`git mv` は index の既存 blob を rename して運ぶ**。`status` を `done` に編集した board を**未 stage のまま `git mv`** すると編集が落ち、archive に `status: todo` のまま commit される (実バグ: 2026-06-25 の 2 sprint で連続発生)。回避: **編集後に `git add board.json` で stage してから `git mv`** する (または先に archive へ `git mv` し、archived 側を `done` に編集して `git add`)。同じ罠は reviews / verification plan を status 編集してから mv する経路にも効く — 「編集 → stage → 移動」の順を崩さない。
+
 board の全 task が done になったら sprint 終了。**board.json と `reviews/` を必ず `docs/sprint/archive/` へ移す** (board は `archive/<sprint>.json`、レビュー記録は `archive/<sprint>-reviews/`) (= sprint 終了の定義に board の終端処理を含める。残置は任意ではない)。**閉じた `docs/verification/<branch>.md` も同様に終端処理する** (`docs/verification/archive/` へ移す + 自動行の設計は永続テスト/CI に昇格、本番に逃げた行は incident→memory へ。ADR 0007 の lifecycle 責務 — verification plan も per-branch ephemeral で、所有者は integrate)。ephemeral state の残置は権威の分散そのもので、実際に完了済み board の残置が sprint 発火 gate を 2 週間無音バイパスさせた (`docs/incidents/2026-06-07-stale-board-gate-bypass`)。gate 側も信号を「board の存在」から「未完了 task の有無 (活性)」に直してあるが、archive は防御の二重化ではなく lifecycle の責務 — 次の sprint-plan が古い board と衝突しないための正本整理。
 
 ## やってはいけないこと

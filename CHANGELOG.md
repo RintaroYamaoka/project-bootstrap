@@ -7,9 +7,12 @@
 
 ## [Unreleased]
 
+## [0.24.1] - 2026-06-25
+
 ### Fixed
 
 - **0.24.0 で生じた doc 台帳 drift を解消** (リリース後監査で検出)。`README.md` の表に ADR 0009-0011 行 / lib 行 (`action-gate.sh`・`cross-repo-contract.sh`) / template 行 (`bootstrap-actions.example`・`contracts.example`) を追加。`hooks/README.md` の Hook N (verification-unclosed gate) に cross-repo 契約拡張 (ADR 0011・`lib/cross-repo-contract.sh`) を追記、harness-contract 表の `cwd` 行に `inject-action-memory` を追加 (実コードで cwd 依存を確認)。`docs/decisions/0007` 末尾に D4 (async/silent-skip seam) の amendment 逆参照を追加 (0011 にしか無く dangling だった)。`skills/integrate/SKILL.md` Step 4 に契約 tag の merge precondition を追記。`docs/decisions/0008` の "17 hook" に時点注記 ((当時; 0.24.0 で 19))。
+- **`integrate` skill の archive 手順を git-mv の落とし穴に対して恒久対策**。`git mv` は index の既存 blob を rename して運ぶため、`status` を `done` に編集した board を未 stage のまま `git mv` すると編集が落ち、archive が `status: todo` のまま commit される実バグ (2026-06-25 の 2 sprint で連続発生) を踏まえ、Step 5 に「編集 → `git add` → `git mv`」の順序を必須として明記。reviews / verification plan の status 編集 + mv 経路にも同じ罠が効く旨を併記。
 
 ## [0.24.0] - 2026-06-25
 
