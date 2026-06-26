@@ -34,8 +34,11 @@ TOP=$(git rev-parse --show-toplevel 2>/dev/null | tr '\\' '/' | tr -s '/')
 # (a) opt-in: sprint flow を採用した project でのみ発火。
 [ -d "$TOP/docs/sprint" ] || exit 0
 
-# (b) lane worktree (`.bootstrap-lane` 在り) は block-out-of-lane-edit が所有 → 譲る。
-[ -f "$TOP/.bootstrap-lane" ] && exit 0
+# (b) lane worktree (lane marker 在り) は block-out-of-lane-edit が所有 → 譲る。
+# marker は `.bootstrap/lane` (新) / `.bootstrap-lane` (旧) どちらでも可。
+# shellcheck source=lib/resolve-marker.sh
+. "$(dirname "$0")/lib/resolve-marker.sh"
+[ -f "$(resolve_marker "$TOP" lane)" ] && exit 0
 # main worktree でのみ強制する。linked worktree が lane file を欠く異常配置はこの gate の対象外。
 # porcelain の最初の `worktree` 行 = main worktree。
 MAIN=$(git worktree list --porcelain 2>/dev/null | sed -n 's/^worktree //p' | head -1 | tr '\\' '/' | tr -s '/')

@@ -12,10 +12,11 @@ Claude Code の PreToolUse hook (`block-cross-layer-import.sh` / `block-arch-vio
 
 ## consumer repo への導入
 
-1. `.bootstrap-arch` を repo root に置く (依存方向契約。`templates/.bootstrap-arch` 参照)
+1. `.bootstrap/arch` を repo root の `.bootstrap/` フォルダに置く (依存方向契約。`templates/.bootstrap/arch` 参照。旧 flat path `.bootstrap-arch` も可)
 2. CLI とエンジンを vendor する:
    - `scripts/arch-check.sh`        ← 本リポ `scripts/arch-check.sh`
    - `scripts/arch-check-engine.sh` ← 本リポ `hooks/lib/arch-check.sh` (この名前で)
+   - `scripts/resolve-marker.sh`    ← 本リポ `hooks/lib/resolve-marker.sh` (この名前で。無いと `.bootstrap/arch` を読めず旧 flat path のみに退避)
 3. CI: `templates/ci/bootstrap-arch.yml` を `.github/workflows/` にコピー
 4. (任意) ローカル: `templates/hooks/pre-commit` を `.git/hooks/pre-commit` に
 

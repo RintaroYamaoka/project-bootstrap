@@ -1,8 +1,9 @@
-# .bootstrap-arch — dependency-direction contract (project-bootstrap)
+# .bootstrap/arch — dependency-direction contract (project-bootstrap)
 #
-# このファイルを project root にコピーして、自分の layer に合わせて書き換える。
-# block-cross-layer-import.sh (edit 時) と block-arch-violations.sh (commit 時) が
-# これを読んで依存方向違反を blocking する。ファイルが無ければ強制は発火しない。
+# project root の `.bootstrap/` フォルダにこのファイル (arch) を置き、自分の layer に
+# 合わせて書き換える。block-cross-layer-import.sh (edit 時) と block-arch-violations.sh
+# (commit 時) がこれを読んで依存方向違反を blocking する。ファイルが無ければ発火しない。
+# 旧 flat path `.bootstrap-arch` (repo root 直下) も後方互換で読まれる。
 #
 # 文法 (1 行 1 directive、# 以降はコメント):
 #   layer NAME = GLOB[, GLOB...]   ファイルの layer = 最長 glob が一致する layer

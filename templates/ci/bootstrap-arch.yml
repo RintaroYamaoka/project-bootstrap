@@ -5,7 +5,9 @@
 # 前提 (consumer repo への vendor):
 #   - scripts/arch-check.sh        (本リポ scripts/arch-check.sh をコピー)
 #   - scripts/arch-check-engine.sh (本リポ hooks/lib/arch-check.sh をこの名前でコピー)
-#   - .bootstrap-arch              (依存方向契約)
+#   - scripts/resolve-marker.sh    (本リポ hooks/lib/resolve-marker.sh をこの名前でコピー。
+#                                   無いと `.bootstrap/arch` を読めず旧 flat path のみに退避する)
+#   - .bootstrap/arch              (依存方向契約。旧 flat path `.bootstrap-arch` も可)
 name: bootstrap-arch
 on:
   pull_request:

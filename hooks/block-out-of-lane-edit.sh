@@ -25,7 +25,10 @@ command -v git >/dev/null 2>&1 || exit 0
 TOP=$(git rev-parse --show-toplevel 2>/dev/null | tr '\\\\' '/' | tr -s '/')
 [ -z "$TOP" ] && exit 0
 
-LANE="$TOP/.bootstrap-lane"
+# lane marker は `.bootstrap/lane` (新) / `.bootstrap-lane` (旧) どちらでも可。
+# shellcheck source=lib/resolve-marker.sh
+. "$(dirname "$0")/lib/resolve-marker.sh"
+LANE="$(resolve_marker "$TOP" lane)"
 # lane 宣言が無ければ sprint 非適用 → 素通し
 [ -f "$LANE" ] || exit 0
 

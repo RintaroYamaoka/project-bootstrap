@@ -188,4 +188,22 @@ run_doctor "$REPO"
 assert_doctor_status ok
 assert_doctor_exit 0
 
+# 13. New consolidated layout: an adopted marker under .bootstrap/ is detected, and
+#     the same no-op audit fires (here: an empty .bootstrap/arch).
+setup_repo
+mkdir -p "$REPO/.bootstrap"
+printf '# comment only, no directives\n' > "$REPO/.bootstrap/arch"
+test_case ".bootstrap/arch (new layout) declared but empty is partial"
+run_doctor "$REPO"
+assert_doctor_status partial
+assert_out_contains ".bootstrap/arch"
+
+# 14. New layout adoption alone (a valid marker) is recognized as adopted → ok.
+setup_repo
+mkdir -p "$REPO/.bootstrap"
+printf 'layer core = core/**\nallow core ->\n' > "$REPO/.bootstrap/arch"
+test_case ".bootstrap/arch with a layer directive is ok (new layout adopted)"
+run_doctor "$REPO"
+assert_doctor_status ok
+
 finish

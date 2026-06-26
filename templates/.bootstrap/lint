@@ -1,0 +1,15 @@
+# .bootstrap/lint — commit 時に lint gate を有効化する opt-in マーカー (project-bootstrap)
+#
+# project root の `.bootstrap/` フォルダにこのファイル (lint) を置くと
+# block-commit-if-lint-fails.sh が発火し、commit 直前に project の lint command
+# (package.json の "lint" script / ruff / flake8 / golangci-lint / cargo clippy /
+# rubocop) を実行、fail なら commit を block する。旧 flat path `.bootstrap-lint` も
+# 後方互換で読まれる。
+#
+# 置かなければ lint gate は発火しない (= 既定 opt-out)。理由: lint は project ごとに設定が
+# 違い、未設定 (例: `next lint` が ESLint 未設定で対話プロンプトに落ちる) のリポを
+# always-on で巻き込むと commit を壊すため。.bootstrap/arch / .bootstrap/lane /
+# .bootstrap/protected と同じ「project が明示宣言したら効く」思想。
+#
+# 前提: 置く前に `npm run lint` 等が非対話で exit 0 になることを確認する。
+# このファイルの中身は現状不問 (presence だけで有効化)。

@@ -27,7 +27,10 @@ command -v git >/dev/null 2>&1 || exit 0
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
 TOP=$(git rev-parse --show-toplevel 2>/dev/null)
 [ -z "$TOP" ] && exit 0
-MANIFEST="$TOP/.bootstrap-arch"
+# arch manifest は `.bootstrap/arch` (新) / `.bootstrap-arch` (旧) どちらでも可。
+# shellcheck source=lib/resolve-marker.sh
+. "$(dirname "$0")/lib/resolve-marker.sh"
+MANIFEST="$(resolve_marker "$TOP" arch)"
 [ -f "$MANIFEST" ] || exit 0   # fail-open
 
 # shellcheck source=lib/arch-check.sh

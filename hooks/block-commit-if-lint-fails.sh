@@ -24,11 +24,14 @@ fi
 # git commit でなければ素通し
 echo "$CMD" | grep -qE '(^|[[:space:]&|;()`]+)git[[:space:]]+commit($|[[:space:]])' || exit 0
 
-# opt-in: `.bootstrap-lint` が無ければ発火しない (= arch/lane/protected と同じ project-local
+# opt-in: lint marker が無ければ発火しない (= arch/lane/protected と同じ project-local
 # 宣言で opt-in)。lint は project ごとに linter 設定が違い、未設定 (= `next lint` が ESLint
 # 未設定で対話プロンプトに落ちる等) のリポを always-on で巻き込むと commit を壊すため。
+# marker は `.bootstrap/lint` (新) / `.bootstrap-lint` (旧) どちらでも可 (resolve-marker.sh)。
+# shellcheck source=lib/resolve-marker.sh
+. "$(dirname "$0")/lib/resolve-marker.sh"
 TOP=$(git rev-parse --show-toplevel 2>/dev/null)
-[ -f "${TOP:-.}/.bootstrap-lint" ] || exit 0
+[ -f "$(resolve_marker "${TOP:-.}" lint)" ] || exit 0
 
 # lint command を検出 (runner が PATH にある場合のみ立てる)
 LINT_CMD=""

@@ -18,16 +18,16 @@ feature を **scope 非重複の task** に分解した状態を持つ。`board.
 | `tasks[].status` | `todo` → `in-progress` → `in-review` → `done` |
 | `tasks[].claimed_by` | 担当ワーカーの識別 (= terminal 名 / session)。未 claim なら `null` |
 
-## scope と .bootstrap-lane の関係
+## scope と .bootstrap/lane の関係
 
-`board.json` は lead / skill が読む rich な真実。各ワーカーの worktree root には派生物として **`.bootstrap-lane`** (1 行 1 glob) を置く。`block-out-of-lane-edit.sh` hook はこの lane file だけを読み (jq 非依存)、宣言外の file 編集を blocking する。
+`board.json` は lead / skill が読む rich な真実。各ワーカーの worktree root には派生物として **`.bootstrap/lane`** (1 行 1 glob) を置く。`block-out-of-lane-edit.sh` hook はこの lane file だけを読み (jq 非依存)、宣言外の file 編集を blocking する。旧 flat path `.bootstrap-lane` も後方互換で読まれる。
 
 ```
-# ../wt-T1/.bootstrap-lane  (= board.json の T1.scope を 1 行ずつ展開したもの)
+# ../wt-T1/.bootstrap/lane  (= board.json の T1.scope を 1 行ずつ展開したもの)
 tests/hooks/require-test-companion.test.bash
 ```
 
-`.bootstrap-lane` は worktree 固有の ephemeral file。**`.gitignore` に追加する** (= commit しない)。
+`.bootstrap/lane` は worktree 固有の ephemeral file。**`.bootstrap/` を `.gitignore` に追加する** (= commit しない)。
 
 ## .gate — sprint 発火判定の記録
 
@@ -58,7 +58,7 @@ verdict: approve
 
 - `block-unreviewed-merge.sh` hook が、並列 lane の branch (= 活性 sprint の task branch、および **linked worktree に checkout された branch** — board 不要) の merge に対しこの記録を fail-closed で要求する (approve なし → block、reject → より強く block)。worktree の撤去は必ず merge の後 (先に撤去すると関所の信号が消える)
 - GitHub の **PR 画面での merge は手元 hook を通らない**ため、PR 経路は `.github/workflows/bootstrap-review-gate.yml` (templates/ci/) が CI で同じ記録を要求する (導入 repo では全 PR が対象)
-- **reviews/ は commit する** (= defect 発生時に「どの verdict が通したか」を遡る監査証跡。`.gate` / `.bootstrap-lane` と違い ephemeral ではない)
+- **reviews/ は commit する** (= defect 発生時に「どの verdict が通したか」を遡る監査証跡。`.gate` / `.bootstrap/lane` と違い ephemeral ではない)
 - sprint 終了時は board と一緒に `archive/` へ移す (integrate skill Step 5)
 - 人間が読むのは verdict / 指摘 / diff サンプル 1-2 割 / 統合境界。全 diff 目視はしない — レビューの質の安全網は `scripts/velocity.sh` の defect rate 監視
 
