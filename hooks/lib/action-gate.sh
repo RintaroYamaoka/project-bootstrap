@@ -195,14 +195,21 @@ action_key_for_command() {
 
 # action_default_memo <key> — the PLUGIN-OWNED universal doctrine for <key>, or nothing.
 # Most keys are project-specific and carry NO default (their memo comes only from a repo's
-# opt-in .bootstrap-actions). `data-backfill` is the exception (ADR 0013): the "repair vs
-# spec" lesson is project-agnostic, so the injector surfaces this floor even when the repo
-# has not armed the key. A repo MAY still arm data-backfill to ADD a project-specific memo
+# opt-in .bootstrap-actions). Two keys are the exception and carry a project-agnostic floor
+# that fires even when the repo has NOT armed the key: `data-backfill` (ADR 0013, "repair vs
+# spec") and `prod-deploy` (ADR 0014, "verbatim-cross-check before claiming done / confirm a
+# reinterpreted spec via a mock"). A repo MAY still arm either to ADD a project-specific memo
 # (the injector appends it after this default).
 action_default_memo() {
   case "$1" in
     data-backfill)
       printf '%s' '既存データを書き換えようとしている。その値が「欠けている/間違っている」と判断した根拠は? 欠け方が ~100% 系統的なら、それは defect でなく spec の徴候 (その経路はそもそもその値を扱わない)。意図のオラクルは data でなく domain owner — 直す前に確認せよ。同じ値でもレーンで妥当性が真逆になりうる (例: service=null が片方では異常・片方では仕様)。' ;;
+    prod-deploy)
+      # ADR 0014 — completion-verification floor. The 2026-06-26 reservation-notify incident
+      # shipped a MISREAD spec to prod and falsely reported "完了" twice. The prod-deploy command
+      # is the irreversible moment, so it is the right place to surface this. Stays advisory/
+      # never-block (ADR 0010): a "did you cross-check?" ack is self-issuable by the gated actor.
+      printf '%s' '本番デプロイは取り返しがつかない。実行前に確認: (1) ユーザーの各指示文言を1つずつ実装と逐語照合したか? 1つでも未達なら「完了」と言うな。(2)「〜のような既存機能」の指示は、その既存機能の実データ挙動を先に確認したか (推測でラベル/仕様を作っていないか)? (3) 自分が解釈を置換した重要機能は、二択メニューでなく具体的な出力モックでユーザーに方針確認したか? 誤仕様のデプロイは「完了」でなく事故。' ;;
     *) return 0 ;;
   esac
 }

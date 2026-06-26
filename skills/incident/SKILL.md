@@ -115,7 +115,7 @@ incident が **複数プロジェクトで共通する AI の癖** であれば�
 
 incident が **特定の操作 (= prod deploy / prod DB migrate 等) を打つたびに再発する型** なら、A で書いた memory を `.bootstrap-actions` に arm する。これをしないと「fix は memory に在るのに、その操作を打つ瞬間には目の前に出ない」= まさに deploy-author bug が ~7 回再発した穴が残る (ADR 0010)。
 
-- plugin の CLOSED action-key enum (`hooks/lib/action-gate.sh` の `ACTION_KEY_ENUM` / 現状 `prod-deploy` / `prod-db-migrate`) から該当キーを 1 つ選ぶ。**自前の match regex は書かない** (= 未レビューの greedy-match 事故を呼ぶ。matcher は共有 plugin code)。
+- plugin の CLOSED action-key enum (`hooks/lib/action-gate.sh` の `ACTION_KEY_ENUM` / 現状 `prod-deploy` / `prod-db-migrate` / `data-backfill`) から該当キーを 1 つ選ぶ。**自前の match regex は書かない** (= 未レビューの greedy-match 事故を呼ぶ。matcher は共有 plugin code)。なお `data-backfill` (ADR 0013) と `prod-deploy` (ADR 0014) は **plugin 所有の普遍 doctrine (default floor) を持つ** ので arm 無しでも発火する — repo で arm すれば project 固有メモが default の後に追記される。残る `prod-db-migrate` は opt-in。
 - repo root の `.bootstrap-actions` (opt-in、雛形 `templates/bootstrap-actions.example`) に 1 行追記: `<action-key> | <memory-slug> | <fix の 1 行>`。次にその操作を打つと `inject-action-memory.sh` (PreToolUse) が memo を advisory context として注入する (block しない / ack も取らない = 理解は irreducible)。
 - 該当する enum キーが無い操作なら、それは reviewed な plugin-level enum 追加 (`action-gate.sh` にキー + matcher arm + test)。incident 側で regex を足して済ませない。
 - `scripts/doctor.sh` の `actions:` 行が arm 漏れ (= repeat-action タグの incident なのに registry 不在) と orphan (= enum に無いキーを arm) を可視化する。
@@ -141,6 +141,7 @@ incident を書く運用が崩れる典型:
 2. **「user が悪い」フレームで書く** — AI 駆動 incident は **AI の判断ミス**として書く。user 指示が曖昧だったとしても、AI の判断ルートをどう変えるかが本旨
 3. **trivial な直しまで incident 化** — 大量に書くと読まれない。**re-do が 2 回以上 / production 影響 / user 強い叱責** の閾値を守る
 4. **business 固有名混入** — placeholder で抽象化しないと外部展開時に丸ごと削除になる
+5. **過小スコープな対症修正で閉じる** — silent な顧客影響 failure を直すとき、read 側の対症 (backfill 等) だけ当てて write 側の真因を放置すると、**同型の穴が兄弟フィールド/兄弟ケースで再発する** (appo-followup: 岡本 email backfill #388 → 06-26 で name/meet が同じ wipe で再発)。fix は必ず (a) **write 側の真因**を直す、(b) **兄弟フィールド/兄弟ケースを横スイープ** (email を直したら name/company/phone も)、(c) **継ぎ目テストを追加** の 3 点セットにする (= `project-bootstrap` skill「完遂責任 — 同 PR で cohort audit」と同根)。
 
 ## 関連 skill / docs
 

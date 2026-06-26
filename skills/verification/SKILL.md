@@ -37,6 +37,7 @@ description: 動作テスト (behavioral verification) を「意図と跨いだ�
 - 「完了」を**実物を見ずに**主張する所
 - 環境が前提と**違いうる**所 (checkout / branch / .env)
 - **無音で skip/drop/filter する経路** / **scheduler・queue・heartbeat の裏で動く所** ← async seam。cron が条件で 1 件を弾いて何もログを残さない (リマインダが永遠に飛ばない) / daemon の heartbeat は生きているのに work queue が stall する。同期の「自分の返答を読み返す」では捕まらない — 観測点 (signal) が存在しないのが本質
+- **partial-update の入口で「未送信 (absent)」と「空 (empty)」を同一値に潰す所** ← absent/empty 混同 seam。form/JSON/query の `?? ""` / `String(form.get(k) ?? "")` が三値 (absent/empty/value) を二値に潰し、その値が破壊的更新 (空→null クリア) に流れ、**離れた消費者** (cron/通知/外部同期) が「その列は永続する」前提で動く、の三段。unit test は関数を直接呼ぶ (absent が `undefined` で来る) ので**緑のまま**、バグは route の `String()` 強制を通った時だけ存在する (緑の嘘×継ぎ目)。一度の wipe が同期 (即時 GCal) と非同期 (後続 cron) の両方へ無音で分岐しうる (appo-followup 2026-06-26 名前 wipe incident)
 
 > **cross-repo seam を持つ repo は、共有面を `docs/verification/contracts` に登記する** (ADR 0011)。`id | local_face_glob | peer_repo | peer_face | note`。宣言なき共有スキーマは片側変更で無音に割れる (mood と同型)。登記された面を lane で触ると、その契約の動作テスト (consumer-driven) が統合の precondition になる (`block-merge-if-verification-unclosed.sh` が lane の OWN delta で判定)。
 > **注意: Pact (中央 Broker 型 consumer-driven) には寄せない** — 中央 Broker が並列開発の**直列化点・単一障害点**になり、二重メンテ・外部 provider 不適合でレビュー帯域律速の単一 orchestrator には重い。この repo の登記方式は軽量な行指向 FACT に留め、フル契約管理が要るなら **Specmatic/OpenAPI 型 spec-as-contract** を比較検討する (要自己検証)。
@@ -52,11 +53,16 @@ description: 動作テスト (behavioral verification) を「意図と跨いだ�
 | 全入力で成り立つ法則 | プロパティテスト | 不変量 |
 | **両端を握ってない境界** | **契約テスト (consumer-driven)** | 相手の実出力 |
 | **テストが緑なのにバグを逃す (検出力欠如 = 6 番目の seam)** | **mutation testing** (critical path 限定) | **注入した変異をテストが殺すか** (= テスト自身が外オラクル) |
+| **partial-update (PATCH/modify)** で absent/empty を混同しうる | **往復テスト** (route 境界を**通して**叩く — 関数直呼びでなく) + 兄弟フィールド横スイープ | **未送信フィールドは保全される / 明示空はクリアされる**、加えて遠隔消費者の実アウトカム (「再割当後にリマインドが実際に飛ぶ / 顧客と担当が同室」) |
 | 異常系・想定外 | ネガティブ / エラー推測 | 落ち方が安全 |
 | **無音で skip/drop する経路・queue/heartbeat の裏で stall** (async seam) | **本番計器 (`kind=monitor`) + dead-man's-switch** | **AI の外の実信号** = 不在そのものをアラート (期待 ping が来なければ down) + **payload アサーション** (例「CV>0 かつ予約=0」「rows_exported>0」)。grace time で jitter と真の沈黙を分ける |
 | 未知の未知 | 探索的テスト (人間) + 本番計器 | 実アウトカム |
 
 **オラクルは必ず AI の外に置く。** 期待値が書けない → プロパティ/メタモルフィック。跨ぐ → 契約 or 実アウトカム。意図レベル (「これが欲しかったか」) → **人間にフラグ (`HUMAN`)**。オラクルが見つからない挙動を「pass と仮定」で埋めない。
+
+> **継ぎ目はテストで縛る前に「設計で消せないか」を先に問う (構造 > 規律)。** absent/empty 混同のような破壊は、`reschedule(id,date,time,staff)` と `editDetails(...)` を**操作分離**すれば再割当が識別子フィールドを**構造的に持てない = 物理的に wipe 不能**になる (太い `fields:{…18個}` 引数 = ISP 違反が発火経路を生んだ。appo-followup 名前 wipe §6)。**不正な状態を表現不能にする (make illegal states unrepresentable / parse, don't validate)** で消せる継ぎ目は、テストで縛るより設計で消す方を先に検討する。ただし SOLID/操作分離で消せるのは「発火経路」までで、`absent/empty` を区別する**型・契約のモデリング**は別 (上の往復テスト)。**設計で消す → 消しきれない残余だけ往復テストで縛る**の二段。これは plan 時に問う (実装後だと実装追認になる)。
+
+> **「完了」を主張する前の kill-question = 「各指示文言を実装と逐語照合したか?」** (ADR 0014、reservation-notify incident)。抽象でなく**具体的な複数文言の指示**を実装したら、ユーザーの各文言を 1 つずつ実装と**逐語照合**するチェックリストを作り、1 つでも未達なら「完了」と言わない。とくに **(a)「〜のような既存機能」**の指示は、その既存機能の**実データ挙動を先に確認**してから設計する (推測でラベル/仕様を作らない)。**(b) 自分が解釈を置換した重要機能**は、`HUMAN` 行 + 具体的な**出力モック**で方針確認してから本番に出す (二択スコープメニューは出さない — 明示指示は最も忠実なフルスコープで即実行が既定。`AskUserQuestion` は次の手が物理的に決まらない真の分岐だけ)。この問いは `inject-action-memory` が本番デプロイの瞬間に機械的に表面化する (ADR 0014、block しない可視化)。**本番デプロイは取り返しがつかない — 誤仕様のデプロイは「完了」でなく事故。**
 
 > **修復の前の kill-question = 「これは欠陥か、仕様か?」** (ADR 0013、demo-proposal lane incident)。値が「欠けている/間違っている」ように見えて backfill/修復しようとした時、一度問う: **(a) その欠け方は systematic か?** 100% 系統的 (例: ある経路の全行で空) は **defect でなく spec の徴候** — その経路はそもそもその値を扱わない設計かもしれない。**(b) 同じ値でもレーンで妥当性が真逆になりうる** (service=null が triage 経路では異常・demo 提案経路では仕様)。**意図のオラクルは data でなく domain owner** — 実装/データのパターンを自分で「異常」と断定する (著者=採点者の円環) 前に人間に確認する。確認前に多段修正を組むな。この問いは `inject-action-memory` が backfill/UPDATE/migration の瞬間に機械的に表面化する (ADR 0013、block しない可視化)。
 
