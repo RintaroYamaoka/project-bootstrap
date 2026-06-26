@@ -137,16 +137,19 @@ assert_stdout_contains 'additionalContext'
 assert_stdout_contains 'prod-deploy'
 assert_stdout_contains 'feedback_deploy_author_fix'
 
+# A key with NO plugin default (prod-db-migrate) is the representative for the opt-in/silent
+# path: prod-deploy and data-backfill are now UNIVERSAL FLOORS (they carry a default memo and
+# fire without a registry), so only a default-less key stays silent when unarmed.
 test_case "matched but UNARMED (registry exists, key not listed) is silent, exit 0"
-ONLY_MIGRATE="$(mktemp -d)"
-printf 'prod-db-migrate | slug | note\n' > "$ONLY_MIGRATE/.bootstrap-actions"
-RUN_DIR="$ONLY_MIGRATE" run_hook inject-action-memory.sh "$(bash_input 'vercel deploy --prod' "$ONLY_MIGRATE")"
+ONLY_DEPLOY="$(mktemp -d)"
+printf 'prod-deploy | slug | note\n' > "$ONLY_DEPLOY/.bootstrap-actions"
+RUN_DIR="$ONLY_DEPLOY" run_hook inject-action-memory.sh "$(bash_input 'prisma migrate deploy' "$ONLY_DEPLOY")"
 assert_exit 0
 assert_stdout_empty
 
-test_case "no registry at all (opt-in) is silent, exit 0"
+test_case "no registry at all (opt-in) is silent for a default-less key, exit 0"
 NOREG="$(mktemp -d)"
-RUN_DIR="$NOREG" run_hook inject-action-memory.sh "$(bash_input 'vercel deploy --prod' "$NOREG")"
+RUN_DIR="$NOREG" run_hook inject-action-memory.sh "$(bash_input 'prisma migrate deploy' "$NOREG")"
 assert_exit 0
 assert_stdout_empty
 
@@ -219,8 +222,17 @@ case "$(action_default_memo data-backfill)" in
   *systematic*|*系統的*|*domain*) assert_eq pass pass ;;
   *) assert_eq 'a default memo' 'none' ;;
 esac
-test_case "prod-deploy has NO plugin default memo (project-specific, opt-in only)"
-assert_eq '' "$(action_default_memo prod-deploy)"
+test_case "prod-deploy has a plugin default memo (completion-verification doctrine, ADR 0014)"
+case "$(action_default_memo prod-deploy)" in
+  *逐語照合*) assert_eq pass pass ;;
+  *) assert_eq 'a prod-deploy default memo' 'none' ;;
+esac
+test_case "prod-deploy default memo carries the mock-confirm + completion cues"
+out_pd="$(action_default_memo prod-deploy)"
+case "$out_pd" in *モック*) assert_eq pass pass ;; *) assert_eq 'mock cue' 'missing' ;; esac
+case "$out_pd" in *完了*) assert_eq pass pass ;; *) assert_eq 'completion cue' 'missing' ;; esac
+test_case "prod-db-migrate still has NO plugin default memo (project-specific, opt-in only)"
+assert_eq '' "$(action_default_memo prod-db-migrate)"
 
 # --- injector: data-backfill fires the default doctrine even with NO registry (ADR 0013) --
 test_case "data-backfill injects the default doctrine with NO registry (universal floor)"
@@ -233,6 +245,30 @@ assert_stdout_contains 'data-backfill'
 test_case "data-backfill default NEVER exits 2"
 RUN_DIR="$NOREG2" run_hook inject-action-memory.sh "$(bash_input 'tsx scripts/backfill-x.ts' "$NOREG2")"
 [ "$HOOK_EXIT" = 2 ] && { TESTS_RUN=$((TESTS_RUN+1)); TESTS_FAILED=$((TESTS_FAILED+1)); echo "  FAIL [$CURRENT_TEST] exited 2"; } || { TESTS_RUN=$((TESTS_RUN+1)); echo "  ok   [$CURRENT_TEST] exit $HOOK_EXIT"; }
+
+# --- injector: prod-deploy fires the completion-verification doctrine with NO registry (ADR 0014) --
+# WHY a universal floor: the 2026-06-26 reservation-notify incident shipped a misread spec to
+# prod and was falsely reported "done". The irreversible moment (the prod deploy command) is the
+# right place to surface "verbatim-cross-check each clause / confirm reinterpretation via a mock".
+test_case "prod-deploy injects the default doctrine with NO registry (universal floor)"
+NOREG3="$(mktemp -d)"
+RUN_DIR="$NOREG3" run_hook inject-action-memory.sh "$(bash_input 'vercel deploy --prod' "$NOREG3")"
+assert_exit 0
+assert_stdout_contains '"hookEventName":"PreToolUse"'
+assert_stdout_contains 'prod-deploy'
+assert_stdout_contains '逐語照合'
+
+test_case "prod-deploy default NEVER exits 2"
+RUN_DIR="$NOREG3" run_hook inject-action-memory.sh "$(bash_input 'vercel deploy --prod' "$NOREG3")"
+[ "$HOOK_EXIT" = 2 ] && { TESTS_RUN=$((TESTS_RUN+1)); TESTS_FAILED=$((TESTS_FAILED+1)); echo "  FAIL [$CURRENT_TEST] exited 2"; } || { TESTS_RUN=$((TESTS_RUN+1)); echo "  ok   [$CURRENT_TEST] exit $HOOK_EXIT"; }
+
+test_case "prod-deploy appends the project memo when the registry arms it (default + project)"
+PD_ARMED="$(mktemp -d)"
+printf 'prod-deploy | feedback_deploy_author_fix | always pass --build-env AUTHOR\n' > "$PD_ARMED/.bootstrap-actions"
+RUN_DIR="$PD_ARMED" run_hook inject-action-memory.sh "$(bash_input 'vercel deploy --prod' "$PD_ARMED")"
+assert_exit 0
+assert_stdout_contains '逐語照合'
+assert_stdout_contains 'feedback_deploy_author_fix'
 
 test_case "data-backfill appends the project memo when the registry arms it (both)"
 BF_ARMED="$(mktemp -d)"

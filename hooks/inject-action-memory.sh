@@ -61,9 +61,10 @@ if command -v git >/dev/null 2>&1; then
   [ -n "$GITTOP" ] && REPO="$GITTOP"
 fi
 
-# Two memo sources (ADR 0013):
-#   - DEFAULT: a plugin-owned universal doctrine for this key (currently only data-backfill).
-#     Fires even when the repo has NOT armed the key — a project-agnostic safety floor.
+# Two memo sources (ADR 0013 / ADR 0014):
+#   - DEFAULT: a plugin-owned universal doctrine for this key (currently data-backfill (ADR
+#     0013) and prod-deploy (ADR 0014)). Fires even when the repo has NOT armed the key — a
+#     project-agnostic safety floor.
 #   - REGISTRY: the repo's opt-in .bootstrap-actions memo for this key (project-specific).
 # We surface whichever exist (default first, then the project memo appended). If neither
 # exists (a project-specific key in an unarmed repo), stay silent (opt-in preserved).
