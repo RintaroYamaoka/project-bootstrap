@@ -141,7 +141,7 @@ incident を書く運用が崩れる典型:
 2. **「user が悪い」フレームで書く** — AI 駆動 incident は **AI の判断ミス**として書く。user 指示が曖昧だったとしても、AI の判断ルートをどう変えるかが本旨
 3. **trivial な直しまで incident 化** — 大量に書くと読まれない。**re-do が 2 回以上 / production 影響 / user 強い叱責** の閾値を守る
 4. **business 固有名混入** — placeholder で抽象化しないと外部展開時に丸ごと削除になる
-5. **過小スコープな対症修正で閉じる** — silent な顧客影響 failure を直すとき、read 側の対症 (backfill 等) だけ当てて write 側の真因を放置すると、**同型の穴が兄弟フィールド/兄弟ケースで再発する** (appo-followup: 岡本 email backfill #388 → 06-26 で name/meet が同じ wipe で再発)。fix は必ず (a) **write 側の真因**を直す、(b) **兄弟フィールド/兄弟ケースを横スイープ** (email を直したら name/company/phone も)、(c) **継ぎ目テストを追加** の 3 点セットにする (= `project-bootstrap` skill「完遂責任 — 同 PR で cohort audit」と同根)。
+5. **過小スコープな対症修正で閉じる** — silent な顧客影響 failure を直すとき、read 側の対症 (backfill 等) だけ当てて write 側の真因を放置すると、**同型の穴が兄弟フィールド/兄弟ケースで再発する** (appo-followup: email backfill #388 → 06-26 で name/meet が同じ wipe で再発)。fix は必ず (a) **write 側の真因**を直す、(b) **兄弟フィールド/兄弟ケースを横スイープ** (email を直したら name/company/phone も)、(c) **継ぎ目テストを追加** の 3 点セットにする (= `project-bootstrap` skill「完遂責任 — 同 PR で cohort audit」と同根)。
 
 ## 関連 skill / docs
 

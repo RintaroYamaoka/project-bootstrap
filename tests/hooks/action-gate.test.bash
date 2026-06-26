@@ -229,8 +229,8 @@ case "$(action_default_memo prod-deploy)" in
 esac
 test_case "prod-deploy default memo carries the mock-confirm + completion cues"
 out_pd="$(action_default_memo prod-deploy)"
-case "$out_pd" in *モック*) ;; *) assert_eq 'mock cue' 'missing' ;; esac
-case "$out_pd" in *完了*) ;; *) assert_eq 'completion cue' 'missing' ;; esac
+case "$out_pd" in *モック*) assert_eq pass pass ;; *) assert_eq 'mock cue' 'missing' ;; esac
+case "$out_pd" in *完了*) assert_eq pass pass ;; *) assert_eq 'completion cue' 'missing' ;; esac
 test_case "prod-db-migrate still has NO plugin default memo (project-specific, opt-in only)"
 assert_eq '' "$(action_default_memo prod-db-migrate)"
 

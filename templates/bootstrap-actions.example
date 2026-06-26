@@ -36,6 +36,11 @@
 # arm in action-gate.sh + a test), not a new pattern in this file.
 #
 #   prod-deploy       a production deploy (e.g. `vercel deploy --prod`, incl. `--production`)
+#                     SPECIAL (ADR 0014): this key ALSO carries a plugin-owned universal doctrine
+#                     ("before claiming done — verbatim-cross-check each clause; for a reinterpreted
+#                     spec confirm via an output mock, not a scope menu; a misshipped prod deploy is
+#                     an incident, not completion") that fires even if you do NOT arm it here. Arm it
+#                     only to ADD a project-specific memo, appended after the universal one.
 #   prod-db-migrate   a production DB migration apply (e.g. `prisma migrate deploy`)
 #   data-backfill     rewriting existing data (backfill/data-migrate script, `prisma db execute`,
 #                     a sql-client inline UPDATE/DELETE, or a knex/sequelize/typeorm/alembic run).
