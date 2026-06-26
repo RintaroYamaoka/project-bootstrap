@@ -86,4 +86,21 @@ test_case "no .bootstrap-protected: push to main allowed (opt-in / fail-open)"
 run_hook block-push-to-protected.sh "$(push_input 'git push origin main')"
 assert_exit 0
 
+# New consolidated layout: the marker under .bootstrap/protected fires identically.
+setup_repo
+rm "$REPO/.bootstrap-protected"
+mkdir -p "$REPO/.bootstrap"
+printf 'main\n' > "$REPO/.bootstrap/protected"
+git -C "$REPO" checkout -q -B main
+RUN_DIR="$REPO"
+test_case ".bootstrap/protected (new layout): push to main is blocked"
+run_hook block-push-to-protected.sh "$(push_input 'git push origin main')"
+assert_exit 2
+
+# New wins when both layouts exist (legacy left behind after migration).
+printf 'main\n' > "$REPO/.bootstrap-protected"
+test_case "new layout wins when both .bootstrap/protected and legacy exist"
+run_hook block-push-to-protected.sh "$(push_input 'git push origin main')"
+assert_exit 2
+
 finish

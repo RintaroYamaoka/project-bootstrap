@@ -47,13 +47,14 @@ description: 1 つの feature を複数 Claude で安全に並列開発するた
 git worktree add ../wt-<id> -b feat/<id>-<topic>
 ```
 
-各 worktree root に **`.bootstrap-lane`** を置く (= board の `scope` を 1 行 1 glob で展開):
+各 worktree root の **`.bootstrap/lane`** を置く (= board の `scope` を 1 行 1 glob で展開):
 
 ```
-printf '%s\n' "src/auth/**" "tests/auth/**" > ../wt-<id>/.bootstrap-lane
+mkdir -p ../wt-<id>/.bootstrap
+printf '%s\n' "src/auth/**" "tests/auth/**" > ../wt-<id>/.bootstrap/lane
 ```
 
-`.bootstrap-lane` を各 worktree の `.gitignore` に追加する (= commit しない)。これで `block-out-of-lane-edit.sh` が宣言外編集を blocking する。
+`.bootstrap/lane` を `.gitignore` に追加する (= commit しない。`.bootstrap/` 配下の他マーカー (wip 等) は commit するのでフォルダごとではなく lane だけ無視する)。これで `block-out-of-lane-edit.sh` が宣言外編集を blocking する。旧 flat path `.bootstrap-lane` (worktree root 直下) も後方互換で読まれる。
 
 ### Step 5: ワーカー起動文を吐く (コピペ可能)
 
@@ -73,7 +74,7 @@ scope (.bootstrap-lane) の範囲だけで TDD (Red→Green→Refactor) する�
 
 ## やってよいこと / やってはいけないこと
 
-- やってよい: `Read`/`Grep`/`Glob` での探索、`board.json` 生成、`git worktree add`、`.bootstrap-lane` 書き出し、起動文出力
+- やってよい: `Read`/`Grep`/`Glob` での探索、`board.json` 生成、`git worktree add`、`.bootstrap/lane` 書き出し、起動文出力
 - やってはいけない: **feature 本体の実装 (Edit/Write)**、scope を重複させた分解、`wip_limit` を超える worktree 量産、spine 未完了での下流並列化
 
 ## 関連

@@ -8,9 +8,12 @@
 # wip_limit may be a sprint-specific deviation (see docs/sprint/board.json's
 # _wip_note) and goes stale when the sprint ends.
 #
-# `.bootstrap-wip` at the repo root is the project-level declaration: first
-# non-comment non-blank line, digits only after trim. Same opt-in idiom as
-# .bootstrap-arch / .bootstrap-lane / .bootstrap-protected. Pure bash, jq-free.
+# The wip marker (`.bootstrap/wip` new / `.bootstrap-wip` legacy) at the repo root
+# is the project-level declaration: first non-comment non-blank line, digits only
+# after trim. Same opt-in idiom as the arch / lane / protected markers. Pure bash,
+# jq-free. The new-vs-legacy path fallback is delegated to resolve-marker.sh so it
+# never drifts from the other gates; the display provenance reflects whichever path
+# actually carried the value.
 #
 # Fail-mode: this value is checklist DISPLAY, not a gate's blocking signal —
 # the gate blocks on .gate/board.json presence regardless. So absence, non-git
@@ -41,11 +44,14 @@
 # explicitly declared one preserves the opt-in idiom (an undeclared repo is never
 # blocked). The default "worker 3-4" is advisory display only and never blocks; Workflow
 # lanes are not wip-capped at all (ADR 0006).
+# shellcheck source=resolve-marker.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/resolve-marker.sh"
+
 resolve_wip_limit_int() {
   local top file line val
   top=$(git rev-parse --show-toplevel 2>/dev/null | tr '\\' '/' | tr -s '/')
   [ -n "$top" ] || return 1
-  file="$top/.bootstrap-wip"
+  file="$(resolve_marker "$top" wip)"
   [ -f "$file" ] || return 1
   while IFS= read -r line || [ -n "$line" ]; do
     line="${line#"${line%%[![:space:]]*}"}"
@@ -63,9 +69,9 @@ resolve_wip_limit_int() {
 
 # resolve_wip_limit — see header. Writes the display string to stdout.
 resolve_wip_limit() {
-  local top file line val
+  local top file line val label
   top=$(git rev-parse --show-toplevel 2>/dev/null | tr '\\' '/' | tr -s '/')
-  file="$top/.bootstrap-wip"
+  file="$(resolve_marker "$top" wip)"
   if [ -n "$top" ] && [ -f "$file" ]; then
     while IFS= read -r line || [ -n "$line" ]; do
       # trim both ends
@@ -78,7 +84,7 @@ resolve_wip_limit() {
     done < "$file"
     case "${val:-}" in
       '' | *[!0-9]*) ;;                                  # unparseable => default (doctor warns)
-      *) printf '%s (.bootstrap-wip)' "$val"; return 0 ;;
+      *) label="${file#"$top"/}"; printf '%s (%s)' "$val" "$label"; return 0 ;;
     esac
   fi
   printf 'worker 既定 3-4・Workflow lane は wip 非対象'

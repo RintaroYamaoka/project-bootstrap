@@ -56,19 +56,21 @@ scripts/setup-server-enforcement.sh --check   # GitHub側の保護設定を監�
 scripts/setup-server-enforcement.sh           # 保護設定を適用 (下記「サーバ側」参照)
 ```
 
-### opt-in 設定ファイル (使う分だけ repo root に置く)
+### opt-in 設定ファイル (使う分だけ repo root の `.bootstrap/` フォルダに置く)
 
-**何も置かなければ何も強制されない**。欲しい規律のファイルだけ置く (雛形は `templates/`)。
+**何も置かなければ何も強制されない**。欲しい規律のファイルだけ置く (雛形フォルダごと `cp -r templates/.bootstrap your-project/.bootstrap` でコピーし、要らないファイルを消す)。マーカーは repo root の **`.bootstrap/` フォルダ配下**に集約する (直下が散らからない)。旧 flat path (`.bootstrap-arch` 等、repo root 直下) も後方互換で読まれるので、既存採用 repo は移行不要。
 
 | ファイル | 置くと効くもの | 中身 |
 |---|---|---|
-| `.bootstrap-arch` | レイヤ依存方向の強制 | `layer app = app/**` / `allow app -> lib` |
-| `.bootstrap-protected` | 宣言ブランチへの直 push 禁止 | `main` (1 行 1 パターン) |
-| `.bootstrap-lint` | commit 前の lint gate | 空ファイル (在るだけで有効) |
-| `.bootstrap-wip` | 並列 worker 数の上限 | 整数 1 行 (例 `4`) |
-| `.bootstrap-actions` | 本番操作の瞬間に出すプロジェクト固有メモ | `prod-deploy \| <memo-slug> \| <一行メモ>` |
+| `.bootstrap/arch` | レイヤ依存方向の強制 | `layer app = app/**` / `allow app -> lib` |
+| `.bootstrap/protected` | 宣言ブランチへの直 push 禁止 | `main` (1 行 1 パターン) |
+| `.bootstrap/lint` | commit 前の lint gate | 空ファイル (在るだけで有効) |
+| `.bootstrap/wip` | 並列 worker 数の上限 | 整数 1 行 (例 `4`) |
+| `.bootstrap/actions` | 本番操作の瞬間に出すプロジェクト固有メモ | `prod-deploy \| <memo-slug> \| <一行メモ>` |
 | `docs/sprint/` (ディレクトリ) | 並列開発フロー一式の有効化 | 採用マーカー |
 | `docs/verification/` (ディレクトリ) | 動作テスト計画の merge gate | 採用マーカー |
+
+> マーカーの解決は単一権威 `hooks/lib/resolve-marker.sh` が担い、`.bootstrap/<name>` (新) を優先し `.bootstrap-<name>` (旧) に fallback する。両方在れば新が勝つ。
 
 ### 知っておくと得する仕組み (見落としがちな機能)
 
@@ -156,10 +158,11 @@ scripts/setup-server-enforcement.sh --merge-queue   # (任意) 古いレーン�
 | `hooks/lib/cross-repo-contract.sh` | cross-repo 契約宣言の **単一権威** (D3、ADR 0011)。merge gate と doctor が共有 (信号 drift 防止)。`docs/verification/contracts` (行指向 `id \| local_face_glob \| peer_repo \| peer_face \| note`) を parse し、中核 `branch_changed_sources` が **lane の OWN delta (base..lane) を offline 計算** (PreToolUse 時 HEAD=main で空になる罠を回避)、登記 glob と交差させ touched 契約 id を返す。consumer 側のみ — 相手 repo を読まない・diff しない。jq 非依存 |
 | `tests/hooks/` | 全 hook の bash テスト (jq 非依存ハーネス、TDD で自己検証)。`.github/workflows/test.yml` が push / PR で全 suite を回す (self-CI) |
 | `templates/CLAUDE.md` | 新規プロジェクト用 CLAUDE.md 雛形 (Anthropic exclude 表で prune 済) |
-| `templates/.bootstrap-arch` | 依存方向契約の雛形 (layer / alias / allow 辺) |
-| `templates/.bootstrap-wip` | project 既定 `wip_limit` 宣言の雛形 (整数 1 行) |
+| `templates/.bootstrap/` | opt-in マーカー雛形フォルダ (arch / protected / lint / wip / actions.example)。`cp -r templates/.bootstrap your-project/.bootstrap` で一括コピーし、要らないものを消す。マーカー解決は `hooks/lib/resolve-marker.sh` が `.bootstrap/<name>` (新) > `.bootstrap-<name>` (旧) の順で行う |
+| `templates/.bootstrap/arch` | 依存方向契約の雛形 (layer / alias / allow 辺) |
+| `templates/.bootstrap/wip` | project 既定 `wip_limit` 宣言の雛形 (整数 1 行) |
 | `templates/docs/` | 採用 dir (handoffs / decisions / incidents / sprint) の README + TEMPLATE 一式 |
-| `templates/bootstrap-actions.example` | inject-action-memory 用の opt-in registry 雛形 (ADR 0010/0013)。repo root に `.bootstrap-actions` としてコピー。1 行 = `<action-key> \| <memory-slug-or-path> \| <note>`、action-key は plugin の CLOSED enum (`prod-deploy`/`prod-db-migrate`/`data-backfill`) から選ぶだけ (match pattern は書かない)。無ければ project 固有メモは無音 (ただし `data-backfill` (ADR 0013) と `prod-deploy` (ADR 0014) の普遍 doctrine は arm せずとも出る) |
+| `templates/.bootstrap/actions.example` | inject-action-memory 用の opt-in registry 雛形 (ADR 0010/0013)。`.bootstrap/actions` としてコピー (旧 `.bootstrap-actions` も可)。1 行 = `<action-key> \| <memory-slug-or-path> \| <note>`、action-key は plugin の CLOSED enum (`prod-deploy`/`prod-db-migrate`/`data-backfill`) から選ぶだけ (match pattern は書かない)。無ければ project 固有メモは無音 (ただし `data-backfill` (ADR 0013) と `prod-deploy` (ADR 0014) の普遍 doctrine は arm せずとも出る) |
 | `templates/docs/verification/contracts.example` | cross-repo 契約宣言の雛形 (ADR 0011)。各参加 repo の `docs/verification/contracts` に置く。1 行 = `id \| local_face_glob \| peer_repo \| peer_face \| note`。宣言なき共有スキーマの無音破壊 (mood incident) を observable な FACT にする。plan 行は `[contract:<id>]` タグで参照、gate は相手 repo を読まない |
 | `templates/github/workflows/verification-gate.yml` | サーバ側 verification gate の配布雛形 (ADR 0012)。adopting repo の `.github/workflows/` にコピーし、plugin を pin ref で checkout して `verification-ci-check.sh` を回す (判定の単一権威を plugin に残しローカル hook と drift させない)。`verification-closed` を required status check に登録する |
 | `templates/github/ruleset.json` | GitHub repository ruleset 雛形 (ADR 0012)。複数 repo 横展開用。`gh api -X POST repos/OWNER/REPO/rulesets --input` で適用。`bypass_actors: []` (admin も含め誰も素通りしない = 穴 2) + required check + merge queue + non_fast_forward を集約 (「最も制限的版が勝つ」) |

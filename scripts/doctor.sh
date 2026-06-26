@@ -44,12 +44,25 @@ REPO="$GITTOP"
 
 have() { [ -e "$REPO/$1" ]; }
 
+# marker 解決は単一権威 (resolve-marker.sh) に委譲 — `.bootstrap/<name>` (新) を優先し
+# `.bootstrap-<name>` (旧) に fallback する。lib 不在の異常配置では旧 flat path に退避。
+RESOLVER_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd)/hooks/lib/resolve-marker.sh"
+# shellcheck source=../hooks/lib/resolve-marker.sh
+[ -f "$RESOLVER_LIB" ] && . "$RESOLVER_LIB"
+marker() {
+  if command -v resolve_marker >/dev/null 2>&1; then resolve_marker "$REPO" "$1"
+  else printf '%s/.bootstrap-%s' "$REPO" "$1"; fi
+}
+have_marker() { [ -e "$(marker "$1")" ]; }
+# repo 相対の表示ラベル (`.bootstrap/arch` 新 / `.bootstrap-arch` 旧 — 実際に解決したパス)。
+marker_rel() { local p; p="$(marker "$1")"; printf '%s' "${p#"$REPO"/}"; }
+
 # --- 採用 marker の検出 ---
 ARCH=0; PROT=0; LINT=0; LANE=0; SPRINT=0; MEM=0; VERIFY=0
-have .bootstrap-arch       && ARCH=1
-have .bootstrap-protected  && PROT=1
-have .bootstrap-lint       && LINT=1
-have .bootstrap-lane       && LANE=1
+have_marker arch       && ARCH=1
+have_marker protected  && PROT=1
+have_marker lint       && LINT=1
+have_marker lane       && LANE=1
 [ -d "$REPO/docs/sprint" ] && SPRINT=1
 [ -d "$REPO/docs/verification" ] && VERIFY=1
 { [ -d "$REPO/docs/decisions" ] || [ -d "$REPO/docs/handoffs" ] || [ -d "$REPO/docs/incidents" ]; } && MEM=1
@@ -81,11 +94,11 @@ fi
 ISSUES=()
 
 # 1) 宣言したのに中身が空 = 宣言だけで何も強制しない silent no-op。
-if [ "$ARCH" = 1 ] && ! grep -qE '^[[:space:]]*layer[[:space:]]' "$REPO/.bootstrap-arch" 2>/dev/null; then
-  ISSUES+=(".bootstrap-arch は在るが layer 宣言が 1 行も無い → 依存方向 gate は実質 no-op")
+if [ "$ARCH" = 1 ] && ! grep -qE '^[[:space:]]*layer[[:space:]]' "$(marker arch)" 2>/dev/null; then
+  ISSUES+=("$(marker_rel arch) は在るが layer 宣言が 1 行も無い → 依存方向 gate は実質 no-op")
 fi
-if [ "$PROT" = 1 ] && ! grep -qE '^[[:space:]]*[^#[:space:]]' "$REPO/.bootstrap-protected" 2>/dev/null; then
-  ISSUES+=(".bootstrap-protected は在るが branch 行が無い → push 保護は実質 no-op")
+if [ "$PROT" = 1 ] && ! grep -qE '^[[:space:]]*[^#[:space:]]' "$(marker protected)" 2>/dev/null; then
+  ISSUES+=("$(marker_rel protected) は在るが branch 行が無い → push 保護は実質 no-op")
 fi
 # .bootstrap-wip: 宣言が在るのに整数として解析できないと、hook 側 (resolve-wip-limit.sh) は
 # 表示値ゆえ fail-open に form-aware な既定へ落ちる — が、その「落ちた」事実は宣言者に届かない。
@@ -93,11 +106,11 @@ fi
 # parseability は display 文字列の一致でなく整数版 resolve_wip_limit_int の rc で見る (= 既定文言の
 # 変更に結合しない。文字列一致は ADR 0006 の既定改名で一度割れた)。
 WIPLIB="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd)/hooks/lib/resolve-wip-limit.sh"
-if have .bootstrap-wip && [ -f "$WIPLIB" ]; then
+if have_marker wip && [ -f "$WIPLIB" ]; then
   # shellcheck source=../hooks/lib/resolve-wip-limit.sh
   . "$WIPLIB"
   if ! ( cd "$REPO" && resolve_wip_limit_int >/dev/null 2>&1 ); then
-    ISSUES+=(".bootstrap-wip は在るが整数が読めない → wip_limit 宣言は無音で無視され既定 (worker 3-4) 表示に落ちる (1 行目に整数のみを書く)")
+    ISSUES+=("$(marker_rel wip) は在るが整数が読めない → wip_limit 宣言は無音で無視され既定 (worker 3-4) 表示に落ちる (1 行目に整数のみを書く)")
   fi
 fi
 
@@ -139,19 +152,20 @@ AGLIB="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd)/hooks/lib/ac
 if [ -f "$AGLIB" ]; then
   # shellcheck source=../hooks/lib/action-gate.sh
   . "$AGLIB"
-  if [ -f "$REPO/.bootstrap-actions" ]; then
-    ARMED_N=$(grep -cE '^[[:space:]]*[^#[:space:]]' "$REPO/.bootstrap-actions" 2>/dev/null || echo 0)
+  ACTIONS_FILE="$(marker actions)"
+  if [ -f "$ACTIONS_FILE" ]; then
+    ARMED_N=$(grep -cE '^[[:space:]]*[^#[:space:]]' "$ACTIONS_FILE" 2>/dev/null || echo 0)
     ORPHANS=$(registry_orphan_keys "$REPO" 2>/dev/null | paste -sd, - )
     if [ -n "$ORPHANS" ]; then
-      ACTIONS_LINE="actions: .bootstrap-actions present ($ARMED_N armed) — ORPHAN keys not in the plugin enum: $ORPHANS (memo can never fire; fix the key or add it to action-gate.sh)"
+      ACTIONS_LINE="actions: actions marker present ($ARMED_N armed) — ORPHAN keys not in the plugin enum: $ORPHANS (memo can never fire; fix the key or add it to action-gate.sh)"
     else
-      ACTIONS_LINE="actions: .bootstrap-actions present ($ARMED_N armed, no orphans)"
+      ACTIONS_LINE="actions: actions marker present ($ARMED_N armed, no orphans)"
     fi
   else
     # No registry. If an incident is tagged as a repeat-prone action, the fix it records is
-    # not armed to re-surface — point at .bootstrap-actions. Cheap grep over incident dirs.
+    # not armed to re-surface — point at the actions marker. Cheap grep over incident dirs.
     if [ -d "$REPO/docs/incidents" ] && grep -rilE 'repeat[- ]?action' "$REPO/docs/incidents" >/dev/null 2>&1; then
-      ACTIONS_LINE="actions: no .bootstrap-actions, but a docs/incidents entry is tagged repeat-action — arm its action-key (templates/bootstrap-actions.example) so the recorded fix re-surfaces at the action"
+      ACTIONS_LINE="actions: no actions marker, but a docs/incidents entry is tagged repeat-action — arm its action-key (templates/bootstrap-actions.example) so the recorded fix re-surfaces at the action"
     fi
   fi
 fi

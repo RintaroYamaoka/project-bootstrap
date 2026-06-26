@@ -215,14 +215,19 @@ action_default_memo() {
 }
 
 # --- the per-repo registry (opt-in) -------------------------------------------------
-# Lives at <repo-root>/.bootstrap-actions (an opt-in marker — absent = this mechanism is
-# off and the injector is silent, so non-adopting repos are never disturbed). One armed
-# action per line:  <action-key> | <memory-slug-or-path> | <note>
+# Lives at <repo-root>/.bootstrap/actions (new) or <repo-root>/.bootstrap-actions (legacy),
+# an opt-in marker — absent = this mechanism is off and the injector is silent, so
+# non-adopting repos are never disturbed. One armed action per line:
+#   <action-key> | <memory-slug-or-path> | <note>
 # Surrounding whitespace is trimmed; blank lines and `#` comments are ignored. The slug is
 # advisory text injected verbatim (the injector does NOT read the memory file — it points
 # the actor at it; resolving/reading is the actor's job, comprehension stays irreducible).
 
-_registry_path() { printf '%s/.bootstrap-actions' "${1%/}"; }
+# Resolve via the shared marker resolver so the .bootstrap/ vs legacy-flat fallback stays
+# single-authority (never drifts from the other gates).
+# shellcheck source=resolve-marker.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/resolve-marker.sh"
+_registry_path() { resolve_marker "${1%/}" actions; }
 
 # registry_memo_for_key <repo-root> <action-key> — print the memo to inject for <action-key>
 # if the repo's registry ARMS it, else print nothing (opt-in / silent). The printed memo is

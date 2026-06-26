@@ -1,3 +1,5 @@
 # sprint flow の ephemeral state (commit しない)
+# lane は worktree-local。.bootstrap/ 配下の他マーカー (wip 等) は commit するので lane だけ無視する。
+.bootstrap/lane
 .bootstrap-lane
 docs/sprint/.gate

@@ -7,6 +7,10 @@
 
 ## [Unreleased]
 
+### Changed
+
+- **root の opt-in マーカーを `.bootstrap/` フォルダに集約 (ADR 0015)**。採用 repo の root に最大 6 個 flat に散らばっていたマーカー (`.bootstrap-arch` / `-protected` / `-lint` / `-wip` / `-actions` / worktree-local `-lane`) を `.bootstrap/<name>` 配下にまとめ、直下の散らかりを解消。設計思想は不変 (存在=有効・各 hook は自分のマーカーだけ読む・単一設定ファイル化は fail-mode SPOF になるので不採用)。単一権威 `hooks/lib/resolve-marker.sh` が `.bootstrap/<name>` (新) を優先し `.bootstrap-<name>` (旧) に**後方互換 fallback** (両方在れば新が勝つ) するので既存採用 repo は移行不要 (flag day なし)。全 hook / `scripts/arch-check.sh` / `scripts/doctor.sh` / `lib/resolve-wip-limit.sh` / `lib/action-gate.sh` を resolver 経由に統一 (直書きパス廃止)。`templates/.bootstrap/` フォルダ雛形 (`cp -r` で一括配布)、CI vendor 手順に `resolve-marker.sh` を追加。旧 path 撤去条件は ADR 0015 で bound (全 dogfood repo 移行完了後)。
+
 ## [0.26.0] - 2026-06-26
 
 ### Added

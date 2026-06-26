@@ -21,11 +21,21 @@ ENGINE="$SCRIPT_DIR/../hooks/lib/arch-check.sh"
 [ -f "$ENGINE" ] || ENGINE="$SCRIPT_DIR/arch-check-engine.sh"
 [ -f "$ENGINE" ] || { echo "arch-check: engine (hooks/lib/arch-check.sh) が見つからない" >&2; exit 2; }
 
+# marker resolver (`.bootstrap/arch` 新 / `.bootstrap-arch` 旧)。engine と同階層に置かれる。
+RESOLVER="$SCRIPT_DIR/../hooks/lib/resolve-marker.sh"
+[ -f "$RESOLVER" ] || RESOLVER="$SCRIPT_DIR/resolve-marker.sh"
+
 command -v git >/dev/null 2>&1 || { echo "arch-check: git が必要" >&2; exit 2; }
 TOP=$(git rev-parse --show-toplevel 2>/dev/null)
 [ -z "$TOP" ] && { echo "arch-check: git repo 外" >&2; exit 2; }
 
-MANIFEST="$TOP/.bootstrap-arch"
+if [ -f "$RESOLVER" ]; then
+  # shellcheck source=../hooks/lib/resolve-marker.sh
+  . "$RESOLVER"
+  MANIFEST="$(resolve_marker "$TOP" arch)"
+else
+  MANIFEST="$TOP/.bootstrap-arch"
+fi
 [ -f "$MANIFEST" ] || exit 0   # 契約が無ければ何もしない
 
 # shellcheck source=../hooks/lib/arch-check.sh

@@ -280,7 +280,9 @@ allow infra -> core
 - **`block-cross-layer-import.sh`** (Edit|Write 時) — 禁止 import を**書いた瞬間** blocking。手戻りを防ぐ
 - **`block-arch-violations.sh`** (commit 時) — 宣言 layer 配下の**全 file を権威検証**。どの commit も契約を満たすことを保証する網
 
-`.bootstrap-arch` が無ければ fail-open (= 非アーキ project は影響なし)。雛形は `templates/.bootstrap-arch`。
+`.bootstrap/arch` が無ければ fail-open (= 非アーキ project は影響なし)。雛形は `templates/.bootstrap/arch`。
+
+> **opt-in マーカーの所在 (ADR 0015)**: arch / protected / lint / wip / actions / lane は repo root の **`.bootstrap/` フォルダ配下** (`.bootstrap/arch` 等) に集約する。直下の散らかりを避けつつ「存在=有効・各 hook は自分のマーカーだけ読む」思想は不変 (単一設定ファイル化は fail-mode SPOF になるので不採用)。解決は単一権威 `hooks/lib/resolve-marker.sh` が `.bootstrap/<name>` (新) > `.bootstrap-<name>` (旧) の順で行い後方互換を保つ。本 doc 中の `.bootstrap-xxx` 表記は `.bootstrap/xxx` と読み替え可。
 
 ### 規律
 

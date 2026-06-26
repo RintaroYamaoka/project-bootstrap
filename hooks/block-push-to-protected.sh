@@ -36,11 +36,14 @@ fi
 # git push でなければ素通し (path-prefixed git も検出する: cmd_has_git_push)
 cmd_has_git_push "$CMD" || exit 0
 
-# `.bootstrap-protected` を解決。無ければ opt-out として fail-open。
+# protected marker を解決 (`.bootstrap/protected` 新 / `.bootstrap-protected` 旧)。
+# 無ければ opt-out として fail-open。
 command -v git >/dev/null 2>&1 || exit 0
 TOP=$(git rev-parse --show-toplevel 2>/dev/null | tr '\\\\' '/' | tr -s '/')
 [ -z "$TOP" ] && exit 0
-PROTECTED_FILE="$TOP/.bootstrap-protected"
+# shellcheck source=lib/resolve-marker.sh
+. "$(dirname "$0")/lib/resolve-marker.sh"
+PROTECTED_FILE="$(resolve_marker "$TOP" protected)"
 [ -f "$PROTECTED_FILE" ] || exit 0
 # protected 判定 (is_protected) は lib/protected-branch.sh の single authority に委譲する。
 

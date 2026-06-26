@@ -2,6 +2,8 @@
 
 `project-bootstrap` の規律を **deterministic に強制する hook 集**。`plugin.json` の `hooks` フィールド経由でデフォルト発火する (= ユーザーが叩かなくても常に動く)。
 
+> **opt-in マーカーの所在**: project が置く opt-in マーカー (arch / protected / lint / wip / actions / lane) は repo root の **`.bootstrap/` フォルダ配下** (`.bootstrap/arch` 等) に集約する。解決は単一権威 [`lib/resolve-marker.sh`](./lib/resolve-marker.sh) が担い、`.bootstrap/<name>` (新) を優先し旧 flat path `.bootstrap-<name>` に後方互換で fallback する (両方在れば新が勝つ)。以下の説明で `.bootstrap-xxx` と書かれた箇所は新 `.bootstrap/xxx` と読み替え可。
+
 ## 提供する hook
 
 ### A. PreToolUse on `Edit | Write | MultiEdit` — テスト先行強制
@@ -247,7 +249,7 @@ sprint 自動分解は SKILL.md の **advisory** (= Claude が探索結果から
 
 ### S. PreToolUse on `Bash` — 再発しやすい action 直前に記録済み memory を注入 (block しない)
 
-Bash command が plugin 所有の **action-key enum** ([`lib/action-gate.sh`](./lib/action-gate.sh) の `ACTION_KEY_ENUM` = 現状 `prod-deploy` / `prod-db-migrate`) に共有トークナイザでマッチし、かつ opt-in registry `.bootstrap-actions` (雛形 [`templates/bootstrap-actions.example`](../templates/bootstrap-actions.example)) が当該キーを **arm** していれば、対応する memory を `hookSpecificOutput.additionalContext` (= `bootstrap-session-doctor.sh` と同形) として出して **exit 0**。memory に正しい fix が記録されていても効くのは「次の session 開始時に読む」ときだけで、操作を打つ瞬間には目の前に無い — その空白で deploy author 渡し忘れ型の bug が fix 記録済みのまま ~7 回再発した。本 hook は「記録したのに想起されない」を**操作の瞬間の visibility** で埋める (ADR 0010)。
+Bash command が plugin 所有の **action-key enum** ([`lib/action-gate.sh`](./lib/action-gate.sh) の `ACTION_KEY_ENUM` = 現状 `prod-deploy` / `prod-db-migrate`) に共有トークナイザでマッチし、かつ opt-in registry `.bootstrap/actions` (旧 `.bootstrap-actions` 互換、雛形 [`templates/.bootstrap/actions.example`](../templates/.bootstrap/actions.example)) が当該キーを **arm** していれば、対応する memory を `hookSpecificOutput.additionalContext` (= `bootstrap-session-doctor.sh` と同形) として出して **exit 0**。memory に正しい fix が記録されていても効くのは「次の session 開始時に読む」ときだけで、操作を打つ瞬間には目の前に無い — その空白で deploy author 渡し忘れ型の bug が fix 記録済みのまま ~7 回再発した。本 hook は「記録したのに想起されない」を**操作の瞬間の visibility** で埋める (ADR 0010)。
 
 - **決して `exit 2` しない / ack も取らない**。理解は強制不能で (ADR 0001)、ここで課せる前進行為が無い (deploy 自体は正当、fix を**忘れている**だけ)。必要なのは block ではなく想起のタイミング = 「強制を 4 設計判断に作り替える」②(信号選び) の **visibility 版**
 - **controlled-vocabulary なマッチャ** (per-entry regex でない)。マッチ条件は共有 plugin code (`action-gate.sh` のトークナイザ + CLOSED な enum) に集約し、消費先は **enum からキーを選んで arm するだけ**。`merge-targets.sh` / `protected-branch.sh` と同じ正規化 (env-prefix 除去 / path-prefixed bin / `npx` / `bash -c` unwrap / compound walk) を踏み、消費先のインライン正規表現による未レビュー greedy-match / string-proxy 事故を構造的に締め出す

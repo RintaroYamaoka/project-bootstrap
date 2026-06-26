@@ -87,6 +87,17 @@ mkdir -p "$REPO/src/deep"
 test_case "resolves toplevel declaration from a subdirectory"
 assert_eq "4 (.bootstrap-wip)" "$(resolve_in "$REPO/src/deep")"
 
+# 9b. New consolidated layout: .bootstrap/wip is read, and its provenance label
+#     reflects the new path.
+REPO="$(make_repo)"; mkdir -p "$REPO/.bootstrap"; printf '6\n' > "$REPO/.bootstrap/wip"
+test_case "new layout .bootstrap/wip is used with new-path provenance"
+assert_eq "6 (.bootstrap/wip)" "$(resolve_in "$REPO")"
+
+# 9c. New wins over legacy when both exist.
+REPO="$(make_repo)"; mkdir -p "$REPO/.bootstrap"; printf '6\n' > "$REPO/.bootstrap/wip"; printf '2\n' > "$REPO/.bootstrap-wip"
+test_case "new layout wins over legacy when both present"
+assert_eq "6 (.bootstrap/wip)" "$(resolve_in "$REPO")"
+
 # --- resolve_wip_limit_int (the blocking-gate variant, ADR 0005 guard 3) ---
 # Returns the raw integer + rc 0 only when declared & parseable; else no stdout + rc 1.
 # Callers (block-over-wip-parallel.sh) fail OPEN on rc 1 to preserve opt-in.

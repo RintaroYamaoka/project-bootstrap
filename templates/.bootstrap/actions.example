@@ -1,4 +1,4 @@
-# .bootstrap-actions — arm a recorded memo to surface AT a repeat-prone action (project-bootstrap)
+# .bootstrap/actions — arm a recorded memo to surface AT a repeat-prone action (project-bootstrap)
 #
 # WHY this file exists: a fix already documented in memory does no good if it is never in
 # front of the actor at the moment the action runs. A deploy-author bug recurred ~7 times
@@ -6,7 +6,8 @@
 # prod deploy ran. Arming an action here makes inject-action-memory.sh (PreToolUse on Bash)
 # inject that memo as advisory context right before the matched action executes.
 #
-# This is OPT-IN: copy this file to your repo ROOT as `.bootstrap-actions`. With no file,
+# This is OPT-IN: copy this file into your repo's `.bootstrap/` folder as `actions` (i.e.
+# `.bootstrap/actions`; the legacy flat path `.bootstrap-actions` is still read). With no file,
 # the injector is completely silent (non-adopting repos are never disturbed). It NEVER blocks
 # and NEVER acks — it only injects context; reading and applying the fix stays your job (an
 # ack token would be self-issuable by the very actor being gated, so it is not used — ADR 0010).
