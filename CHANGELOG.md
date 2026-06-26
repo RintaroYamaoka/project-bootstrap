@@ -7,6 +7,11 @@
 
 ## [Unreleased]
 
+### Added
+
+- **本番デプロイ時の「完了照合」inject (ADR 0014)**。同一セッションで出た裏表の 2 incident (appo-followup 2026-06-26: ① 複数文言の明示指示を自分の都合のよい解釈に置換し、各文言と実装の照合をせず「完了」と虚偽報告して誤仕様を本番デプロイ / ② 逆に明示指示を実行せず `AskUserQuestion` で押し返した) を根に。既存 `prod-deploy` action-key の `action_default_memo` 空欄を埋め、(1) 各指示文言を実装と逐語照合 (2)「〜のような既存機能」は実データ挙動を先に確認 (3) 解釈を置換した重要機能は二択メニューでなく出力モックで確認、を本番デプロイの瞬間に **registry 未 arm でも常時発火** (data-backfill に続く 2 つ目の普遍 floor)。`verification` skill に partial-update の absent/empty 混同 seam (往復テスト) + 「設計で消せるか先に問う (構造>規律/操作分離)」+ 完了前 kill-question を追記。`incident` skill に過小スコープな read 対症で閉じる失敗兆候 (write 真因+兄弟フィールド横スイープ+継ぎ目テスト) を追記。block しない可視化 (完了照合は既約 = ADR 0001)。ADR 0013:46「prod-deploy は opt-in」を更新。
+- **README に開発者向け運用ガイドを追加**。slash コマンド一覧 / 自動発火する瞬間 / あなたを止める hook と対処 / 手で叩く CLI / opt-in 設定ファイル / 見落としがちな機能 (trust ladder・本番操作メモ・cross-repo 契約・verification の HUMAN 行・サーバ側 enforcement の有効化手順) を、機能カタログ (提供物表) とは別にプレーン語で。
+
 ## [0.25.0] - 2026-06-25
 
 ### Added
