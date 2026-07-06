@@ -45,13 +45,23 @@
 #                                   the author deliberately set (D4 / ADR 0007 amendment).
 #
 # kind controlled vocabulary (the test pyramid; AI-dev residue skews to the lower rows):
-#   unit / contract / e2e / manual / monitor / async
+#   unit / contract / e2e / manual / monitor / async / gameable / metamorphic
 #   - monitor = a row whose oracle is a PRODUCTION instrument (an alert / a daily aggregate
 #     like "CV>0 but bookings==0"); the oracle is external to the AI and to the test suite.
 #   - async  = a path that filters/skips/drops with no observable signal, or work behind a
 #     scheduler/queue/heartbeat. An async row WITHOUT a real monitor oracle is a blind spot
 #     (a cron that skips silently, a daemon alive while its queue stalls) — verification-
 #     drift.sh advises on exactly that shape, keyed on this field, never on prose.
+#   - gameable = a behaviour whose oracle could be SATISFIED BY special-casing/hardcoding —
+#     the 7th seam (ADR 0016): the impl detects the test input and returns the expected value,
+#     hardcodes the example case, or edits/monkey-patches the grader. The author (human or AI)
+#     DECLARES the risk with this kind, exactly as `async` declares a silent-skip path.
+#   - metamorphic = the MITIGATION that backs a gameable row (as `monitor` backs `async`): an
+#     oracle that perturbs the input and asserts the RELATION on the output, so a hardcoded/
+#     special-cased impl breaks. A gameable row WITHOUT a metamorphic row is a blind spot —
+#     verification-drift.sh advises on that shape, keyed on this field, never on prose. (A
+#     held-out oracle — a judging test outside the impl author's edit surface — is the
+#     structural alternative; record it as a metamorphic/PASS row once wired.)
 
 # vplan_path_for_branch — see header. Maps a branch name to its plan file. The same
 # derivation the merge gate used inline; factored out so the doctor reuses it verbatim

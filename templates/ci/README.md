@@ -50,3 +50,16 @@ GitHub 側では「この branch が並列 lane だったか」を判別でき�
 2. 計画の規約は手元の hook と共通: `docs/verification/<branch の / を _ に置換>.md`。OPEN 行 (TODO/FAIL/HUMAN) ゼロ・理由なき DROP ゼロを満たしてから PR を出す
 
 review gate と同型に「PR を作ること自体を統合行為とみなし全 PR に閉じた計画を要求する」。required 化の判断も review gate と同じ。
+
+## 秘密情報のハードコード検出 (secret-scan / ADR 0016 Class A)
+
+`templates/github/workflows/secret-scan.yml`。上の bootstrap-* gate が bootstrap の**自前契約** (依存方向 / レビュー / 動作テスト) の CI twin なのに対し、これは毛色が違う: **AI がしがちなハードコードの静的検出できる半分** (ADR 0016 の Class A) を CI に足す opt-in gate で、plugin lib を一切 vendor せず外部ツール **gitleaks** に委譲する。
+
+なぜ自前スキャナを内蔵しないか: ADR 0016 の判断どおり、独自 matcher は `merge-targets.sh` / `protected-branch.sh` が潰した「未レビュー matcher を consumer に持ち込む」事故クラスの再輸入であり、誤検知が正データを隠す fail-mode を抱える。既存の gitleaks に寄せて再発明を避ける。
+
+**catches**: tracked source に埋め込まれた secrets / credentials / API キー / トークン (実測で AI は人間の約 2 倍埋め込む: arXiv 2603.27130)。
+**catches NOT**: Class A の残り (プロンプト過適合の定数 / stub の決め打ち返り値) と Class B (テストゲーミング) 全部 — これらはスキャナでなく動作テスト (verification skill の 7th seam) の領分。
+
+1. `templates/github/workflows/secret-scan.yml` を `.github/workflows/` にコピー (self-contained、vendor 不要)
+2. 個人/public repo は secret 不要 (auto の `GITHUB_TOKEN` を使う)。**GitHub org 所有 repo のときだけ** `GITLEAKS_LICENSE` を repo/org secret に設定 (無料、gitleaks.io)
+3. (任意) `gitleaks` を branch protection の required status check に指定すると leak が bypass 不可で merge を止める。しなければ赤い X を人間が尊重する運用
