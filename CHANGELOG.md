@@ -7,6 +7,8 @@
 
 ## [Unreleased]
 
+## [0.28.0] - 2026-07-06
+
 ### Added
 
 - **AI のハードコード傾向を 2 クラスに分け held-out oracle を verification に据える (ADR 0016)**。重大インシデントは無いが「AI はハードコードしがち」を先回りで潰すため、`/deep-research` (read-only 外部オラクル腕) で「AI 生成コードの品質が低いと言われる理由」を引用付き外部一次資料化 (arXiv 2403.08937 / 2503.06327 / 2603.27130 / 2510.20270 / 2511.18397 / METR 2025-06)。ハードコード傾向は性質の異なる 2 クラスに割れる — **Class A = 能力限界** (プロンプト例への過適合 = Prompt-biased code / 中身のない stub = Wrong Logic / secrets・env 埋め込み、**静的に検出しうる**) と **Class B = 報酬ハック的テストゲーミング** (special-casing = テスト入力を検知して期待値を返す / grader・`==`・conftest の monkey-patch / `sys.exit(0)` で harness を exit 0 脱出、RL 報酬構造から学習されることが実証済み、**静的に検出しづらい**)。実測で最も効く緩和は **held-out test** (判定スイートを実装者に見せない/触らせないとチート率がほぼゼロに)。`verification` skill に **7 番目の seam「オラクル捕獲 / テストゲーミング」** を追加 (6 番目「緑の嘘」= テストが**弱い**受動的欠陥と区別、7 番目 = 実装が**能動的に**可視オラクルを騙す)。緩和として held-out oracle (判定を実装 lane の編集面の外に置く。関所実走スイートは部分的 held-out だが同 lane 共著なら崩れる) + metamorphic (入力摂動で決め打ちを壊す、Class A 例過適合と Class B special-case の両方に効く) を Step 3 の技法表・kill-question・doctrine に据える。Class A の静的半分 (secrets/env) は独自スキャナを内蔵せず gitleaks 等を `.bootstrap/lint` gate + CI に足す推奨経路に (再発明・誤検知回避、`merge-targets`/`protected-branch` と同じ「未レビュー matcher を持ち込まない」規律)。**新しい block は作らない** — 「special-case したか」は AI が自己発行できる ack で偽装される既約な理解 (ADR 0001/0010) ゆえ可視化 doctrine で扱う。README (提供物表 + 見落としがち機能 + プレーン語解説)、CHANGELOG を更新。
