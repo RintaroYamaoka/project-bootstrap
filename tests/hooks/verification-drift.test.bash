@@ -155,4 +155,55 @@ verification_drift_report "$R" >/dev/null 2>&1
 test_case "verification_drift_report returns 0 even when the async advisory fires"
 assert_eq 0 "$?"
 
+# ── AXIS 3: held-out / metamorphic blind spot (7th seam / ADR 0016) ────────────────────
+# A POPULATED plan with a kind=gameable row (author declared a special-case/hardcode-prone
+# oracle) but NO kind=metamorphic row is a blind spot: a decided-in-advance answer passes
+# the same-input test green. Keyed ONLY on the controlled-vocab kind field, gated on a
+# source-face change, advisory. Same shape as the async axis (declared risk, no mitigation).
+gamed() { case "$1" in *"テストゲーミング"*) return 0 ;; *) return 1 ;; esac; }
+
+# 16. gameable row, no metamorphic, with a source change => the held-out advisory fires.
+R="$(mkrepo)"; adopt "$R"
+printf 'export const x = 1\n' > "$R/app.ts"
+printf 'TODO | gameable | scoring output is easily hardcoded | expected value | ai |\n' > "$R/docs/verification/main.md"
+OUT="$(verification_drift_report "$R")"
+test_case "gameable-without-metamorphic advisory fires on a populated plan"
+if gamed "$OUT"; then assert_eq ok ok; else assert_eq ok FAIL; fi
+
+# 17. gameable row WITH a metamorphic row => silent on the held-out axis (mitigation present).
+R="$(mkrepo)"; adopt "$R"
+printf 'export const x = 1\n' > "$R/app.ts"
+cat > "$R/docs/verification/main.md" <<'EOF'
+PASS | gameable     | scoring output is easily hardcoded     | expected value    | ai | flagged
+PASS | metamorphic  | perturb input -> score relation holds  | invariant relation| ai | wired
+EOF
+test_case "gameable WITH a metamorphic mitigation is silent on the held-out axis"
+if gamed "$(verification_drift_report "$R")"; then assert_eq ok FAIL; else assert_eq ok ok; fi
+
+# 18. A row whose behaviour text contains 'hardcode'/'game' but NO gameable kind must NOT
+#     fire the held-out advisory (the lexicon-scan false-fire, keyed on the kind field only).
+R="$(mkrepo)"; adopt "$R"
+printf 'export const x = 1\n' > "$R/app.ts"
+cat > "$R/docs/verification/main.md" <<'EOF'
+PASS | unit | avoid a hardcoded magic number in the game loop | known | ai | ok
+DROP | unit | gameable-looking prose but not the kind field   | n/a   | ai | low risk
+EOF
+test_case "prose containing 'hardcode/game' does NOT fire the held-out advisory"
+if gamed "$(verification_drift_report "$R")"; then assert_eq ok FAIL; else assert_eq ok ok; fi
+
+# 19. gameable row but the change is DOC-ONLY => silent (gated on a source-face change).
+R="$(mkrepo)"; adopt "$R"
+printf '# notes\n' > "$R/README.md"
+printf 'TODO | gameable | scoring output is easily hardcoded | expected value | ai |\n' > "$R/docs/verification/main.md"
+test_case "held-out advisory is silent on a docs-only branch"
+assert_eq "" "$(verification_drift_report "$R")"
+
+# 20. The held-out advisory is ADVISORY: verification_drift_report returns 0 even when it fires.
+R="$(mkrepo)"; adopt "$R"
+printf 'export const x = 1\n' > "$R/app.ts"
+printf 'TODO | gameable | scoring output is easily hardcoded | expected value | ai |\n' > "$R/docs/verification/main.md"
+verification_drift_report "$R" >/dev/null 2>&1
+test_case "verification_drift_report returns 0 even when the held-out advisory fires"
+assert_eq 0 "$?"
+
 finish

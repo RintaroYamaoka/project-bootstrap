@@ -43,6 +43,24 @@
 #   contain the word "drop". Same source-face-change gate as axis 1, so it is silent on
 #   docs/config-only branches. Advisory only — never exits 2.
 #
+# AXIS 3 — held-out / metamorphic blind spot (7th seam / ADR 0016). Same SHAPE as axis 2
+# (a declared risk that is not backed by its mitigation kind): when the plan has >=1
+# kind=gameable row (the author flagged a behaviour whose oracle could be satisfied by
+# special-casing / hardcoding — the impl returns the expected value on the test input, hard-
+# codes the example case, or edits the grader) but NO kind=metamorphic row (the mitigation
+# that perturbs the input so a decided-in-advance answer breaks; a held-out oracle is the
+# structural alternative, recorded as a metamorphic/PASS row once wired). The research behind
+# ADR 0016: hardcoding splits into Class A (capability-limit — statically detectable, handled
+# by the lint/CI secret-scan) and Class B (reward-hack test-gaming — NOT statically
+# detectable; held-out tests are the empirically strongest mitigation). This axis is the
+# doctor half for Class B: it makes a DECLARED gameable path with no defeater visible.
+#   Same anti-false-fire discipline as axis 2: key ONLY on the controlled-vocab `kind` field
+#   (vplan_has_kind), NEVER a prose lexicon scan — a behaviour/note that merely contains the
+#   word "hardcode"/"game" must not fire. DECLARED-risk trigger (not a co-authored-delta auto-
+#   fire) BY DESIGN: TDD co-authors impl+test on every lane, so an auto-fire would bloat every
+#   lane; keying on the author's `gameable` flag keeps it silent until the risk is declared
+#   (ADR 0016 refines its backlog item (a) to this declared shape). Advisory only — never exit 2.
+#
 # Contract (takes the repo dir as $1 so the doctor audits the session cwd, not the plugin's
 # own dir; pure bash + git porcelain, jq-free, no network):
 #   verification_drift_report <dir>  echo the human-readable advisory block, or nothing;
@@ -116,9 +134,31 @@ EOF
   return 0
 }
 
+# _vd_heldout_blindspot_block <plan-file> <branch> — echo the held-out/metamorphic advisory
+# block (or nothing). Fires iff the plan has >=1 kind=gameable row AND no kind=metamorphic
+# row. Same controlled-vocab keying as the async axis (never a prose scan). The caller
+# guarantees a source-face change already gated this (so docs-only branches are silent).
+_vd_heldout_blindspot_block() {
+  local plan="$1" cur="$2"
+  vplan_has_kind "$plan" gameable || return 0        # no gameable path declared → nothing to say
+  vplan_has_kind "$plan" metamorphic && return 0     # a metamorphic mitigation backs it → covered
+  printf 'オラクル捕獲 (テストゲーミング) の盲点: kind=gameable 行があるのに kind=metamorphic 行がありません:\n'
+  printf '  branch %s の plan (docs/verification/%s.md) に kind=gameable 行 (実装が special-case /\n' \
+    "${cur:-?}" "$(printf '%s' "${cur:-?}" | tr '/' '_')"
+  printf '  ハードコードで通り抜けうると宣言した行) があるが、それを崩す kind=metamorphic 行が無い。\n'
+  printf '  実装がテスト入力を検知して期待値を返す・例のケースに決め打ちする、は同じ入力なら緑のまま\n'
+  printf '  通る (7 番目の seam、ADR 0016)。mutation では捕まらない (special-case された実装は「強い」に見える)。\n'
+  cat <<'EOF'
+  対処 (verification skill Step-3): 判定を held-out oracle (実装 lane の編集面の外のテストで採点、
+  実装者が触れない) にするか、kind=metamorphic 行を 1 つ足す (入力を摂動 → 決め打ちは壊れる)。
+  どちらも当てないと決めたなら、その盲点を理由つきで明示する (= 無音にしない)。
+EOF
+  return 0
+}
+
 # verification_drift_report — see header.
 verification_drift_report() {
-  local dir="$1" cur plan changed count async_block
+  local dir="$1" cur plan changed count async_block heldout_block
   git -C "$dir" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
   [ -d "$dir/docs/verification" ] || return 0        # opt-in, same bar as the merge gate
 
@@ -134,6 +174,10 @@ verification_drift_report() {
   if [ -n "$plan" ] && [ -s "$plan" ]; then
     async_block="$(_vd_async_blindspot_block "$plan" "$cur")"
     [ -n "$async_block" ] && printf '%s' "$async_block"
+    # AXIS 3 (held-out / metamorphic blind spot, 7th seam / ADR 0016) — same populated-plan,
+    # controlled-vocab, source-face-gated shape as axis 2. Distinct advisory; both may fire.
+    heldout_block="$(_vd_heldout_blindspot_block "$plan" "$cur")"
+    [ -n "$heldout_block" ] && printf '%s' "$heldout_block"
   fi
 
   # a non-empty plan with >=1 data row means the decision is already being recorded → silent
