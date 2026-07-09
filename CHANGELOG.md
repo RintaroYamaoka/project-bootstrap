@@ -7,6 +7,8 @@
 
 ## [Unreleased]
 
+## [0.29.0] - 2026-07-10
+
 ### Added
 
 - **lane 強制の commit 側関所を新設 (`hooks/block-out-of-lane-commit.sh`) — 全ての書き込み方式が必ず通る一点に関所を移す**。lane 強制はこれまで `Edit | Write | MultiEdit` matcher の `block-out-of-lane-edit.sh` にしか載っておらず、**Bash 経由の書き込みは関所を一度も通らなかった** (`biome format --write` / `prettier --write` / `sed -i` / codemod / `python` / `>` redirect は編集時 hook を素通りする)。書き込み方式 (`--write`, `-i`, リダイレクト …) を列挙して塞ぐのは whack-a-mole で新方式が出るたび穴が空くので、**全方式が必ず通る行為 = `git commit`** に関所を置く (memory `feedback_gate_distribution_coverage`「関所は特定方式の痕跡でなく全方式が必ず通る行為に置く」の commit 版)。編集時 hook は速い feedback のため残し、本 hook を取りこぼしの網とする**二層構成**。lane worktree での commit に載る file (`git diff --cached --name-only`、`-a`/`--all` 時は tracked 未 stage 変更も) が全て lane glob の中であることを要求し、外れる file が 1 つでもあれば `exit 2`。fail-open: lane marker 不在 (sprint 非適用) / 非 commit / 非 git / index が空 (git 自身が拒否) / 統合操作中 (`MERGE_HEAD`・`CHERRY_PICK_HEAD`・`REVERT_HEAD`・rebase — lead の conflict 解決は定義上 lane を跨ぐ)。fail-closed: コマンド解析不能 ([`lib/parse-command.sh`](hooks/lib/parse-command.sh) の契約、他の commit 関所と同型)。根拠 = marketing-app 2026-07-09 incident M5 (`ui-leaf-producer-unwired`、lane worker が `biome format --write` で lane 外の file を書き換えどの hook も鳴らなかった)。`hooks/hooks.json` に配線 (Bash 群、`block-arch-violations` の後)、`scripts/doctor.sh` の sprint REQ に追加 (= 未配備を partial で可視化)。default hook 数は 19 → **20**。
