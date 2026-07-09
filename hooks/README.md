@@ -28,10 +28,22 @@ Claude Code は Windows 環境で `\` 区切り絶対 path を JSON-escape 済 (
 
 - `.bootstrap-lane` が **無ければ素通し** (= sprint を使っていない通常作業は一切妨げない)
 - glob は bash `[[ ]]` パターン。`*` が `/` も跨ぐので `src/auth/**` も `src/auth/*` も nested path に効く
-- worktree 外の絶対 path は判断不能として fail-open
+- **worktree 外の絶対 path の扱いは根拠の有無で分岐する** (fail-mode の修正、marketing-app 2026-07-09 incident M5): その path が **同一 repo の別 worktree** (典型的にはメインリポ) の中に在るなら、定義上「この lane の外」だと**確定できる**ので `exit 2` で block し、両 worktree root を message に名指しする (= 解析不能でなく解析済みの違反 → fail-closed)。どの worktree にも属さない path (`/tmp` scratchpad / `~/.claude` 等) は判断材料が無いので従来どおり fail-open (= 根拠不在 → fail-open)。かつては前者も一律 fail-open で、lane worker がメインリポの file を絶対 path で直接書く事故が素通っていた
+- glob 照合と別 worktree 判定は共有エンジン [`lib/lane-match.sh`](./lib/lane-match.sh) に集約 (= commit 関所と単一権威。両 gate が別々に glob を解釈して片方だけ緩い穴になるのを防ぐ。`detect-test-suite.sh` を test/merge 両関所で共有するのと同じ思想)
 - jq 非依存。hook が読むのは worktree-local な `.bootstrap-lane` だけ (= board.json の rich な真実は lead / skill が読み書きする)
 
-スクリプト: [`block-out-of-lane-edit.sh`](./block-out-of-lane-edit.sh)
+スクリプト: [`block-out-of-lane-edit.sh`](./block-out-of-lane-edit.sh) / エンジン: [`lib/lane-match.sh`](./lib/lane-match.sh)
+
+### T. PreToolUse on `Bash` for `git commit` — 並列 lane 強制の commit 側関所 (取りこぼしの網)
+
+lane 強制は長らく `Edit | Write | MultiEdit` matcher の Hook G にしか載っておらず、**Bash 経由の書き込みは関所を一度も通らなかった** — `biome format --write` / `prettier --write` / `sed -i` / codemod / `python` / `>` redirect などは編集時 hook を素通りする。書き込み方式 (`--write`, `-i`, リダイレクト …) を列挙して塞ぐのは whack-a-mole で新方式が出るたび穴が空くので、**全ての書き込み方式が必ず通る一点 = `git commit`** に関所を置く。編集時 Hook G は速い feedback のため残し、本 hook を取りこぼしの網とする**二層構成**。lane worktree で commit するとき、その commit に載る file が全て lane glob の中であることを要求し、外れる file が 1 つでもあれば `exit 2`。根拠 = marketing-app 2026-07-09 incident M5 (`ui-leaf-producer-unwired`、L2 が `biome format --write` で lane 外の file を書き換えどの hook も鳴らなかった)。
+
+- **判定対象**: `git diff --cached --name-only` (index に載る file)。`git commit -a` / `-am` / `--all` のときは tracked の未 stage 変更 (`git diff --name-only`) もその場で stage されるので併せて対象にする
+- lane 照合は Hook G と共有エンジン [`lib/lane-match.sh`](./lib/lane-match.sh) に委ねる (= 単一権威。編集時と commit 時で glob 解釈が drift しない)
+- **fail-open (根拠不在)**: lane marker 不在 (= sprint 非適用の通常作業は妨げない) / 非 `git commit` / 非 git / **index が空** (= git 自身が拒否する。判断材料が無い) / **統合操作中** (`MERGE_HEAD` / `CHERRY_PICK_HEAD` / `REVERT_HEAD` / rebase-merge / rebase-apply — lead の conflict 解決は定義上 lane を跨ぐので通す)
+- **fail-closed (解析不能)**: hook 入力からコマンドを parse できない ([`lib/parse-command.sh`](./lib/parse-command.sh) の契約) → 他の commit 関所と同じく `exit 2`
+
+スクリプト: [`block-out-of-lane-commit.sh`](./block-out-of-lane-commit.sh) / エンジン: [`lib/lane-match.sh`](./lib/lane-match.sh) ・ [`lib/commit-files.sh`](./lib/commit-files.sh) (`commit_files_from_cmd` = 「この commit が運ぶ file」の単一権威。lint 関所 Hook J と共有し `-a`/`--all` の扱いが drift しない、ADR 0018)
 
 ### K. PreToolUse on `Edit | Write | MultiEdit` — sprint 発火判定を fail-closed 強制
 
@@ -81,17 +93,24 @@ repo root に `.bootstrap-lint` を置いた project だけ発火する。`git c
 
 **`.bootstrap-lint` が無ければ素通し** (= 既定 opt-out)。lint は project ごとに設定が違い、未設定 (例: `next lint` が ESLint 未設定で対話プロンプトに落ち exit 1) のリポを always-on で巻き込むと commit を壊すため、明示宣言で opt-in する (`.bootstrap-arch` / `.bootstrap-lane` / `.bootstrap-protected` と同じ思想)。
 
+**信号は「この commit が運ぶ file」であってツリー全体ではない (ADR 0018)**。従来はツリー全体を lint していたが、git worktree には repo の全 tracked file が複製されるので、lane worker が **自分の所有しない file の lint debt** で commit を止められ、lane の中に正当な remedy が無く lane を出る動機を gate 自身が作っていた (marketing-app 2026-07-09 incident M5)。今は `git diff --cached --name-only` (+ `-a`/`--all` 時は tracked の未 stage 変更) が返す file だけを lint する。判定対象そのもの (= この commit) を信号にする ([`feedback_gate_signal_and_failmode`](../docs/decisions/0018-lint-gate-signal-is-the-commit-not-the-tree.md) の「gate は判定対象そのものを信号にする」)。
+
+- **削除された file・その linter が扱う拡張子でない file は渡さない** (存在しない path / 非対象拡張子を渡すと linter 自身がエラーを出して誤 block になる)。commit がこの linter の扱う file を 1 つも運ばないなら判定対象が無いので**素通し**
+- **既知の path 対応 tool だけを scope する (allowlist)**。`npm run lint` は script 文字列から tool を同定し、**`eslint` / `biome` / `oxlint` / `prettier` のときだけ** file 引数つきで呼ぶ。`next lint` のように file 引数で意味が変わる script は同定せず **whole-tree に落とす** — 誤って scope すると**存在しない lint 失敗を発明して誤 block する**ため。tool の解決は `node_modules/.bin/<tool>` を優先し (npx のネットワーク取得・版ずれを避ける)、解決できなければ whole-tree に落とす
+- **file 引数を取れない linter は whole-tree のまま fail-closed で残す** (`golangci-lint run` / `cargo clippy` は package 単位で file を絞れない)。**緩めない** — 従来どおりツリー全体を検査して block するが、失敗が **自分の lane の外** の file 由来なら「それを直しに lane を出るな (= 越境編集は Hook G/T が block する)、lead に上げろ」と message で明示する (案内と強制を一致させる)
+- **代償 (正直に明示)**: 既存のツリー debt はそれを触らない commit を止めなくなり、cross-file な lint 規則 (未使用 export の検出など) は commit 単位では scope できない。ツリー全体の清潔さは **CI の whole-tree lint** が backstop
+
 | マーカー | 実行 command (runner が PATH にある場合のみ) |
 |---|---|
-| `package.json` (`"lint"` script あり) | `npm run lint --silent` |
-| `pyproject.toml` / `.ruff.toml` / `.flake8` | `ruff check .` or `flake8` |
-| `go.mod` | `golangci-lint run` |
-| `Cargo.toml` | `cargo clippy -- -D warnings` |
-| `Gemfile` | `rubocop` |
+| `package.json` (`"lint"` script あり) | `npm run lint --silent` (path 対応 tool なら commit の file に絞る) |
+| `pyproject.toml` / `.ruff.toml` / `.flake8` | `ruff check .` or `flake8` (commit の file に絞る) |
+| `go.mod` | `golangci-lint run` (whole-tree、file 引数不可) |
+| `Cargo.toml` | `cargo clippy -- -D warnings` (whole-tree、file 引数不可) |
+| `Gemfile` | `rubocop` (commit の file に絞る) |
 
 linter が解決できない (script 無し / runner 不在) 場合は warn して素通し。**全分岐に `command -v` ガード**があり、toolchain 不在マシンで誤 block しない。
 
-スクリプト: [`block-commit-if-lint-fails.sh`](./block-commit-if-lint-fails.sh)
+スクリプト: [`block-commit-if-lint-fails.sh`](./block-commit-if-lint-fails.sh) / エンジン: [`lib/lint-scope.sh`](./lib/lint-scope.sh) (tool 同定 `lint_script_tool` / scope base `lint_scoped_base` / 拡張子判定 `lint_ext_ok`) ・ [`lib/commit-files.sh`](./lib/commit-files.sh) (`commit_files_from_cmd` = 「この commit が運ぶ file」の単一権威、Hook T と共有)
 
 ### C. PreToolUse on `Bash` — destructive git op を blocking
 
@@ -260,7 +279,7 @@ Bash command が plugin 所有の **action-key enum** ([`lib/action-gate.sh`](./
 
 ## 発火順
 
-全 19 hook を `hooks.json` の結線順に列挙する (= 実際の発火順、可視化のための正本)。
+全 20 hook を `hooks.json` の結線順に列挙する (= 実際の発火順、可視化のための正本)。
 
 **SessionStart**:
 
@@ -272,7 +291,7 @@ Bash command が plugin 所有の **action-key enum** ([`lib/action-gate.sh`](./
 
 **PreToolUse on `Edit | Write | MultiEdit`**:
 
-1. `block-out-of-lane-edit.sh`         — 並列 lane 外編集を block
+1. `block-out-of-lane-edit.sh`         — 並列 lane 外編集を block (別 worktree の file は fail-closed、repo 外は fail-open)
 2. `block-uniso-main-edit.sh`          — active lane 中の main tree 未隔離 source 編集を block (ADR 0005 guard 2)
 3. `block-unplanned-feature-build.sh`  — 新規 source 面を sprint 判定なしで作るのを block (opt-in)
 4. `block-cross-layer-import.sh`       — 依存方向違反 import を早期 block
@@ -289,9 +308,10 @@ Bash command が plugin 所有の **action-key enum** ([`lib/action-gate.sh`](./
 7. `block-unreviewed-merge.sh`      — レビュー記録なき並列 lane branch (board task / worktree) の merge を block (opt-in)
 8. `block-merge-if-verification-unclosed.sh` — verification plan が閉じていない lane branch の merge を block (opt-in)
 9. `block-arch-violations.sh`       — commit 時に依存方向を権威検証
-10. `block-commit-if-lint-fails.sh`  — commit 時に lint を回す
-11. `block-commit-if-tests-fail.sh` — 最後に test を回す
-12. `inject-action-memory.sh`       — 再発しやすい action 直前に記録済み memory を additionalContext 注入 (block しない、opt-in、ADR 0010)
+10. `block-out-of-lane-commit.sh`   — 並列 lane 外の file が載る commit を block (Bash 経由の書き込みを塞ぐ取りこぼしの網、opt-in)
+11. `block-commit-if-lint-fails.sh`  — commit が運ぶ file に絞って lint を回す (path 対応 tool のみ scope、go/cargo は whole-tree、ADR 0018)
+12. `block-commit-if-tests-fail.sh` — 最後に test を回す
+13. `inject-action-memory.sh`       — 再発しやすい action 直前に記録済み memory を additionalContext 注入 (block しない、opt-in、ADR 0010)
 
 block 系を test 実行より前に置くのは、test 実行が成功しても巻き込んだ commit / 契約違反は事故源だから。
 
@@ -306,7 +326,7 @@ bypass は **規律を壊す**。bypass する前に「なぜそれが必要な�
 
 ## opt-in pilot: cohort-audit (確率 gate、ADR 0008 #2)
 
-**default の 19 hook には含まれない実験的 opt-in。** これは本プラグイン初の**非決定論 (確率) gate** で、現状 advisory のままの「完遂責任 — bug fix と同 PR で同根 cohort audit」(SKILL.md) を gate 化する試み。
+**default の 20 hook には含まれない実験的 opt-in。** これは本プラグイン初の**非決定論 (確率) gate** で、現状 advisory のままの「完遂責任 — bug fix と同 PR で同根 cohort audit」(SKILL.md) を gate 化する試み。
 
 - **形態**: `Stop` イベントの **prompt hook** (`type: "prompt"`)。各ターン終了時に Haiku が `$ARGUMENTS` を評価し `{"ok": bool, "reason": str}` を返す。
 - **warn-only (block しない)**: `Stop` で `ok:false` のとき reason が **Claude に戻り作業を継続**する (= deny でなく nudge)。「cohort audit を忘れたかも」を促すだけで止めない。
