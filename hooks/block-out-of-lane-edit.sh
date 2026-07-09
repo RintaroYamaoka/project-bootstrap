@@ -32,26 +32,43 @@ LANE="$(resolve_marker "$TOP" lane)"
 # lane 宣言が無ければ sprint 非適用 → 素通し
 [ -f "$LANE" ] || exit 0
 
+# lane 照合は共有エンジンに委ねる (commit 関所と単一権威。drift 防止)。
+# shellcheck source=lib/lane-match.sh
+. "$(dirname "$0")/lib/lane-match.sh"
+
 # 編集対象を repo 相対 path に正規化
 FILE_NORM=$(printf '%s' "$FILE" | tr '\\\\' '/' | tr -s '/')
 case "$FILE_NORM" in
   "$TOP"/*) REL="${FILE_NORM#"$TOP"/}" ;;
-  /*|[A-Za-z]:/*) exit 0 ;;   # worktree 外の絶対 path は判断不能 → fail-open
+  /*|[A-Za-z]:/*)
+    # worktree 外の絶対 path。**同一 repo の別 worktree の中**なら「lane 外」と確定できるので
+    # block する (= 解析できて違反と分かる → fail-closed)。lane worker がメインリポの file を
+    # 絶対 path で直接書く事故がここを素通りしていた (marketing-app 2026-07-09 incident M5)。
+    # どの worktree にも属さない path (= /tmp scratchpad, ~/.claude 等) は判断材料が無いので
+    # 従来どおり fail-open (= 根拠不在 → fail-open)。
+    if OTHER="$(lane_owning_worktree "$FILE_NORM" "$TOP")"; then
+      cat >&2 <<EOF
+project-bootstrap: blocking edit on "$FILE_NORM" — 別 worktree の file を lane の外から編集しようとした。
+
+このワーカーの worktree : $TOP
+編集先が属する worktree : $OTHER
+
+lane の不変条件は「自分の worktree の外を触らない」。別 worktree (典型的にはメインリポ) の file を
+直接書くと、その tree を所有する lead / 別ワーカーの作業と無音で衝突する。対処:
+  1. その file が別 task の責務なら触らない。その lane のワーカーに任せる
+  2. 本 task の正当な scope なら、その file を**自分の worktree の中で**編集する
+     (= 同じ path が自分の tree にも在る。絶対 path でなく相対 path で開く)
+  3. メインリポ側の独立した debt (lint 落ち等) が commit を阻んでいるなら、それは lane の外の
+     問題。lane を出て直すのでなく lead に上げる
+EOF
+      exit 2
+    fi
+    exit 0
+    ;;
   *) REL="$FILE_NORM" ;;       # 既に相対ならそのまま
 esac
 
-# .bootstrap-lane の各 glob と照合 (空行 / # コメントは無視)。
-# bash [[ $rel == $pat ]] の glob では `*` が `/` も跨ぐので `*` `**` 両方が nested に効く。
-while IFS= read -r pat || [ -n "$pat" ]; do
-  pat="${pat#"${pat%%[![:space:]]*}"}"   # ltrim
-  pat="${pat%"${pat##*[![:space:]]}"}"    # rtrim
-  [ -z "$pat" ] && continue
-  case "$pat" in \#*) continue ;; esac
-  # shellcheck disable=SC2053
-  if [[ "$REL" == $pat ]]; then
-    exit 0
-  fi
-done < "$LANE"
+lane_allows "$REL" "$LANE" && exit 0
 
 LANES=$(grep -vE '^[[:space:]]*(#|$)' "$LANE" | sed 's/^/  - /')
 cat >&2 <<EOF

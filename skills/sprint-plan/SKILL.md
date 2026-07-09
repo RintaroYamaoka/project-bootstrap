@@ -33,6 +33,17 @@ description: 1 つの feature を複数 Claude で安全に並列開発するた
 - 重複が避けられない file (= 共有 interface / 型 / 設定 / 共通 util) は、それを作る/変える **直列 spine task** に切り出し、依存する task の `depends_on` に入れる
 - task は 1 責務・1 PR 単位。細かく刻みすぎない (= 1 lane が 1 画面の責務に収まる粒度)
 
+#### disjoint は file glob でなく dataflow で判定する
+
+**file glob 非重複は並列の必要条件だが十分条件ではない。** feature は `producer (loader) → 契約 (application) → consumer (UI)` の鎖を通って初めて動く。glob が重ならなくても、この鎖のどこか 1 段が **どの lane にも入っていない** なら、その分解は disjoint ではない (marketing-app 2026-07-09 incident: UI leaf 4 枚が各自の component と route だけを owned glob にし、props を作る `src/app/admin/load-admin-view.ts` / `load-chat-threads.ts` = 中間 loader 層が **どの lane にも属さず**素通り。`today` 未受渡で「承認待ち」レンズが永久に空・`ChatMessage.agreement` 未設定で「✓合意」が dead code。各 leaf は自 lane 内では正しく緑 655–660 pass だった — **誰も配線を owner していない**だけ)。
+
+- **規則**: UI/consumer leaf を切るときは、その leaf が読む props/data の **producer を import グラフで 1 段以上遡り**、(a) 同一 lane に含める か (b) spine で先に配線して leaf には配線済みの契約だけを渡す。どちらでもない producer が 1 つでも残るなら、その分解は disjoint ではない。
+- **最も落ちる層**を名指しする: 中間 loader 層 (`src/app/**` の loader / `page.tsx` の data 取得 / server component の fetch)。UI でも application でもないので分解網から抜けやすい。
+- **分解時に lead が答える check**: 各 leaf について「この leaf が描画する値は、**誰が作って渡すのか。その file はどの lane の owned glob に入っているか**」を 1 行ずつ答える。答えられない値が残ったら spine に積む。
+- この失敗は **per-lane CI gate では不可視** (leaf は自 lane 内で緑になる)。よって分解時 か 敵対的な統合レビューで捕まえるしかない — テストでは捕まらない。
+- **hook 強制しない理由**: 静的検出には import グラフ追跡が要り false positive が多い。よって memory + この分解手順 + 統合レビュー観点で担保する (= bootstrap の「強制できないものは可視化する」方針)。
+- marketing-app 固有ではない — **UI を持つ全 project に共通する AI の癖**。
+
 ### Step 3: board.json を書く
 
 `docs/sprint/board.json` を生成する (雛形 `templates/docs/sprint/board.example.json`)。`sprint` / `wip_limit` / 各 task の `id` `title` `scope` `branch` `depends_on` `status: todo` `worktree: null` `claimed_by: null`。
