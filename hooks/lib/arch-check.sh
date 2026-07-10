@@ -82,6 +82,7 @@ arch_load_manifest() {
   ARCH_LAYER_NAMES="$(_arch_trim "$ARCH_LAYER_NAMES")"
 }
 
+# shellcheck disable=SC2053  # 意図的な glob 照合 (g は glob パターン)
 _arch_glob_match() { local p="$1" g="$2"; [[ "$p" == $g ]]; }
 
 # arch_layer_of <repo-rel-path> -> layer name with the longest matching glob, or "".

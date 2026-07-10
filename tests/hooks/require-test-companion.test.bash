@@ -104,4 +104,16 @@ test_case "python bar.py with tests/test_bar.py companion passes"
 run_hook require-test-companion.sh "$(input_json "$D/bar.py" "$D")"
 assert_exit 0
 
+# --- 8. file_path containing a comma is parsed whole (2026-07-10 audit) ---
+# The old `grep -oE '"file_path"[^,}]*'` extractor truncated the value at the first
+# ',': "src/foo,bar/baz.ts" became "src/foo" (no extension) and the gate silently
+# fail-OPENed on an untested implementation file.
+D="$(fixture_dir)"
+mkdir -p "$D/src/foo,bar"
+: > "$D/src/foo,bar/baz.ts"
+RUN_DIR="$D"
+test_case "impl file in a comma-named dir with no companion test is blocked (no truncation)"
+run_hook require-test-companion.sh "$(input_json "$D/src/foo,bar/baz.ts" "$D")"
+assert_exit 2
+
 finish

@@ -57,8 +57,9 @@ cmd_invokes_git_subcommand "$CMD" commit || exit 0
 # 混入し origin/main へ push された)。message-only amend (index が clean) は下の
 # `[ -z "$STAGED" ] && exit 0` で素通しになるので、除外しなくても over-block しない。
 
-# transcript_path を input から抽出
-TRANSCRIPT=$(printf '%s' "$INPUT" | grep -oE '"transcript_path"[^,}]*' | head -1 | sed 's/.*"transcript_path"[[:space:]]*:[[:space:]]*"//; s/"[[:space:]]*$//')
+# transcript_path を input から抽出 (単一権威 decoder。旧 grep 抽出は path 中の `,` `}` /
+# escape で途中切りし、transcript 不在扱いの無音 fail-open になった — 2026-07-10 監査)
+TRANSCRIPT=$(printf '%s' "$INPUT" | parse_json_string_field transcript_path)
 
 # Windows path 正規化 (= JSON-escape 済 backslash を forward slash に)
 if [ -n "$TRANSCRIPT" ]; then
