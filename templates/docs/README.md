@@ -18,6 +18,15 @@ docs/
 | `decisions/` | 永続 | 不可逆な選択の **理由** (= ADR Context / Decision / Consequences) | 機能の解説 (= コード本体) |
 | `incidents/` | 永続 | AI / 人間が踏んだ事故と再発防止策。memory `feedback_*` の昇格元 | 個人攻撃 / 業務固有の客先情報 |
 
+## opt-in の 2 ディレクトリ (= gate の on-switch)
+
+以下は **置くこと自体が hook gate の opt-in マーカー** になる (`.bootstrap/<name>` marker と同格。plugin.json の opt-in 一覧参照):
+
+| dir | 有効になる gate | 規約 |
+|---|---|---|
+| `sprint/` | sprint 発火判定 gate + 並列 lane 系 hook | `templates/docs/sprint/README.md` (board.json / .gate / reviews/) |
+| `verification/` | 統合前に閉じた動作テスト計画を要求 (ADR 0007) | `docs/verification/<branch の / を _ に置換>.md`。**閉じた plan の `archive/` への移動は終端責務** (滞留させない) |
+
 ## 採用しないディレクトリと理由
 
 参考にした propagate-ai では 8 dir 構成だが、AI 駆動開発で本当に効くのは上記 3 つに絞られる。残り 5 dir は **CLAUDE.md / SKILL.md / memory / コード本体で代替** できるか、**graveyard 化** して負債になる:
@@ -28,7 +37,7 @@ docs/
 | `exploring/` (= 未確定試案) | 肥大化して current 昇格しないまま事実上の正本化する兆候が強い | 試案は会話 / plan skill / TodoWrite で扱う、永続化は decision で |
 | `reference/` (= 外部 API quirks) | プロジェクトごとに対象 API が違う、雛形化に意味がない | 必要なら project 個別に作る (= `docs/reference/` を後から追加可) |
 | `ops/` (= 運用 SOP) | business specific 度が高い、雛形化に意味がない | 必要なら project 個別に追加 |
-| `archive/` (= 凍結正本) | 実際に参照されることがほぼない、容量だけ食う | 必要なら git history を辿る |
+| `archive/` (= 凍結正本) | 実際に参照されることがほぼない、容量だけ食う | 必要なら git history を辿る。例外: `sprint/archive/` / `verification/archive/` は gate の信号 (活性 plan) と終了済み記録を分ける終端処理先で、これは採用する |
 
 **追加が必要になったら個別に作る**。雛形に空の dir を作ると「書かれていない = やっていない」signal が出続けて負債化する。
 
