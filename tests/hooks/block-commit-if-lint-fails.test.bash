@@ -75,4 +75,16 @@ test_case "no .bootstrap-lint marker: gate disabled, commit allowed"
 run_hook "$HOOK" "$(input_json 'git commit -m x')"
 assert_exit 0
 
+# 8. Detector bypasses (2026-07-10 audit): the failing lint script proves detection —
+#    exit 2 == the gate saw the commit despite the path prefix / global option.
+fresh_dir
+printf '{"scripts":{"lint":"exit 1"}}' > "$RUN_DIR/package.json"
+test_case "/usr/bin/git commit is detected and gated (path-prefix bypass)"
+run_hook "$HOOK" "$(input_json '/usr/bin/git commit -m x')"
+assert_exit 2
+
+test_case "git -c k=v commit is detected and gated (global-option bypass)"
+run_hook "$HOOK" "$(input_json 'git -c user.name=x commit -m x')"
+assert_exit 2
+
 finish

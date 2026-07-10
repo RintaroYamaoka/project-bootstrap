@@ -45,8 +45,12 @@ fi
 
 [ -z "$CMD" ] && exit 0
 
-# git commit でなければ素通し (= add / status / log 等は対象外)
-echo "$CMD" | grep -qE '(^|[[:space:]&|;()`]+)git[[:space:]]+commit($|[[:space:]])' || exit 0
+# git commit でなければ素通し (= add / status / log 等は対象外)。検出は単一権威
+# lib/git-invocation.sh (path-prefixed git / git グローバルオプション形も捕まえる — 旧 regex は
+# どちらも素通りさせた。ADR 0019)。
+# shellcheck source=lib/git-invocation.sh
+. "$(dirname "$0")/lib/git-invocation.sh"
+cmd_invokes_git_subcommand "$CMD" commit || exit 0
 
 # --amend も対象に含める。共有 index 構成では `git commit --amend` こそが他 session の
 # staged file を最も巻き込む経路 (実事故: 別 Terminal の 14 staged file が amend で commit に

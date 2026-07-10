@@ -154,4 +154,20 @@ test_case "window disabled (=0) counts stale sibling, file blocks"
 BOOTSTRAP_WIP_WINDOW_HOURS=0 run_hook block-cross-claude-wip.sh "$(input_json 'git commit -m x' "$TRANSCRIPT" "$REPO")"
 assert_exit 2
 
+# 9. Detector bypasses (2026-07-10 audit): a foreign staged file proves detection —
+#    exit 2 == the gate saw the commit despite the path prefix / global option.
+setup_repo
+echo foreign > "$REPO/foreign.txt"
+git -C "$REPO" add foreign.txt
+make_transcript "$REPO/mine.txt"
+make_foreign_transcript "$REPO/foreign.txt" >/dev/null
+RUN_DIR="$REPO"
+test_case "/usr/bin/git commit is detected and gated (path-prefix bypass)"
+run_hook block-cross-claude-wip.sh "$(input_json '/usr/bin/git commit -m x' "$TRANSCRIPT" "$REPO")"
+assert_exit 2
+
+test_case "git -C <path> commit is detected and gated (global-option bypass)"
+run_hook block-cross-claude-wip.sh "$(input_json 'git -C . commit -m x' "$TRANSCRIPT" "$REPO")"
+assert_exit 2
+
 finish

@@ -111,4 +111,17 @@ test_case "unparseable input: fail-closed"
 run_hook "$HOOK" 'not json at all'
 assert_exit 2
 
+# 10. Detector bypasses (2026-07-10 audit): an out-of-lane staged file proves detection —
+#     exit 2 == the gate saw the commit despite the path prefix / global option.
+setup_repo
+write_lane 'src/auth/**'
+stage 'src/billing/pay.ts'
+test_case "/usr/bin/git commit is detected and gated (path-prefix bypass)"
+run_hook "$HOOK" "$(input_json '/usr/bin/git commit -m x')"
+assert_exit 2
+
+test_case "git -C <path> commit is detected and gated (global-option bypass)"
+run_hook "$HOOK" "$(input_json 'git -C . commit -m x')"
+assert_exit 2
+
 finish

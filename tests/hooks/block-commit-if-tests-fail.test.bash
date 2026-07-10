@@ -110,4 +110,21 @@ if ! command -v cargo >/dev/null 2>&1; then
   assert_stderr_contains "no test framework detected"
 fi
 
+# 9. Detector bypasses (2026-07-10 audit): path-prefixed git and git global options
+#    slipped the old regex, so a failing suite never ran and the commit passed. The
+#    failing test script proves detection: exit 2 == the gate saw the commit.
+fresh_dir
+printf '{"scripts":{"test":"exit 1"}}' > "$RUN_DIR/package.json"
+test_case "/usr/bin/git commit is detected and gated (path-prefix bypass)"
+run_hook "$HOOK" "$(input_json '/usr/bin/git commit -m x')"
+assert_exit 2
+
+test_case "git -C <path> commit is detected and gated (global-option bypass)"
+run_hook "$HOOK" "$(input_json 'git -C . commit -m x')"
+assert_exit 2
+
+test_case "git -c k=v commit is detected and gated"
+run_hook "$HOOK" "$(input_json 'git -c user.name=x commit -m x')"
+assert_exit 2
+
 finish
