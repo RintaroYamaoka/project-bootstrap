@@ -7,6 +7,8 @@
 
 ## [Unreleased]
 
+## [0.30.0] - 2026-07-10
+
 ### Added
 
 - **git 呼び出し検出の単一権威 `hooks/lib/git-invocation.sh` を新設 (ADR 0019)**。「このコマンドは `git <subcommand>` を呼ぶか」を regex でなく token walk で判定する: git グローバルオプション (`-C` / `-c` / `--git-dir` / `-P` 等。値を取るものは次トークンごと skip) を越えて subcommand に到達し、path-prefixed git (`/usr/bin/git`, `./git`) と compound command の全 segment・subshell/backtick を扱い、未知の `-*` は検出側 (fail-closed) に倒す。全 Bash gate (commit 系 5 本 / push 2 本 / merge 2 本 / add-all) がこれに載り、detector regex の継ぎ足しで再発してきた「文字列 proxy の穴」クラス (incident 2026-05-25 と同型) を 1 ファイルに閉じた。既知の限界 (quoted git-head/subcommand token・`sh -c "…"` 内は under-detect し得る = full shell parser 無しの既約 limit、旧実装と同一穴で退行ではない) は header と verification plan に正直に明記し、net は commit 関所 + サーバ側 (ADR 0012) が持つ。
