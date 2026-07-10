@@ -38,7 +38,7 @@ throughput の律速は人間のレビュー帯域 (しかも user は複数プ�
 依存順に、各 task について:
 
 1. その branch を統合先 (= integration branch or main) に merge する (= review gate を通過する)
-2. **全テストスイートを回す** (= その task のテストだけでなく、統合後の全体)。これが verification の本体。task 単位で緑でも、統合で semantic 結合が壊れることがある (= 共有 interface の前提ずれ)
+2. **全テストスイートを回す** (= その task のテストだけでなく、統合後の全体)。task 単位で緑でも、統合で semantic 結合が壊れることがある (= 共有 interface の前提ずれ)。**正直な書き分け**: hook (`block-unreviewed-merge.sh`) が強制するのは **merge 前の (統合先が緑である) スイート実行まで** — この **post-merge の結合スイートは skill 手順 (advisory)** であり、hook は merge 後を観測できない。保証が要る backstop はサーバ側 CI (required status check、ADR 0012) が担う
 3. fail したら **その merge を戻して原因を特定**。conflict / 結合バグは「症状を隠す」のでなく根本 (= interface の前提ずれ等) を直す
 4. 緑なら次の task へ
 
