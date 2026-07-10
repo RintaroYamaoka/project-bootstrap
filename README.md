@@ -158,7 +158,7 @@ scripts/setup-server-enforcement.sh --merge-queue   # (任意) 古いレーン�
 | `hooks/hooks.json` | 20 hook を `plugin.json` 経由でデフォルト発火 — SessionStart doctor / test 先行 / commit 前 lint+test / destructive git op・bulk-stage・cross-session WIP / 保護 branch 直 push・stale push (ADR 0009) / lane 外の編集と commit (ADR 0017) / 未隔離 main tree 編集 (guard 2)・wip 超過 worktree (guard 3) / 依存方向 edit+commit / sprint 発火 gate + reminder / merge 関所 (review + verification) / inject-action-memory |
 | `hooks/block-merge-if-verification-unclosed.sh` + `hooks/lib/verification-plan.sh` | lane merge に plan の存在・OPEN 行ゼロ・理由なき DROP ゼロを fail-closed 要求 (ADR 0007)。format 権威は lib に集約。ローカルは速い feedback 層 — 恒久は CI twin (ADR 0012) |
 | `hooks/lib/verification-ci-check.sh` | 上記のサーバ側 (CI) twin。required status check `verification-closed` として全マージ経路 (Merge ボタン含む) を覆う |
-| `hooks/bootstrap-session-doctor.sh` + `scripts/doctor.sh` + `hooks/lib/repo-drift.sh` + `hooks/lib/verification-drift.sh` | SessionStart で 3 軸を可視化 — 採用状態 audit (ADR 0003) / repo drift (stale checkout・merge 済み残置 worktree) / 未判断 trunk 変更 (逐次経路、ADR 0007 委任)。強制でなく可視化 |
+| `hooks/bootstrap-session-doctor.sh` + `scripts/doctor.sh` + `hooks/lib/repo-drift.sh` + `hooks/lib/verification-drift.sh` | SessionStart で 3 軸を可視化 — 採用状態 audit (ADR 0003) / repo drift (stale checkout・merge 済み残置 worktree) / 未判断 trunk 変更 (逐次経路、ADR 0007 委任。source 面判定は `lib/source-face.sh` を再利用)。強制でなく可視化 |
 | `hooks/block-unplanned-feature-build.sh` | 新規 source file 作成を信号に、sprint 判定記録 (`docs/sprint/.gate` or 活性 board) を fail-closed 要求 |
 | `hooks/sprint-trigger-reminder.sh` | feature っぽい prompt への早期ヒント (強制本体は上記 gate) |
 | `hooks/block-unreviewed-merge.sh` | lane branch の merge にレビュー記録 `verdict: approve` + 検出スイートの実走を要求。PR 経路は `templates/ci/bootstrap-review-gate.yml` が CI で同等要求 |
