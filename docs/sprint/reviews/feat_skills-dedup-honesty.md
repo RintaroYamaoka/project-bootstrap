@@ -1,7 +1,9 @@
 # review — feat_skills-dedup-honesty (sprint 2026-07-10-star5-hardening, lane B)
 
-verdict: reject
+verdict: approve
 
+- 履歴: 初回 reject (687ad7f) → 差し戻し修正 f4f9e19 を lead が再検証して approve に更新 (2026-07-10)
+- 再検証 (機械): 修正 diff は指摘 3 file のみ / 「表層形」規範が 7th seam 権威節に復元 (branch tree 1 hit) / plan skill 注記が「既存 file への Edit は純 advisory」に正確化 / plan は OPEN 0 を維持
 - reviewer: read-only adversarial subagent (lead 集約)。日付: 2026-07-10。対象 HEAD 687ad7f
 - 検証済みで問題なし: frontmatter description 6 skill とも byte 一致 (auto-fire 不変) / hook 数 20 正確 / scope 逸脱ゼロ / wip_limit・.gate 形式・4 罠・6th seam axis・並列 3 形態は権威箇所に残存 / ポインタ 78 path 実在 (不実在は runtime 生成物のみ) / integrate Step 3 正直化は実装と一致 / plan は gate parser で open=0
 
