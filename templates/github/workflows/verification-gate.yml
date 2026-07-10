@@ -24,7 +24,7 @@ on:
     types: [opened, synchronize, reopened]
 env:
   PLUGIN_REPO: RintaroYamaoka/project-bootstrap
-  PLUGIN_REF: v0.29.0   # PINNED release tag — bump together with every plugin upgrade
+  PLUGIN_REF: v0.30.0   # PINNED release tag — bump together with every plugin upgrade
 jobs:
   verification-closed:
     runs-on: ubuntu-latest
