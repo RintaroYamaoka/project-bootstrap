@@ -1,5 +1,5 @@
 # .github/workflows/bootstrap-arch.yml にコピーする。
-# PR の変更ファイルに依存方向 (.bootstrap-arch) を強制する「bypass 不可の最終 gate」。
+# PR の変更ファイルに依存方向 (.bootstrap/arch、旧 flat path .bootstrap-arch も互換) を強制する「bypass 不可の最終 gate」。
 # Claude PreToolUse hook が環境依存で消えても、CI は server 側で必ず効く。
 #
 # 前提 (consumer repo への vendor):

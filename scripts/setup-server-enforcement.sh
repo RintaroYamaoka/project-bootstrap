@@ -51,7 +51,11 @@ echo "repo=$REPO branch=$BRANCH required-check=$CHECK_CONTEXT merge-queue=$WANT_
 
 # --- CHECK ONLY: report current protection (does the admin bypass their own gate?) ----------
 if [ "$CHECK_ONLY" = 1 ]; then
-  if ! gh api "repos/$REPO/branches/$BRANCH/protection" >/tmp/_bp.json 2>/dev/null; then
+  # per-invocation temp file (a fixed /tmp path collides across users/parallel runs and
+  # leaves litter); trap cleans it up on any exit.
+  BP_JSON="$(mktemp "${TMPDIR:-/tmp}/bp-protection.XXXXXX")"
+  trap 'rm -f "$BP_JSON"' EXIT
+  if ! gh api "repos/$REPO/branches/$BRANCH/protection" >"$BP_JSON" 2>/dev/null; then
     echo "  ⚠ NO branch protection on $REPO@$BRANCH — server-side gate is OPEN (Merge button bypasses the local hook)."
     exit 0
   fi

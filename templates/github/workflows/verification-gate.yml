@@ -12,15 +12,19 @@
 #
 # SETUP:
 #   1. Copy this file to .github/workflows/verification-gate.yml in your repo.
-#   2. Pin PLUGIN_REF below to a tag/sha of RintaroYamaoka/project-bootstrap.
+#   2. Pin PLUGIN_REF below to a tag/sha of RintaroYamaoka/project-bootstrap (never a moving
+#      branch like `main` — an unpinned gate can change judgement under you without a diff).
 #   3. Add "verification-closed" to your branch's required status checks (or use the setup script).
+#
+# MAINTENANCE: when you upgrade the plugin, bump PLUGIN_REF to the matching release tag in the
+# same change — a stale pin means the CI twin and your local hooks judge with different versions.
 name: verification-gate
 on:
   pull_request:
     types: [opened, synchronize, reopened]
 env:
   PLUGIN_REPO: RintaroYamaoka/project-bootstrap
-  PLUGIN_REF: main   # PIN to a tag/sha for reproducibility (e.g. 0.24.1)
+  PLUGIN_REF: v0.29.0   # PINNED release tag — bump together with every plugin upgrade
 jobs:
   verification-closed:
     runs-on: ubuntu-latest

@@ -24,11 +24,15 @@ set -u
 
 INPUT=$(cat)
 
-# SessionStart input JSON から cwd を取り出す (block-unplanned-feature-build と同方式の最小 unescape)。
-CWD=$(printf '%s' "$INPUT" | grep -oE '"cwd"[^,}]*' | head -1 | sed 's/.*"cwd"[[:space:]]*:[[:space:]]*"//; s/"[[:space:]]*$//')
-[ -z "$CWD" ] && CWD="$PWD"
-
 DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# SessionStart input JSON から cwd を取り出す (単一権威 decoder。旧 grep 抽出は path 中の
+# `,` `}` / escape で途中切りした — 2026-07-10 監査。ここは advisory なので劣化は可視化の
+# 精度だけだが、単一権威に寄せる)。
+# shellcheck source=lib/parse-command.sh
+. "$DIR/lib/parse-command.sh"
+CWD=$(printf '%s' "$INPUT" | parse_json_string_field cwd)
+[ -z "$CWD" ] && CWD="$PWD"
 
 # (1) 採用 audit — doctor.sh の verdict。actionable (unadopted/partial) のときだけ本文化。
 REPORT=$(bash "$DIR/../scripts/doctor.sh" "$CWD" 2>/dev/null)

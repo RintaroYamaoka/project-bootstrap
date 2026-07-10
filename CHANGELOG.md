@@ -7,6 +7,31 @@
 
 ## [Unreleased]
 
+### Added
+
+- **git 呼び出し検出の単一権威 `hooks/lib/git-invocation.sh` を新設 (ADR 0019)**。「このコマンドは `git <subcommand>` を呼ぶか」を regex でなく token walk で判定する: git グローバルオプション (`-C` / `-c` / `--git-dir` / `-P` 等。値を取るものは次トークンごと skip) を越えて subcommand に到達し、path-prefixed git (`/usr/bin/git`, `./git`) と compound command の全 segment・subshell/backtick を扱い、未知の `-*` は検出側 (fail-closed) に倒す。全 Bash gate (commit 系 5 本 / push 2 本 / merge 2 本 / add-all) がこれに載り、detector regex の継ぎ足しで再発してきた「文字列 proxy の穴」クラス (incident 2026-05-25 と同型) を 1 ファイルに閉じた。既知の限界 (quoted git-head/subcommand token・`sh -c "…"` 内は under-detect し得る = full shell parser 無しの既約 limit、旧実装と同一穴で退行ではない) は header と verification plan に正直に明記し、net は commit 関所 + サーバ側 (ADR 0012) が持つ。
+- **lane 集合の単一権威 `hooks/lib/lane-set.sh` を新設**。2 つの統合関所 (review / verification) に verbatim 重複していた「活性 board ∪ linked worktree」の組み立て (~40 行) を抽出し、gate 信号の drift を封じた (ADR 0005 guard 1 と同じ思想)。
+- **直接テストの無かった lib 4 本 (`commit-files` / `lane-match` / `detect-test-suite` / `source-face`) と唯一 entry テストの無かった hook `inject-action-memory.sh` に専用テストを追加** (suite 38 → 45)。新テストが `source-face.sh` の実バグ (repo-root `tests/**` を source 面と誤分類する root anchor 欠落 = over-block 穴) を検出し修正。
+- **dogfood: `bootstrap-doctor` workflow を自 repo の CI に適用** (`.github/workflows/bootstrap-doctor.yml`) — 配る gate を自分でも被る。適用時に template `templates/ci/bootstrap-doctor.yml` の実バグを発見・修正 (下記 Fixed)。
+
+### Changed
+
+- **常駐 skill と README の重複を単一権威 + ポインタに畳んだ (規範消失ゼロを機械検査つきで)**。`project-bootstrap` skill (毎セッション常駐) を 41.3KB → 28.9KB (**-30%**): 並列判定 / wip_limit / `.gate` 記録形式は `sprint-plan` skill を、継ぎ目・オラクル doctrine は `verification` skill を権威に。`verification` skill の 6th/7th seam の 3-4 重記述を権威節 1 箇所に一本化。README を 38.9KB → 25.2KB (**-35%**): 提供物表を「1 行要約 + 正本ポインタ」に再構成。検査: 変更前の hook/lib/script/ADR/incident への全参照 54 件が変更後も権威箇所に残存することを grep で機械確認 (adversarial レビューが prose 規範の消失 1 件 = 「Class A/B は同じ表層形」を検出 → 復元済み。名前 token grep は prose 規範を覆わない教訓を plan に記録)。
+- **advisory を正直に表示**: `plan` skill の「実行中 Edit/Write 禁止」に「hook 強制ではなく advisory — downstream gate が居るのは新規 source 面作成と merge のみで、plan 中の既存 file への Edit を止める機構は無い」を明記。`integrate` skill の post-merge 全スイートを「hook の強制は pre-merge まで / post-merge は skill 手順 (advisory) + サーバ側 CI required check が backstop (ADR 0012)」に書き分け。強制されている風の advisory を残さない。
+- **marker 表記を `.bootstrap/<name>` (フォルダ形、ADR 0015) に統一** — README / skills / templates の旧 flat 表記を更新し、後方互換の注記を各 1 箇所に集約。
+
+### Fixed
+
+- **保護 push gate の P0 素通り 2 件を封鎖 (2026-07-10 全体監査で実測、ADR 0019)**。(1) `git -C /repo push origin main` / `git -c k=v push` / `git --git-dir=.git push` / `git -P push` が detector と tokenizer の両方を素通りし **保護 branch への push が exit 0** だった。(2) `git push --all` / `--mirror` は destination 0 件 → current-branch 判定に落ち、feature branch 上から保護 main を含む全 branch が素通りしていた — 全 local branch を destination として展開する fail-closed に変更 (`block-stale-write-to-protected.sh` の同型穴も併修)。adversarial レビューが敵対入力 20+ 形態で封鎖を実証し、legit flow (`push origin feature` / `-u` / `--force-with-lease origin feature`) の over-block ゼロも確認。
+- **commit 系 gate 5 本 (test / lint / arch / lane / cross-wip) の detector が `/usr/bin/git commit` / `./git commit` / `git -C` / `git -c` 形を見逃していた** — push/merge 側にだけ入っていた path-prefix 許容が commit 側に未展開だった。単一権威 walker への載せ替えで封鎖。
+- **`block-add-all.sh` の stash 判定に残っていた greedy sed を segment walk に移行** — `git stash && echo done` のような compound command 中の bare stash が素通りしていた (merge/push lib で潰したのと同じクラスの残置)。
+- **hook 入力 JSON の string field 抽出の fail-open 穴を封鎖**: `file_path` / `cwd` / `transcript_path` を旧式 `grep -oE '"key"[^,}]*'` で抽出していた 8 call site が、path 中の `,` `}` / escape で途中切り → 無音 fail-open していた (incident 2026-05-25 で `command` に対して潰したのと同一クラス)。`parse-command.sh` の decoder を `parse_json_string_field <key>` に汎用化して移行。
+- **marketplace.json の記述 drift を解消** — 「19 hook」のまま `block-out-of-lane-commit` (0.29.0) が漏れていた説明文を plugin.json / 実体 (20 hook) と同期。README / templates の同型 stale 記述も一掃。
+- **template verification-gate の `PLUGIN_REF` default を動く `main` から release tag `v0.29.0` に pin** (header の警告と default が矛盾していた)。plugin 更新時に pin を追従させる注記つき。
+- **bootstrap-doctor template の exit code 捕捉バグ** — GitHub Actions の `bash -e` 下で partial (exit 2) が捕捉行の前に job を落とし `::error` 注釈が出ない / 非 `-e` shell では crash (exit 1) が緑に化ける形だった → `|| status=$?` 形に修正し 3 経路 (ok/partial/crash) を実証。
+- **`setup-server-enforcement.sh --check` の固定 `/tmp/_bp.json` を `mktemp` + trap 掃除に**。
+- **全行 CLOSED の verification plan 4 件を `docs/verification/archive/` へ移動** (ADR 0007 の終端責務からの drift。単一 lane で main 直行した plan が integrate の archive サイクルを経ず滞留していた)。
+
 ## [0.29.0] - 2026-07-10
 
 ### Added

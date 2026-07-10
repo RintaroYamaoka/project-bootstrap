@@ -33,7 +33,8 @@ fi
 [ -z "$CMD" ] && exit 0
 
 # `git worktree add` でなければ素通し (remove / list / prune / move は lane 生成ではない)。
-echo "$CMD" | grep -qE '(^|[[:space:]&|;()`]+)git[[:space:]]+worktree[[:space:]]+add([[:space:]]|$)' || exit 0
+# printf '%s' で渡す (echo は先頭 '-' / backslash を解釈しうる — 全 hook で統一)
+printf '%s' "$CMD" | grep -qE '(^|[[:space:]&|;()`]+)git[[:space:]]+worktree[[:space:]]+add([[:space:]]|$)' || exit 0
 
 # repo root を解決。非 git は根拠不在 → fail-open。
 command -v git >/dev/null 2>&1 || exit 0

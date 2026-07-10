@@ -14,9 +14,13 @@ set -u
 
 INPUT=$(cat)
 
-FILE=$(printf '%s' "$INPUT" | grep -oE '"file_path"[^,}]*' | head -1 | sed 's/.*"file_path"[[:space:]]*:[[:space:]]*"//; s/"[[:space:]]*$//')
+# field 抽出は単一権威 lib/parse-command.sh の decoder に委ねる。旧 grep 抽出は path 中の
+# `,` `}` / escape で途中切りし、この gate を無音 fail-open にした (2026-07-10 監査)。
+# shellcheck source=lib/parse-command.sh
+. "$(dirname "$0")/lib/parse-command.sh"
+FILE=$(printf '%s' "$INPUT" | parse_json_string_field file_path)
 if [ -z "$FILE" ]; then
-  FILE=$(printf '%s' "$INPUT" | grep -oE '"path"[^,}]*' | head -1 | sed 's/.*"path"[[:space:]]*:[[:space:]]*"//; s/"[[:space:]]*$//')
+  FILE=$(printf '%s' "$INPUT" | parse_json_string_field path)
 fi
 [ -z "$FILE" ] && exit 0
 

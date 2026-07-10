@@ -1,0 +1,60 @@
+{
+  "sprint": "2026-07-10-star5-hardening",
+  "wip_limit": 3,
+  "_note": "2026-07-10 全体監査で見つかった ★5 未満 3 軸 (hook 堅牢性 / 重複・肥大 / テスト・リリース規律) を閉じる sprint。3 lane は file glob でも dataflow でも disjoint (共有 interface なし、spine 不要)。",
+  "tasks": [
+    {
+      "id": "A",
+      "title": "hook detector 堅牢化 — git グローバルオプション/--all/--mirror/commit系 path-prefix/Edit系 file_path/stash greedy-sed + 未テスト lib 直接テスト",
+      "scope": [
+        "hooks/**",
+        "tests/hooks/**",
+        "scripts/doctor.sh",
+        "scripts/arch-check.sh",
+        "scripts/velocity.sh",
+        "docs/decisions/0019-*.md",
+        "docs/verification/feat_hook-detector-hardening.md"
+      ],
+      "branch": "feat_hook-detector-hardening",
+      "worktree": "../wt-A",
+      "depends_on": [],
+      "status": "done",
+      "claimed_by": "subagent-lane-A"
+    },
+    {
+      "id": "B",
+      "title": "skills/README 重複削減 + advisory 正直化 (plan 鉄則 / integrate Step3) + marker 表記統一",
+      "scope": [
+        "skills/**",
+        "README.md",
+        "docs/verification/feat_skills-dedup-honesty.md"
+      ],
+      "branch": "feat_skills-dedup-honesty",
+      "worktree": "../wt-B",
+      "depends_on": [],
+      "status": "done",
+      "claimed_by": "subagent-lane-B"
+    },
+    {
+      "id": "C",
+      "title": "packaging/配備/lifecycle — manifest drift 解消, PLUGIN_REF pin, doctor CI dogfood, mktemp 化, closed verification plan の archive",
+      "scope": [
+        ".claude-plugin/**",
+        "templates/**",
+        ".github/**",
+        "scripts/setup-server-enforcement.sh",
+        "docs/verification/archive/**",
+        "docs/verification/feat_data-repair-intent-inject.md",
+        "docs/verification/feat_hardcode-two-classes-held-out-oracle.md",
+        "docs/verification/feat_lane-commit-chokepoint-and-lint-scope.md",
+        "docs/verification/feat_server-side-enforcement.md",
+        "docs/verification/feat_packaging-lifecycle.md"
+      ],
+      "branch": "feat_packaging-lifecycle",
+      "worktree": "../wt-C",
+      "depends_on": [],
+      "status": "done",
+      "claimed_by": "subagent-lane-C"
+    }
+  ]
+}

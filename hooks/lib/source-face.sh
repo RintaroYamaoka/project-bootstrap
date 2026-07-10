@@ -14,7 +14,12 @@
 is_source_path() {
   local rel="$1"
   case "$rel" in
+    # NOTE: the path is repo-RELATIVE, so the test dirs need BOTH the `*/tests/*`
+    # (nested) and the `tests/*` (repo-root) anchors — with only the former, a
+    # top-level tests/unit/foo.ts was misclassified as a source face (over-block:
+    # found by tests/hooks/source-face.test.bash, 2026-07-10).
     *.test.*|*.spec.*|*_test.*|test_*.py|*/tests/*|*/test/*|*/__tests__/*|*/_test/*) return 1 ;;
+    tests/*|test/*|__tests__/*|_test/*) return 1 ;;
     *.md|*.json|*.yaml|*.yml|*.toml|*.ini|*.cfg|*.lock|*.txt|*.env|*.gitignore|*.dockerignore) return 1 ;;
     *Dockerfile*|*Makefile*|*.sql) return 1 ;;
     */scripts/_*|scripts/_*) return 1 ;;

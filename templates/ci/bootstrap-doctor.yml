@@ -22,11 +22,13 @@ jobs:
       - name: project-bootstrap adoption audit
         run: |
           set -uo pipefail
-          bash scripts/doctor.sh .
-          status=$?
-          # ok/unadopted/declined/skip = 0、partial = 2。partial だけ fail させる。
+          # Actions の run: は bash -e で走るため、素の `cmd; status=$?` は非 0 で捕捉前に死ぬ。
+          # `|| status=$?` で -e を無効化して exit code を値として受ける。
+          status=0
+          bash scripts/doctor.sh . || status=$?
+          # ok/unadopted/declined/skip = 0、partial = 2 (fail)。想定外 exit も素通しにしない。
           if [ "$status" -eq 2 ]; then
             echo "::error::project-bootstrap adoption is partial — 採用したのに gate が物理的に欠けている。上の doctor 出力の欠落を埋めること。"
             exit 1
           fi
-          exit 0
+          exit "$status"

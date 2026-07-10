@@ -77,4 +77,35 @@ got="$(parse '{"command":""}')"; rc=$?
 assert_eq '' "$got"
 assert_eq 0 "$rc"
 
+# --- parse_json_string_field: the generalized extractor (2026-07-10 audit) ------
+# Eight call sites still ran the OLD `grep -oE '"file_path"[^,}]*' | sed` pattern for
+# file_path/cwd/transcript_path — the exact truncation class parse_command was built
+# to kill. A path containing ',' or '}' or an escaped quote was cut mid-value, and
+# the affected Edit-side gates silently fail-OPENed on it.
+pfield() { printf '%s' "$2" | parse_json_string_field "$1"; }
+
+test_case "file_path with a comma is NOT truncated (the audited bypass)"
+got="$(pfield file_path '{"tool_input":{"file_path":"src/foo,bar/baz.ts","content":"x"}}')"
+assert_eq 'src/foo,bar/baz.ts' "$got"
+
+test_case "cwd with a closing brace survives"
+got="$(pfield cwd '{"cwd":"/tmp/a}b/repo"}')"
+assert_eq '/tmp/a}b/repo' "$got"
+
+test_case "transcript_path with JSON-escaped backslashes decodes"
+got="$(pfield transcript_path '{"transcript_path":"C:\\Users\\t\\x.jsonl"}')"
+assert_eq 'C:\Users\t\x.jsonl' "$got"
+
+test_case "absent key returns non-zero and prints nothing"
+pfield file_path '{"tool_input":{"content":"x"}}' >/dev/null 2>&1; rc=$?
+assert_eq 1 "$rc"
+
+test_case "the FIRST occurrence of the key wins (same as the old extractors)"
+got="$(pfield file_path '{"file_path":"a.ts","nested":{"file_path":"b.ts"}}')"
+assert_eq 'a.ts' "$got"
+
+test_case "parse_command remains a thin alias of the generalized extractor"
+got="$(pfield command '{"command":"git add -A"}')"
+assert_eq 'git add -A' "$got"
+
 finish

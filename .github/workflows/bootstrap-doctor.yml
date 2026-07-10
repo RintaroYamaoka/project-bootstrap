@@ -1,0 +1,34 @@
+# Dogfood copy of templates/ci/bootstrap-doctor.yml — applied to project-bootstrap itself.
+# 自分が配布している「採用状態 audit の CI net」を自 repo に適用する (配る gate は自分でも被る)。
+#
+# なぜ必要か: SessionStart の採用 audit (hooks/bootstrap-session-doctor.sh) は plugin が在る
+# Claude session でしか発火しない。CI なら環境非依存で必ず通るので、この repo 自身が
+# 採用済みなのに gate が物理的に欠けている partial 状態 (doctor STATUS=partial → exit 2) を
+# bypass 不可で fail にできる。
+#
+# template との差分: consumer repo は scripts/doctor.sh を vendor するが、この repo は
+# 本体そのもの (scripts/doctor.sh + hooks/lib/resolve-marker.sh) を持つため vendor 不要。
+name: bootstrap-doctor
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  doctor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: project-bootstrap adoption audit (self)
+        run: |
+          set -uo pipefail
+          # Actions の run: は bash -e で走るため、素の `cmd; status=$?` は非 0 で捕捉前に死ぬ。
+          # `|| status=$?` で -e を無効化して exit code を値として受ける。
+          status=0
+          bash scripts/doctor.sh . || status=$?
+          # ok/unadopted/declined/skip = 0、partial = 2 (fail)。想定外 exit も素通しにしない。
+          if [ "$status" -eq 2 ]; then
+            echo "::error::project-bootstrap adoption is partial — 採用したのに gate が物理的に欠けている。上の doctor 出力の欠落を埋めること。"
+            exit 1
+          fi
+          exit "$status"

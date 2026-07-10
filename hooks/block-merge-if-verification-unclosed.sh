@@ -70,34 +70,16 @@ TOP=$(git rev-parse --show-toplevel 2>/dev/null | tr '\\' '/' | tr -s '/')
 # opt-in: verification flow を採用した project (= docs/verification/ が在る) でのみ発火。
 [ -d "$TOP/docs/verification" ] || exit 0
 
-# 並列 lane の branch 集合を組み立てる (review gate と同じ信号)。
-# (a) 活性 board の task branch (docs/sprint 採用かつ活性のときのみ。存在ではなく活性)。
-LANE_BRANCHES=""
-BOARD="$TOP/docs/sprint/board.json"
-if [ -d "$TOP/docs/sprint" ]; then
-  # shellcheck source=lib/board-liveness.sh
-  . "$(dirname "$0")/lib/board-liveness.sh"
-  if board_has_active_tasks "$BOARD"; then
-    LANE_BRANCHES=$(grep -oE '"branch"[[:space:]]*:[[:space:]]*"[^"]*"' "$BOARD" | sed 's/.*"branch"[[:space:]]*:[[:space:]]*"//; s/"$//')
-  fi
-fi
-
-# (b) linked worktree に checkout されている branch。最初の block は main worktree 自身なので除外。
-WT_BRANCHES=$(git worktree list --porcelain 2>/dev/null | sed -n '/^$/,$p' | sed -n 's|^branch refs/heads/||p')
-if [ -n "$WT_BRANCHES" ]; then
-  LANE_BRANCHES=$(printf '%s\n%s' "$LANE_BRANCHES" "$WT_BRANCHES")
-fi
+# 並列 lane の branch 集合 (review gate と同じ信号) は単一権威 lib/lane-set.sh で組み立てる
+# (活性 board の task branch ∪ linked worktree の branch、ADR 0004。board 不在なら (a) は空)。
+# shellcheck source=lib/lane-set.sh
+. "$(dirname "$0")/lib/lane-set.sh"
+LANE_BRANCHES=$(lane_branches "$TOP")
 
 # lane が 1 つも無ければ判定根拠なし → fail-open (通常の merge を一切妨げない)。
 [ -z "$(printf '%s' "$LANE_BRANCHES" | tr -d '[:space:]')" ] && exit 0
 
-is_lane_branch() {
-  local tok="$1" b
-  while IFS= read -r b; do
-    [ -n "$b" ] && [ "$tok" = "$b" ] && return 0
-  done <<< "$LANE_BRANCHES"
-  return 1
-}
+is_lane_branch() { lane_set_contains "$1" "$LANE_BRANCHES"; }
 
 # merge 対象 branch を全 segment から enumerate する (review gate と同じ共有エンジン)。
 # 1 つでも「計画なし / 空 / 未解決」の lane branch があれば、その branch の理由で block する。

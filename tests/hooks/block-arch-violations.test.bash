@@ -85,4 +85,19 @@ test_case "newly staged violation is blocked"
 run_hook block-arch-violations.sh "$(commit_input)"
 assert_exit 2
 
+# 7. Detector bypasses (2026-07-10 audit): path-prefixed git / global options slipped
+#    the old regex, letting a staged violation commit straight past the gate.
+commit_input_cmd() { printf '{"tool_name":"Bash","tool_input":{"command":"%s"},"cwd":"%s"}' "$1" "$REPO"; }
+setup_archrepo
+addf "infrastructure/db.ts" "export const db = 1;"
+addf "core/new.ts"          "import { db } from '@/infrastructure/db';"
+RUN_DIR="$REPO"
+test_case "/usr/bin/git commit is detected and gated (path-prefix bypass)"
+run_hook block-arch-violations.sh "$(commit_input_cmd '/usr/bin/git commit -m x')"
+assert_exit 2
+
+test_case "git -c k=v commit is detected and gated (global-option bypass)"
+run_hook block-arch-violations.sh "$(commit_input_cmd 'git -c user.name=x commit -m x')"
+assert_exit 2
+
 finish

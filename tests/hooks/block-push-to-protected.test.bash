@@ -77,6 +77,47 @@ push_regress_json='{"tool_name":"Bash","tool_input":{"command":"git commit -m \"
 run_hook block-push-to-protected.sh "$push_regress_json"
 assert_exit 2
 
+# git global options (2026-07-10 audit): these bypassed the gate live — the detector
+# required `push` immediately after `git`, so exit was 0 and the push went through.
+on_branch feature/x
+test_case "git -C <path> push origin main is blocked (global-option bypass)"
+run_hook block-push-to-protected.sh "$(push_input "git -C $REPO push origin main")"
+assert_exit 2
+
+test_case "git -c k=v push origin main is blocked"
+run_hook block-push-to-protected.sh "$(push_input 'git -c core.pager=cat push origin main')"
+assert_exit 2
+
+test_case "/usr/bin/git push origin main is blocked (path-prefixed git)"
+run_hook block-push-to-protected.sh "$(push_input '/usr/bin/git push origin main')"
+assert_exit 2
+
+# --all / --mirror (2026-07-10 audit): destination enumeration yields nothing, and the
+# old gate then judged only the CURRENT branch — from feature/x, `git push --all origin`
+# carried the protected local main past the gate (reproduced live). Now: an all-branches
+# push treats EVERY local branch as a destination (fail-closed when the blast scope is
+# unenumerable — ADR 0019).
+on_branch feature/x   # local main exists from setup_repo's seed commit? ensure it:
+git -C "$REPO" branch -f main >/dev/null 2>&1 || true
+test_case "git push --all origin from a feature branch is blocked (local main is a destination)"
+run_hook block-push-to-protected.sh "$(push_input 'git push --all origin')"
+assert_exit 2
+assert_stderr_contains "--all"
+
+test_case "git push --mirror origin is blocked"
+run_hook block-push-to-protected.sh "$(push_input 'git push --mirror origin')"
+assert_exit 2
+
+# --all with NO protected local branch: nothing in the destination set is protected.
+setup_repo
+RUN_DIR="$REPO"
+printf 'release/*\n' > "$REPO/.bootstrap-protected"   # only release/* protected
+on_branch feature/x                                    # local branches: main? renamed below
+git -C "$REPO" branch -m main trunk 2>/dev/null || true
+test_case "git push --all with no protected local branch passes (destinations all judged, none protected)"
+run_hook block-push-to-protected.sh "$(push_input 'git push --all origin')"
+assert_exit 0
+
 # opt-in: with NO .bootstrap-protected, even a main push is allowed (fail-open).
 setup_repo
 rm "$REPO/.bootstrap-protected"

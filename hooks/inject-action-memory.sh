@@ -48,9 +48,10 @@ CMD="$(printf '%s' "$INPUT" | parse_command)" || exit 0
 KEY="$(action_key_for_command "$CMD")"
 [ -n "$KEY" ] || exit 0
 
-# Resolve cwd to read the per-repo registry (opt-in). Same minimal unescape as
-# bootstrap-session-doctor.sh / block-unplanned-feature-build.sh.
-CWD=$(printf '%s' "$INPUT" | grep -oE '"cwd"[^,}]*' | head -1 | sed 's/.*"cwd"[[:space:]]*:[[:space:]]*"//; s/"[[:space:]]*$//')
+# Resolve cwd to read the per-repo registry (opt-in). Single-authority decoder — the
+# old grep extraction truncated at ',' '}' inside the path (2026-07-10 audit; harmless
+# here beyond a possibly-missed memo, but one authority beats eight copies).
+CWD=$(printf '%s' "$INPUT" | parse_json_string_field cwd)
 [ -z "$CWD" ] && CWD="$PWD"
 
 # Resolve to the git root so the registry is found regardless of subdir cwd (fall back to

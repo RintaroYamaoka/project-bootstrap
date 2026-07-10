@@ -13,7 +13,7 @@ description: 1 つの feature を複数 Claude で安全に並列開発するた
 
 - feature が **scope 非重複の leaf** に割れるか? 割れないなら逐次でやる (= 無理に刻むと協調コストが利得を食う)
 - 共有 interface / 型 / 契約 があるか? あるなら **それを先に作る直列 spine** が要る。spine 完了前に下流を並列化しない
-- 同時 lane 数 ≤ `wip_limit` か? これは **terminal worker lane** の cap (人間 1 人の直列レビュー律速)。超えるなら lane を減らす。**wip_limit の既定は repo root の `.bootstrap-wip` (整数 1 行、opt-in) を `Read` してその値、不在なら worker 3-4**。Workflow/subagent lane は engine 上限律速で wip 非対象 — 帯域は統合関所が守る (ADR 0006)
+- 同時 lane 数 ≤ `wip_limit` か? これは **terminal worker lane** の cap (人間 1 人の直列レビュー律速)。超えるなら lane を減らす。**wip_limit の既定は repo root の `.bootstrap/wip` (整数 1 行、opt-in) を `Read` してその値、不在なら worker 3-4**。Workflow/subagent lane は engine 上限律速で wip 非対象 — 帯域は統合関所が守る (ADR 0006)
 
 判定の結果「並列にする価値が薄い」なら、**正直にそう言って逐次 (/plan → TDD) を勧める**。
 
@@ -48,7 +48,7 @@ description: 1 つの feature を複数 Claude で安全に並列開発するた
 
 `docs/sprint/board.json` を生成する (雛形 `templates/docs/sprint/board.example.json`)。`sprint` / `wip_limit` / 各 task の `id` `title` `scope` `branch` `depends_on` `status: todo` `worktree: null` `claimed_by: null`。
 
-`wip_limit` の値は **`.bootstrap-wip` (在れば) > 既定 worker 3-4** の順で決める (= terminal worker lane の cap。Workflow/subagent lane は engine 上限律速で wip 非対象 — ADR 0006)。sprint 固有の事情でそこから逸脱する (= leaf が完全 disjoint なので 1 つ増やす等) なら、`_wip_note` field に理由を必ず書く — 逸脱は per-sprint の判断であって新しい既定ではない。
+`wip_limit` の値は **`.bootstrap/wip` (在れば) > 既定 worker 3-4** の順で決める (= terminal worker lane の cap。Workflow/subagent lane は engine 上限律速で wip 非対象 — ADR 0006)。sprint 固有の事情でそこから逸脱する (= leaf が完全 disjoint なので 1 つ増やす等) なら、`_wip_note` field に理由を必ず書く — 逸脱は per-sprint の判断であって新しい既定ではない。
 
 ### Step 4: 並列可能な leaf だけ worktree を用意
 
@@ -65,7 +65,7 @@ mkdir -p ../wt-<id>/.bootstrap
 printf '%s\n' "src/auth/**" "tests/auth/**" > ../wt-<id>/.bootstrap/lane
 ```
 
-`.bootstrap/lane` を `.gitignore` に追加する (= commit しない。`.bootstrap/` 配下の他マーカー (wip 等) は commit するのでフォルダごとではなく lane だけ無視する)。これで `block-out-of-lane-edit.sh` が宣言外編集を blocking する。旧 flat path `.bootstrap-lane` (worktree root 直下) も後方互換で読まれる。
+`.bootstrap/lane` を `.gitignore` に追加する (= commit しない。`.bootstrap/` 配下の他マーカー (wip 等) は commit するのでフォルダごとではなく lane だけ無視する)。これで `block-out-of-lane-edit.sh` が宣言外編集を blocking する (旧 flat path も worktree root 直下で後方互換 — `resolve-marker.sh`、ADR 0015)。
 
 ### Step 5: ワーカー起動文を吐く (コピペ可能)
 
@@ -75,11 +75,11 @@ printf '%s\n' "src/auth/**" "tests/auth/**" > ../wt-<id>/.bootstrap/lane
 
 ```
 cd ../wt-<id> で Claude を起動し、docs/sprint/board.json の <id> を読んで、
-scope (.bootstrap-lane) の範囲だけで TDD (Red→Green→Refactor) する。
+scope (.bootstrap/lane) の範囲だけで TDD (Red→Green→Refactor) する。
 完了したら status を in-review にして feat/<id>-<topic> を push (PR)。
 ```
 
-**形態 ③ Workflow / subagent lane** (main session が起動、ADR 0004/0005): 同じ board の task を、人間にターミナルを開かせる代わりに main session の Workflow で走らせてよい。その場合 lane は **`isolation:'worktree'` 必須** (mutation lane なので隔離 worktree を強制) で、worktree root の `.bootstrap-lane` がそのまま効き、edit/merge gate は terminal worker と同一に発火する。Workflow runtime の worktree 自動撤去に任せず、**worktree は integrate の merge 後に撤去**する (先に撤去すると統合関所の信号が消える)。lane 数は ① と合算して `wip_limit` を超えない。
+**形態 ③ Workflow / subagent lane** (main session が起動、ADR 0004/0005): 同じ board の task を、人間にターミナルを開かせる代わりに main session の Workflow で走らせてよい。その場合 lane は **`isolation:'worktree'` 必須** (mutation lane なので隔離 worktree を強制) で、worktree root の `.bootstrap/lane` がそのまま効き、edit/merge gate は terminal worker と同一に発火する。Workflow runtime の worktree 自動撤去に任せず、**worktree は integrate の merge 後に撤去**する (先に撤去すると統合関所の信号が消える)。lane 数は ① と合算して `wip_limit` を超えない。
 
 どちらの形態でも **task = 1 worktree = 1 owner** は不変。直列 spine task は **先に 1 レーンで終わらせてから** 下流 worktree を作る。
 

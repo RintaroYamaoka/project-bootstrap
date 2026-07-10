@@ -4,6 +4,8 @@
 
 > **opt-in マーカーの所在**: project が置く opt-in マーカー (arch / protected / lint / wip / actions / lane) は repo root の **`.bootstrap/` フォルダ配下** (`.bootstrap/arch` 等) に集約する。解決は単一権威 [`lib/resolve-marker.sh`](./lib/resolve-marker.sh) が担い、`.bootstrap/<name>` (新) を優先し旧 flat path `.bootstrap-<name>` に後方互換で fallback する (両方在れば新が勝つ)。以下の説明で `.bootstrap-xxx` と書かれた箇所は新 `.bootstrap/xxx` と読み替え可。
 
+> **git コマンド検出の単一権威 (ADR 0019)**: 「このコマンドは `git <subcommand>` を呼ぶか」は全 Bash gate (commit 系 5 本 / push 2 本 / merge 2 本 / add-all) が [`lib/git-invocation.sh`](./lib/git-invocation.sh) の `cmd_invokes_git_subcommand` / `git_subcommand_arglines` で判定する。旧 regex は path-prefixed git (`/usr/bin/git commit`) と **git グローバルオプション形** (`git -C /repo push` / `git -c k=v commit` / `git --git-dir=.git push` / `git -P push`) をすべて素通りさせていた (2026-07-10 監査で実測)。walker は shell separator を pad して tokenize し、グローバルオプション (値を取るものは次トークンごと) をスキップして最初の非オプショントークンを subcommand として読む。未知の `-*` オプションは検出側 (fail-closed) に倒す。同様に、hook 入力 JSON の string field 抽出 (`command` / `file_path` / `cwd` / `transcript_path`) は [`lib/parse-command.sh`](./lib/parse-command.sh) の `parse_json_string_field` が単一権威 (旧式 `grep -oE '"key"[^,}]*'` は path 中の `,` `}` / escape で途中切り → 無音 fail-open だった)。
+
 ## 提供する hook
 
 ### A. PreToolUse on `Edit | Write | MultiEdit` — テスト先行強制
@@ -148,6 +150,8 @@ linter が解決できない (script 無し / runner 不在) 場合は warn し�
 
 `git add path/to/file` のような個別 path 指定は素通し。
 
+判定は segment 単位の token walk ([`lib/git-invocation.sh`](./lib/git-invocation.sh) の `git_subcommand_arglines`、ADR 0019)。旧実装は stash 判定に greedy sed が残っていて compound command の最後の segment しか見ず (`git stash && echo done` の bare stash が素通り)、検出 regex も path-prefixed git / グローバルオプション形を見逃していた。
+
 スクリプト: [`block-add-all.sh`](./block-add-all.sh)
 
 ### E. PreToolUse on `Bash` for `git commit` — cross-session WIP 混入を blocking
@@ -170,6 +174,9 @@ linter が解決できない (script 無し / runner 不在) 場合は warn し�
 `.bootstrap-protected` (repo root、1 行 1 branch glob) を置いた project だけ発火する。`git push` の refspec destination、または refspec 無し push の現在 branch が宣言 glob に一致すると `exit 2`。**`.bootstrap-protected` が無ければ素通し** (= solo / 個人 repo は妨げない。`.bootstrap-lane` / `.bootstrap-arch` と同じ opt-in 思想)。
 
 並走 session が作った混入 commit が共有 branch に lock-in する事故 (実事故: 別 Terminal の staged file 混入 commit が origin/main へ push された) を defense-in-depth で塞ぎ、sprint flow の「task = feature branch → 統合は integrate skill (PR / merge)」を default 化する。例外的に直接 push したいなら `/permissions` で一時 deny。
+
+- **`git push --all` / `--branches` / `--mirror` は fail-closed** (ADR 0019): これらは refspec を持たず destination はコマンド文字列から列挙できない (= 全 local branch)。gate が `git for-each-ref refs/heads/` で展開し、1 つでも protected な branch があれば block する。旧実装は current-branch 判定に落ち、feature branch 上からの `git push --all origin` が保護 main を素通りさせていた (2026-07-10 監査で実測)
+- push 検出・refspec destination 列挙・`--all` 判定は [`lib/protected-branch.sh`](./lib/protected-branch.sh) (`cmd_has_git_push` / `push_destination_branches` / `push_pushes_all_branches`) — freshness gate (Hook R) と共有の単一権威
 
 スクリプト: [`block-push-to-protected.sh`](./block-push-to-protected.sh)
 
@@ -212,6 +219,7 @@ session を開いた瞬間に `scripts/doctor.sh` で project-bootstrap の採�
 - **fail-closed**: コマンド解析不能 ([`lib/parse-command.sh`](./lib/parse-command.sh) の契約)
 - **fail-open (根拠不在)**: 非 merge / 非 git / docs/sprint 未採用 (opt-in) / merge 対象が lane branch でない (= worktree にも活性 board にも居ない通常 branch の merge を一切妨げない。board の活性判定は [`lib/board-liveness.sh`](./lib/board-liveness.sh) — 存在でなく活性)
 - レビューの質の安全網は gate ではなく `scripts/velocity.sh` の defect rate 監視 (跳ねたらレビューを 1 段厚く戻す)
+- lane 集合 (活性 board ∪ linked worktree) の組み立ては [`lib/lane-set.sh`](./lib/lane-set.sh) — verification gate (Hook N) と共有の単一権威 (verbatim 重複していた ~40 行を抽出)
 
 スクリプト: [`block-unreviewed-merge.sh`](./block-unreviewed-merge.sh)
 
@@ -228,6 +236,7 @@ session を開いた瞬間に `scripts/doctor.sh` で project-bootstrap の採�
 - **fail-open (根拠不在)**: 非 merge / 非 git / `docs/verification/` 未採用 (opt-in) / merge 対象が lane branch でない
 - 射程の境界: 統合 (merge) を信号にするので branch を切らない逐次作業は捕まえない (そこは `verification` skill が plan 時に担う)。kill-question「緑のままユーザーが困る状態はあるか?」は skill 側の doctrine
 - GitHub PR 画面の merge は手元 hook を通らないため、PR 経路は `templates/ci/bootstrap-verification-gate.yml` が CI で同じ計画を要求する (review gate と同型)
+- lane 集合の組み立ては [`lib/lane-set.sh`](./lib/lane-set.sh) — review gate (Hook M) と共有の単一権威
 
 スクリプト: [`block-merge-if-verification-unclosed.sh`](./block-merge-if-verification-unclosed.sh)
 
@@ -343,7 +352,7 @@ bypass は **規律を壊す**。bypass する前に「なぜそれが必要な�
 | 依存 key | event | 依存する gate | rename されたときの挙動 |
 |---|---|---|---|
 | `tool_input.command` | PreToolUse `Bash` | 全 Bash gate ([`lib/parse-command.sh`](./lib/parse-command.sh) 経由) | **fail-closed (安全側)**: `parse_command` が rc≠0 → 各 hook が `exit 2`。全 Bash が止まるので**無音にならず即発覚**する |
-| `tool_input.file_path` / `path` | PreToolUse `Edit\|Write\|MultiEdit` | `require-test-companion` / `block-cross-layer-import` / `block-uniso-main-edit` | **fail-open (要注意)**: 直 grep が空 → `[ -z "$FILE" ] && exit 0` で素通し = **無音バイパス** |
+| `tool_input.file_path` / `path` | PreToolUse `Edit\|Write\|MultiEdit` | `require-test-companion` / `block-cross-layer-import` / `block-uniso-main-edit` | **fail-open (要注意)**: `parse_json_string_field` が空 → `[ -z "$FILE" ] && exit 0` で素通し = **無音バイパス** |
 | `transcript_path` | PreToolUse `Bash` (`git commit`) | `block-cross-claude-wip` | **fail-open**: transcript を読めず巻き込み check が素通し (warning は出る) |
 | `cwd` | SessionStart / PreToolUse `Bash` | `bootstrap-session-doctor` / `inject-action-memory` | PWD に fallback (doctor の可視化が劣化 / injector が別 repo の registry を読む可能性 — どちらも block しないので無音劣化のみ) |
 
