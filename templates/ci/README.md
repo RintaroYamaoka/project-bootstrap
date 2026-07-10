@@ -2,7 +2,7 @@
 
 Claude Code の PreToolUse hook (`block-cross-layer-import.sh` / `block-arch-violations.sh`) は **Claude のセッションでしか発火しない**。人間が IDE で編集してターミナルで commit したり、plugin が未ロードのセッションだったりすると、強制が静かに消える。
 
-「本気で / 今後絶対に」依存方向を守るには、同じ `.bootstrap-arch` 契約を **誰がどう変更しても通る場所** で強制する。`scripts/arch-check.sh` (Claude 非依存 CLI) を 3 層で使う:
+「本気で / 今後絶対に」依存方向を守るには、同じ `.bootstrap/arch` 契約 (旧 flat path `.bootstrap-arch` も互換) を **誰がどう変更しても通る場所** で強制する。`scripts/arch-check.sh` (Claude 非依存 CLI) を 3 層で使う:
 
 | 層 | ファイル | 発火 | 保証 |
 |---|---|---|---|

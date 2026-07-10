@@ -1,5 +1,5 @@
 {
-  "_comment": "project-bootstrap — cohort-audit pilot (ADR 0008 #2). OPT-IN, NOT part of the default 19 hooks. Copy this into a settings file (.claude/settings.json / ~/.claude/settings.json) to enable. This is a PROBABILISTIC, warn-only gate (a Stop prompt hook: Haiku evaluates each turn-end; on ok:false the reason is fed back to Claude, which keeps working — it never blocks). It exists to back the 'bug fix = same-root cohort audit' discipline (SKILL.md 完遂責任), which is otherwise advisory. It cannot be CI-tested (it calls a model), so measure its false-positive rate in real use before considering promotion to a default hook. Remove this block to disable.",
+  "_comment": "project-bootstrap — cohort-audit pilot (ADR 0008 #2). OPT-IN, NOT part of the default 20 hooks. Copy this into a settings file (.claude/settings.json / ~/.claude/settings.json) to enable. This is a PROBABILISTIC, warn-only gate (a Stop prompt hook: Haiku evaluates each turn-end; on ok:false the reason is fed back to Claude, which keeps working — it never blocks). It exists to back the 'bug fix = same-root cohort audit' discipline (SKILL.md 完遂責任), which is otherwise advisory. It cannot be CI-tested (it calls a model), so measure its false-positive rate in real use before considering promotion to a default hook. Remove this block to disable.",
   "hooks": {
     "Stop": [
       {
