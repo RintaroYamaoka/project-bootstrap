@@ -67,6 +67,20 @@ test_case "compound: trunk push after a feature push is still caught"
 run_hook block-stale-write-to-protected.sh "$(push_input 'git push origin feat/x && git push origin main')"
 assert_exit 2
 
+# --all from a NON-trunk branch: the destination set is every local branch, which
+# includes the (stale) trunk — must be judged as a trunk push (2026-07-10 audit: the
+# refspec walk yields nothing for --all and the old gate judged only the current branch).
+git -C "$LOC" checkout -q -B feat/all-probe
+test_case "git push --all origin from a feature branch while trunk is stale → blocked"
+run_hook block-stale-write-to-protected.sh "$(push_input 'git push --all origin')"
+assert_exit 2
+git -C "$LOC" checkout -q main
+
+# global-option form (2026-07-10 audit): `git -C <path> push` bypassed the detector.
+test_case "git -C <path> push origin main while behind → blocked (global-option bypass)"
+run_hook block-stale-write-to-protected.sh "$(push_input "git -C $LOC push origin main")"
+assert_exit 2
+
 # --- fail-open: FRESH trunk push (behind 0) ------------------------------------------
 read -r LOC2 REM2 <<<"$(mkpair)"
 RUN_DIR="$LOC2"

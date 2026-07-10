@@ -63,6 +63,23 @@ done <<EOF
 $(push_destination_branches "$CMD")
 EOF
 
+# --all / --branches / --mirror は refspec を列挙しない (= destination は「全 local branch」)。
+# 旧実装はこれを current-branch 判定に落とし、feature branch 上からの `git push --all origin`
+# が保護 main を素通りさせた (2026-07-10 監査で実測)。破壊 scope が列挙不能な push は列挙を
+# caller 側で展開して fail-closed に判定する (ADR 0019): 全 local branch を destination として
+# 1 つでも protected があれば block。
+if [ -z "${REASON:-}" ] && push_pushes_all_branches "$CMD"; then
+  while IFS= read -r b; do
+    [ -z "$b" ] && continue
+    if is_protected "$b" "$PROTECTED_FILE"; then
+      REASON="--all/--branches/--mirror push は全 local branch を destination にする — protected branch '$b' を含む"
+      break
+    fi
+  done <<EOF
+$(git for-each-ref refs/heads/ --format='%(refname:short)' 2>/dev/null)
+EOF
+fi
+
 # refspec が無い push は現在 branch を見る
 if [ -z "${REASON:-}" ] && [ "$HAS_REFSPEC" -eq 0 ]; then
   if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
