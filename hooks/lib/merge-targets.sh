@@ -6,26 +6,29 @@
 # drift in a gate signal IS the silent-bypass class this repo treats as a first-class
 # bug (same policy as lib/board-liveness.sh, lib/source-face.sh, lib/parse-command.sh).
 #
-# Why this exists (the bug it fixes): both gates used to extract the merge target with
-#   ARGS=$(printf '%s' "$CMD" | sed -E 's/^.*git[[:space:]]+merge//')
-# `.*` is greedy, so in a compound command `git merge A && git merge B` it stripped up
-# to the LAST `git merge` and only ever inspected B — A was merged past the gate with
-# zero enforcement. And the detector keyed on a bare `git merge` token, so
-# `/usr/bin/git merge` slipped by unseen. Both are the exact "string proxy for an
-# action" weakness the doctrine condemns for sprint vocabulary (move ②). This walks
-# EVERY git-merge segment of a compound command and accepts path-prefixed git.
+# History of the bug class this kills: both gates once used a greedy
+# `sed 's/^.*git merge//'` (only the LAST merge of a compound command was inspected)
+# and a bare-`git merge` token detector (`/usr/bin/git merge` was invisible). The first
+# rewrite fixed those two but armed only when the token BEFORE `merge` was `git`, so a
+# git GLOBAL option (`git -C /repo merge feat/x`, `git -c k=v merge …`) still slipped
+# past unseen — the same live bypass class the 2026-07-10 audit reproduced on the push
+# side. Detection + segment walking + global-option skipping now come from the single
+# authority lib/git-invocation.sh (ADR 0019); this lib only owns the MERGE-SPECIFIC
+# shape (which argline tokens are targets vs flags/flag-values).
 #
-# Known limit (documented, not silent): a separator metacharacter that appears INSIDE a
-# quoted merge message (e.g. git merge -m "a && b" feat/x) is indistinguishable from a
-# real separator without a full shell parser, so that one input can miss its branch
-# (fail-open for that case only). The commit-time arch/test gates and CI remain as nets.
-# Pure bash, jq-free.
+# Known limit (documented, not silent): a separator metacharacter INSIDE a quoted merge
+# message (e.g. git merge -m "a && b" feat/x) can mis-split (see git-invocation.sh
+# header). The commit-time arch/test gates and CI remain as nets. Pure bash, jq-free.
+
+# Resolve the shared walker relative to this lib (works when sourced from any cwd).
+# shellcheck source=git-invocation.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/git-invocation.sh"
 
 # cmd_has_git_merge <command> — return 0 if the command invokes `git merge`.
-# Matches bare `git` and path-prefixed forms (/usr/bin/git, ./git) by allowing `/`
-# immediately before `git`; does not match `mygit`/`legit` (preceding char is a letter).
+# Single authority = cmd_invokes_git_subcommand: path-prefixed git and git global
+# options are handled there; `mygit`/`legit` never match.
 cmd_has_git_merge() {
-  printf '%s' "$1" | grep -qE '(^|[[:space:]&|;()`]|/)git[[:space:]]+merge([[:space:]]|$)'
+  cmd_invokes_git_subcommand "$1" merge
 }
 
 # merge_target_branches <command> — print every positional argument given to a
@@ -34,37 +37,25 @@ cmd_has_git_merge() {
 # are skipped so a commit message is never mistaken for a branch. The caller decides
 # which printed tokens are lane branches (is_lane_branch) — this only enumerates targets.
 merge_target_branches() {
-  local cmd="$1" tok skip_next=0 in_merge=0 prev="" norm noglob=0
-  # Pad shell separators so they tokenize as standalone words even when written without
-  # surrounding spaces (git merge a;git merge b). The separators are kept (not deleted)
-  # so they reset in_merge and stop a following non-merge command's words from being
-  # read as targets (git merge a && echo feat/x must NOT yield feat/x).
-  norm="$(printf '%s' "$cmd" | sed -E 's/(\&\&|\|\||;|\||\&)/ & /g')"
+  local cmd="$1" line tok skip_next noglob=0
   # noglob during word-splitting so a branch/arg containing * or ? is not expanded
   # against the filesystem (which could drop or mangle a target = fail-open).
   case $- in *f*) ;; *) noglob=1; set -f ;; esac
-  # shellcheck disable=SC2086
-  set -- $norm
-  [ "$noglob" = 1 ] && set +f
-  while [ $# -gt 0 ]; do
-    tok="$1"; shift
-    case "$tok" in
-      '&&'|'||'|';'|'|'|'&') in_merge=0; skip_next=0; prev="$tok"; continue ;;
-    esac
-    if [ "$tok" = merge ]; then
-      case "$prev" in
-        git|*/git) in_merge=1; skip_next=0; prev="$tok"; continue ;;
-      esac
-    fi
-    if [ "$in_merge" = 1 ]; then
-      if [ "$skip_next" = 1 ]; then skip_next=0; prev="$tok"; continue; fi
+  while IFS= read -r line; do
+    skip_next=0
+    # shellcheck disable=SC2086
+    set -- $line
+    while [ $# -gt 0 ]; do
+      tok="$1"; shift
+      if [ "$skip_next" = 1 ]; then skip_next=0; continue; fi
       case "$tok" in
         -m|--message|-F|--file|--into-name|-S|--gpg-sign|--strategy|-s|--strategy-option|-X)
-          skip_next=1; prev="$tok"; continue ;;
-        -*) prev="$tok"; continue ;;
+          skip_next=1; continue ;;
+        -*) continue ;;
       esac
       printf '%s\n' "$tok"
-    fi
-    prev="$tok"
-  done
+    done
+  done < <(git_subcommand_arglines "$cmd" merge)
+  [ "$noglob" = 1 ] && set +f
+  return 0
 }
