@@ -165,7 +165,9 @@ scripts/setup-server-enforcement.sh --merge-queue   # (任意) 古いレーン�
 | `hooks/lib/gate-entry.sh` | `.gate` entry の活性判定 (TTL 3 日 / feature-scoped glob のみ有効) |
 | `hooks/lib/board-liveness.sh` | 「sprint 進行中か」の共通判定 (存在でなく活性 = 未完了 task の有無) |
 | `hooks/lib/arch-check.sh` | 依存方向強制エンジン (`.bootstrap/arch` の parse / layer 判定 / import 解決) |
-| `hooks/lib/parse-command.sh` | Bash `command` の共通 parser (解析不能は呼び出し側が fail-closed に倒せる) |
+| `hooks/lib/parse-command.sh` | hook 入力 JSON の string field 抽出の単一権威 (`command` / `file_path` / `cwd` 等。解析不能は呼び出し側が fail-closed に倒せる) |
+| `hooks/lib/git-invocation.sh` | git 呼び出し検出の単一権威 (ADR 0019) — グローバルオプション skip + path-prefix + compound command の token walk。全 Bash gate (commit 系 5 / push 2 / merge 2 / add-all) がこれに載る |
+| `hooks/lib/lane-set.sh` | lane 集合 (活性 board ∪ linked worktree) 組み立ての単一権威 — 2 つの merge 関所で共有 |
 | `hooks/lib/resolve-wip-limit.sh` | `wip_limit` の共通 resolver (`.bootstrap/wip` > form-aware 既定、ADR 0006) |
 | `hooks/lib/action-gate.sh` | inject-action-memory の単一権威 — CLOSED action-key enum (`prod-deploy`/`prod-db-migrate`/`data-backfill`) + 普遍 floor memo (ADR 0010/0013/0014)。正規化は `merge-targets.sh` と共有 |
 | `hooks/lib/cross-repo-contract.sh` | cross-repo 契約宣言の単一権威 (ADR 0011) — lane の OWN delta を offline 計算し touched 契約 id を返す。consumer 側のみ |
