@@ -1,0 +1,18 @@
+# verification plan — packaging/配備/lifecycle の綻び 6 件を閉じる (2026-07-10 全体監査)
+# 由来: 2026-07-10 設計者の全体監査。manifest drift / PLUGIN_REF 未 pin / closed plan 滞留 /
+# dogfood CI ギャップ / 固定 tmp path / templates drift の 6 指摘を lane C で全面実装。
+# 各行は実装からでなく「意図 + 跨いだ継ぎ目」から導く。
+# 落とした範囲: GitHub Actions 実 runner での発火 (push 後の PR CI がそのまま held-out oracle) /
+# actionlint (環境に無い。YAML parse + bash -e 実走で代替)。
+# STATUS | kind | behaviour | oracle | by | evidence/note
+PASS | contract    | 両 manifest JSON が parse 妥当で、description の hook 数 (20) が hooks.json の実登録数と一致し、両 description が逐語一致する (= drift 再発は diff で即見える形) | python3 json.load + hooks.json 走査 script の実走 | ai | plugin=20 / marketplace=20 / actual=20 / descriptions identical。version・homepage・repository・license・keywords の同期も assert で確認
+PASS | contract    | PLUGIN_REF の pin 先 v0.29.0 が local と origin の両方に実在し、その ref に workflow が呼ぶ hooks/lib/verification-ci-check.sh + verification-plan.sh が存在する (= sparse-checkout が空にならない) | git rev-parse / git ls-remote origin / git cat-file -e | ai | v0.29.0 = e8c3161 (local/origin 一致)。両 lib とも pin 先 tree に実在
+PASS | unit        | 新規/変更 workflow YAML (dogfood doctor / template doctor / template verification-gate) + 既存 2 件の parse 妥当性 | python3 yaml.safe_load 実走 | ai | 5 file すべて parse OK。actionlint は環境に無く YAML parse まで (DROP 行参照)
+PASS | e2e         | dogfood doctor workflow の step 本体が Actions 同等条件 (bash -e) で正しく判定する: この repo = ok → exit 0 / partial (fake doctor exit 2) → exit 1 + ::error / crash (fake exit 1) → exit 1 (想定外も素通しにしない) | 実 bash -e での exit code + stdout 観測 | ai | scratchpad/run-doctor-step.sh で 3 経路実走。ok 経路は実 scripts/doctor.sh (STATUS: ok、この repo は採用済み・整合)
+PASS | mutation    | 旧 template の `cmd; status=$?` 形は Actions の bash -e 下で捕捉行前に死ぬ実バグだった (= 今回の修正が実効を持つ)。同入力 (partial fake) で旧形と新形の結論が変わる | 旧形を bash -e で実走し ::error 不達 + exit 2 を観測 (新形は exit 1 + ::error) | ai | scratchpad/old-pattern.sh: ::error 出力なしで exit=2。修正形は ::error + exit=1 — 入力を固定しコードだけ摂動して反転を確認
+PASS | e2e         | setup-server-enforcement --check が mktemp 化後も実 repo に対して動作し、固定 /tmp/_bp.json を残さない (trap EXIT で掃除) | 実走 (gh api 実呼び出し) + /tmp の残置確認 | ai | --check 実走で branch protection: present / enforce_admins / required checks を報告。/tmp/_bp.json 不在。bash -n + shellcheck -S warning ゼロ
+PASS | e2e         | closed plan 4 件の archive 移動: 編集ゼロの純移動 (rename 100%) で、docs/verification/ 直下に closed plan が残らず、git log --follow で移動前の履歴に到達できる | git status porcelain (R 100%) + git log --follow | ai | 4 件とも移動前に OPEN 行ゼロと tree clean を確認 (既知の Edit→mv 罠を回避)。--follow で移動前 commit (例 cab0672) まで連続。直下残は main.md (OPEN 行 1 = 活性 trunk plan、archive 対象外) と本 plan のみ
+PASS | contract    | templates に現行規約からの drift 記述が残っていない: 互換注記なしの flat marker 表記 0 件・古い hook 数 (19) 記述 0 件 (templates/ 内) | grep 横スイープ | ai | `.bootstrap-` の残は互換注記つき・checkout path (.bootstrap-plugin)・declined (flat が現行仕様) のみ。lane 外の README.md:144 に「19 hook」が残存 — lane scope 外のため未修正、最終報告で逸脱として引き継ぎ
+PASS | contract    | 全 hook スイート回帰なし (doctor.test.bash 含む — manifest/hook 数に敏感) | tests/hooks/run.sh | ai | 38 suites run, 0 failed
+DROP | e2e         | bootstrap-review-gate.yml の dogfood 適用 | n/a | ai | 不適と判断: template の契約は「全 PR にレビュー記録を fail-closed で要求」だが、この repo の PR フローは release PR (例 #18 Release 0.29.0) を含み記録を持たない → 全 release PR が恒常赤化 (cry-wolf)。branch 名で除外するのは template header 自身が禁じる「語彙/命名 proxy」。lane branch の統合関所は local の block-unreviewed-merge + integrate skill が既に所有。「不適なら理由を DROP で記録」は 2026-07-10 設計者の全体監査承認 + 全面実装指示に明記された指示
+DROP | e2e         | 新 workflow を GitHub Actions 実 runner で発火させての確認 | n/a | ai | push 後にこの branch の PR で bootstrap-doctor / verification-gate が実発火する (= CI 自身が held-out oracle)。ローカルでは Actions 同等条件 (bash -e {0}) での step 本体実走 + YAML parse で先回りして代替。actionlint は環境に無い
