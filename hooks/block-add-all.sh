@@ -30,52 +30,94 @@ fi
 
 [ -z "$CMD" ] && exit 0
 
-echo "$CMD" | grep -qE '(^|[[:space:]&|;()`]+)git[[:space:]]' || exit 0
+# 高速素通し: "git" が文字列に無ければ tokenize するまでもない。
+case "$CMD" in *git*) ;; *) exit 0 ;; esac
 
-match() {
-  echo "$CMD" | grep -qE "$1"
-}
+# 判定は segment 単位の token walk (単一権威 lib/git-invocation.sh、ADR 0019)。
+# 旧実装は (1) 検出 regex が path-prefixed git / git グローバルオプション形を素通りさせ、
+# (2) stash 判定の greedy sed が compound command の最後の segment しか見なかった
+# (`git stash && echo done` の bare stash が素通り — 2026-07-10 監査で実測)。
+# shellcheck source=lib/git-invocation.sh
+. "$(dirname "$0")/lib/git-invocation.sh"
 
 REASON=""
 
-# git add -A / --all
-if match '(^|[[:space:]&|;()`]+)git[[:space:]]+add([[:space:]]+[^[:space:]]+)*[[:space:]]+(-A|--all)([[:space:]]|$)'; then
-  REASON="git add -A / --all"
+# noglob で word-split する (token に * / ? が混ざっても filesystem 展開させない)。
+NOGLOB=0
+case $- in *f*) ;; *) NOGLOB=1; set -f ;; esac
 
-# git add -u / --update
-elif match '(^|[[:space:]&|;()`]+)git[[:space:]]+add([[:space:]]+[^[:space:]]+)*[[:space:]]+(-u|--update)([[:space:]]|$)'; then
-  REASON="git add -u / --update"
+# ── git add: bulk-staging flag / 先頭 `.` pathspec (segment ごとに判定)
+while IFS= read -r line; do
+  # shellcheck disable=SC2086
+  set -- $line
+  FIRST=1
+  while [ $# -gt 0 ]; do
+    tok="$1"; shift
+    case "$tok" in
+      -A|--all)    REASON="git add -A / --all"; break ;;
+      -u|--update) REASON="git add -u / --update"; break ;;
+    esac
+    if [ "$FIRST" = 1 ]; then
+      # `git add .` / `git add ./` は add 直後の `.` のみ block (`git add -- .` は
+      # 明示 pathspec separator 付き = 素通し、従来挙動)。
+      case "$tok" in .|./) REASON="git add ."; break ;; esac
+      FIRST=0
+    fi
+  done
+  [ -n "$REASON" ] && break
+done < <(git_subcommand_arglines "$CMD" add)
 
-# git add .  / git add ./
-elif match '(^|[[:space:]&|;()`]+)git[[:space:]]+add[[:space:]]+\./?([[:space:]]|$)'; then
-  REASON="git add ."
-
-# git commit -a / -am / -aim / --all (短 flag は -[a-z]*a[a-z]* で拾う)
-elif match '(^|[[:space:]&|;()`]+)git[[:space:]]+commit([[:space:]]+[^[:space:]]+)*[[:space:]]+-[A-Za-z]*a[A-Za-z]*([[:space:]]|$)'; then
-  REASON="git commit -a / -am (全 tracked auto-stage)"
-elif match '(^|[[:space:]&|;()`]+)git[[:space:]]+commit([[:space:]]+[^[:space:]]+)*[[:space:]]+--all([[:space:]]|$)'; then
-  REASON="git commit --all"
-
-# git stash -u / --include-untracked
-elif match '(^|[[:space:]&|;()`]+)git[[:space:]]+stash([[:space:]]+(push|save))?([[:space:]]+[^[:space:]]+)*[[:space:]]+(-u|--include-untracked)([[:space:]]|$)'; then
-  REASON="git stash -u / --include-untracked"
-
-# git stash 引数なし (= 全 modified 退避)
-elif match '(^|[[:space:]&|;()`]+)git[[:space:]]+stash([[:space:]]*$|[[:space:]]+(push|save)([[:space:]]*$|[[:space:]]+-m))'; then
-  # ただし -- <pathspec> 付き / -m <msg> 後にメッセージのみ / push -p (patch) は通す。
-  # 簡易判定: stash 直後の token が path-like (= path指定あり) なら通す。
-  REST=$(echo "$CMD" | sed -E 's/^.*git[[:space:]]+stash([[:space:]]+(push|save))?//')
-  if echo "$REST" | grep -qE '(^|[[:space:]])--([[:space:]]|$)'; then
-    # `-- <pathspec>` 付き = 対象限定 stash (= 他人の WIP を巻き込まない) なので通す。
-    # `--message` は `--` の後に space/end が来ないのでここに該当しない。
-    :
-  elif echo "$REST" | grep -qE '(^|[[:space:]])(-m|--message)[[:space:]]+'; then
-    # message 指定だけで pathspec が無いケースは「全退避」なので block
-    REASON="git stash (path 指定なし、全 modified 退避)"
-  elif [ -z "$(echo "$REST" | tr -d '[:space:]')" ]; then
-    REASON="git stash (引数なし、全 modified 退避)"
-  fi
+# ── git commit -a / -am / -aim / --all (短 flag 結合は -...a... で拾う)
+if [ -z "$REASON" ]; then
+  while IFS= read -r line; do
+    # shellcheck disable=SC2086
+    set -- $line
+    while [ $# -gt 0 ]; do
+      tok="$1"; shift
+      case "$tok" in
+        --all) REASON="git commit --all"; break ;;
+        --*) ;;   # long flag (--amend 等) は auto-stage ではない
+        -*)
+          if [[ "$tok" =~ ^-[A-Za-z]*a[A-Za-z]*$ ]]; then
+            REASON="git commit -a / -am (全 tracked auto-stage)"; break
+          fi ;;
+      esac
+    done
+    [ -n "$REASON" ] && break
+  done < <(git_subcommand_arglines "$CMD" commit)
 fi
+
+# ── git stash: -u / --include-untracked、および pathspec なしの全退避
+if [ -z "$REASON" ]; then
+  while IFS= read -r line; do
+    # shellcheck disable=SC2086
+    set -- $line
+    case "${1:-}" in push|save) shift ;; esac
+    HAS_MSG=0; HAS_SEP=0; HAS_OTHER=0
+    while [ $# -gt 0 ]; do
+      tok="$1"; shift
+      case "$tok" in
+        -u|--include-untracked) REASON="git stash -u / --include-untracked"; break ;;
+        --)                     HAS_SEP=1 ;;
+        -m|--message|--message=*) HAS_MSG=1 ;;
+        *)                      HAS_OTHER=1 ;;
+      esac
+    done
+    [ -n "$REASON" ] && break
+    if [ "$HAS_SEP" = 1 ]; then
+      # `-- <pathspec>` 付き = 対象限定 stash (= 他人の WIP を巻き込まない) なので通す。
+      :
+    elif [ "$HAS_MSG" = 1 ]; then
+      # message 指定だけで pathspec が無いケースは「全退避」なので block
+      REASON="git stash (path 指定なし、全 modified 退避)"
+    elif [ "$HAS_OTHER" = 0 ]; then
+      REASON="git stash (引数なし、全 modified 退避)"
+    fi
+    [ -n "$REASON" ] && break
+  done < <(git_subcommand_arglines "$CMD" stash)
+fi
+
+[ "$NOGLOB" = 1 ] && set +f
 
 [ -z "$REASON" ] && exit 0
 
