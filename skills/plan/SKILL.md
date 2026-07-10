@@ -9,6 +9,8 @@ description: 自明でないコーディング作業 (新機能追加・バグ�
 
 **鉄則**: このスキルの実行中は **実装を行わない**。`Edit` / `Write` ツールを使わない。`Read` / `Grep` / `Glob` だけで探索し、計画を出力したら停止する。ユーザーの承認を得てから初めて実装フェーズに移行する。
 
+> 正直な注記: この「実行中は Edit/Write を使わない」は **hook 強制ではなく advisory (規約)** — plan 実行中かどうかを hook は観測できない。downstream gate が居るのは**新規 source 面の作成** (`block-unplanned-feature-build.sh`) と **merge** (`block-merge-if-verification-unclosed.sh`) に対してだけで、**plan 中の既存 file への Edit を止める機構は無い (そこは純 advisory)**。
+
 呼び出し方:
 - ユーザーが `/plan <タスク>` と打ったとき
 - 自明でない作業を依頼されたが、計画なしで実装を始めようとしているとき (自発的に呼ぶ)
