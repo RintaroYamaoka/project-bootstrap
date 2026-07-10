@@ -28,11 +28,12 @@ fi
 [ -z "$CMD" ] && exit 0
 
 # git で始まる command でなければ素通し
-echo "$CMD" | grep -qE '(^|[[:space:]&|;()`]+)git[[:space:]]' || exit 0
+# printf '%s' で渡す (echo は先頭 '-' / backslash を解釈しうる — 全 hook で統一)
+printf '%s' "$CMD" | grep -qE '(^|[[:space:]&|;()`]+)git[[:space:]]' || exit 0
 
 # 危険 pattern check 関数
 match() {
-  echo "$CMD" | grep -qE "$1"
+  printf '%s' "$CMD" | grep -qE "$1"
 }
 
 REASON=""

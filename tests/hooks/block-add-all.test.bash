@@ -105,6 +105,23 @@ pass_case "git status passes"                 "git status"
 # Empty command value -> early exit 0 (harmless, key present but empty).
 pass_case "empty command passes"              ""
 
+# ── 2026-07-10 audit: detector bypasses ──────────────────────────────────────
+# Path-prefixed git / git global options slipped every regex above; the greedy
+# stash sed inspected only the LAST stash segment of a compound command.
+
+block_case "/usr/bin/git add -A blocks (path-prefix bypass)"   "/usr/bin/git add -A"
+block_case "git -C <path> add -A blocks (global-option bypass)" "git -C /x add -A"
+block_case "git -c k=v commit -am blocks"                       "git -c user.name=x commit -am x"
+block_case "bare git stash in a compound command blocks (greedy-sed regression)" \
+                                                                "git stash && echo done"
+block_case "bare stash BEFORE a targeted stash still blocks (greedy sed saw only the last)" \
+                                                                "git stash && git stash push -m msg -- src/a"
+
+# Per-segment judgment: a targeted stash AND a separate bare `git stash pop` both pass.
+pass_case "targeted stash followed by stash pop passes"         "git stash push -- src/a && git stash pop"
+pass_case "git stash pop passes"                                "git stash pop"
+pass_case "git stash list passes"                               "git stash list"
+
 # Regression (the fail-OPEN bug this lib fixes): a comma inside the quoted -m
 # message used to truncate the parse at the comma, dropping the trailing
 # `git add -A` so this gate silently passed exactly what it exists to block.

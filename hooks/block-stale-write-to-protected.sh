@@ -96,8 +96,15 @@ done <<EOF
 $(push_destination_branches "$CMD")
 EOF
 
+# --all / --branches / --mirror は refspec を列挙しない (= destination は「全 local branch」)。
+# local trunk branch が存在するなら trunk もその集合に含まれる → trunk push と判定する
+# (fail-closed: 破壊 scope が列挙不能な push を current-branch 判定に落とさない。ADR 0019)。
+if [ "$TARGETS_TRUNK" -eq 0 ] && push_pushes_all_branches "$CMD"; then
+  git rev-parse --verify --quiet "refs/heads/$TRUNK_BRANCH" >/dev/null 2>&1 && TARGETS_TRUNK=1
+fi
+
 # refspec が無い push は暗黙に現在 branch を push する → 現在 branch が trunk なら trunk push。
-if [ "$TARGETS_TRUNK" -eq 0 ] && [ "$HAS_REFSPEC" -eq 0 ]; then
+if [ "$TARGETS_TRUNK" -eq 0 ] && [ "$HAS_REFSPEC" -eq 0 ] && ! push_pushes_all_branches "$CMD"; then
   CUR=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
   [ "$CUR" = "$TRUNK_BRANCH" ] && TARGETS_TRUNK=1
 fi

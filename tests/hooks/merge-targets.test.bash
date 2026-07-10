@@ -37,6 +37,22 @@ assert_eq no "$(has_merge 'mygit merge feat/x')"
 test_case "git status is not a merge"
 assert_eq no "$(has_merge 'git status')"
 
+# --- git global options (2026-07-10 audit: same class as the push-side bypasses) ----
+test_case "git -C <path> merge is detected (global-option bypass)"
+assert_eq yes "$(has_merge 'git -C /repo merge feat/x')"
+
+test_case "git -c k=v merge is detected"
+assert_eq yes "$(has_merge 'git -c core.pager=cat merge feat/x')"
+
+test_case "git --no-pager merge is detected"
+assert_eq yes "$(has_merge 'git --no-pager merge feat/x')"
+
+test_case "git -C <path> merge yields its target (tokenizer armed past global opts)"
+assert_eq 'feat/x' "$(targets 'git -C /repo merge feat/x')"
+
+test_case "the value of -C is not read as a merge target"
+assert_eq 'feat/x' "$(targets 'git -C feat/y merge feat/x')"
+
 # --- merge_target_branches: the core bug -------------------------------------------
 test_case "single merge yields its branch"
 assert_eq 'feat/x' "$(targets 'git merge feat/x')"

@@ -16,11 +16,15 @@
 set -u
 
 INPUT=$(cat)
-FILE=$(printf '%s' "$INPUT" | grep -oE '"file_path"[^,}]*' | head -1 | sed 's/.*"file_path"[[:space:]]*:[[:space:]]*"//; s/"[[:space:]]*$//')
+# field 抽出は単一権威 lib/parse-command.sh の decoder に委ねる。旧 grep 抽出は path 中の
+# `,` `}` / escape で途中切りし、この gate を無音 fail-open にした (2026-07-10 監査)。
+# shellcheck source=lib/parse-command.sh
+. "$(dirname "$0")/lib/parse-command.sh"
+FILE=$(printf '%s' "$INPUT" | parse_json_string_field file_path)
 
 # file_path が無ければ path フィールドを試す
 if [ -z "$FILE" ]; then
-  FILE=$(printf '%s' "$INPUT" | grep -oE '"path"[^,}]*' | head -1 | sed 's/.*"path"[[:space:]]*:[[:space:]]*"//; s/"[[:space:]]*$//')
+  FILE=$(printf '%s' "$INPUT" | parse_json_string_field path)
 fi
 
 [ -z "$FILE" ] && exit 0
@@ -98,11 +102,11 @@ esac
 if [ -d tests ] || [ -d test ]; then
   while IFS= read -r found; do
     [ -n "$found" ] && CANDIDATES+=("$found")
-  done < <(find tests test 2>/dev/null -type f \( \
+  done < <(find tests test -type f \( \
     -name "${NAME}.test.${EXT}" -o \
     -name "${NAME}.spec.${EXT}" -o \
     -name "${NAME}_test.${EXT}" \
-  \))
+  \) 2>/dev/null)
 fi
 
 for C in "${CANDIDATES[@]}"; do

@@ -45,16 +45,21 @@ fi
 
 [ -z "$CMD" ] && exit 0
 
-# git commit でなければ素通し (= add / status / log 等は対象外)
-echo "$CMD" | grep -qE '(^|[[:space:]&|;()`]+)git[[:space:]]+commit($|[[:space:]])' || exit 0
+# git commit でなければ素通し (= add / status / log 等は対象外)。検出は単一権威
+# lib/git-invocation.sh (path-prefixed git / git グローバルオプション形も捕まえる — 旧 regex は
+# どちらも素通りさせた。ADR 0019)。
+# shellcheck source=lib/git-invocation.sh
+. "$(dirname "$0")/lib/git-invocation.sh"
+cmd_invokes_git_subcommand "$CMD" commit || exit 0
 
 # --amend も対象に含める。共有 index 構成では `git commit --amend` こそが他 session の
 # staged file を最も巻き込む経路 (実事故: 別 Terminal の 14 staged file が amend で commit に
 # 混入し origin/main へ push された)。message-only amend (index が clean) は下の
 # `[ -z "$STAGED" ] && exit 0` で素通しになるので、除外しなくても over-block しない。
 
-# transcript_path を input から抽出
-TRANSCRIPT=$(printf '%s' "$INPUT" | grep -oE '"transcript_path"[^,}]*' | head -1 | sed 's/.*"transcript_path"[[:space:]]*:[[:space:]]*"//; s/"[[:space:]]*$//')
+# transcript_path を input から抽出 (単一権威 decoder。旧 grep 抽出は path 中の `,` `}` /
+# escape で途中切りし、transcript 不在扱いの無音 fail-open になった — 2026-07-10 監査)
+TRANSCRIPT=$(printf '%s' "$INPUT" | parse_json_string_field transcript_path)
 
 # Windows path 正規化 (= JSON-escape 済 backslash を forward slash に)
 if [ -n "$TRANSCRIPT" ]; then

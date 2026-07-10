@@ -19,8 +19,11 @@ if ! CMD="$(printf '%s' "$INPUT" | parse_command)"; then
 fi
 [ -z "$CMD" ] && exit 0
 
-# git commit でなければ素通し
-echo "$CMD" | grep -qE '(^|[[:space:]&|;()`]+)git[[:space:]]+commit($|[[:space:]])' || exit 0
+# git commit でなければ素通し。検出は単一権威 lib/git-invocation.sh (path-prefixed git /
+# git グローバルオプション形も捕まえる — 旧 regex はどちらも素通りさせた。ADR 0019)。
+# shellcheck source=lib/git-invocation.sh
+. "$(dirname "$0")/lib/git-invocation.sh"
+cmd_invokes_git_subcommand "$CMD" commit || exit 0
 
 # git repo / manifest の解決
 command -v git >/dev/null 2>&1 || exit 0

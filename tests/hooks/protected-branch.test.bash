@@ -93,6 +93,55 @@ assert_eq 'main' "$(dests 'git push -u --force origin main')"
 test_case "multiple refspecs each emit a destination"
 assert_eq 'main,feat/x' "$(dests 'git push origin main feat/x')"
 
+# --- git global options (2026-07-10 audit: ALL of these were live bypasses) ---------
+test_case "git -C <path> push is detected (global-option bypass)"
+assert_eq yes "$(has_push 'git -C /repo push origin main')"
+
+test_case "git -c k=v push is detected"
+assert_eq yes "$(has_push 'git -c core.pager=cat push origin main')"
+
+test_case "git --git-dir=.git push is detected"
+assert_eq yes "$(has_push 'git --git-dir=.git push origin main')"
+
+test_case "git -P push is detected (flag-only global option)"
+assert_eq yes "$(has_push 'git -P push origin main')"
+
+test_case "git -C <path> push yields its destination (tokenizer armed past global opts)"
+assert_eq 'main' "$(dests 'git -C /repo push origin main')"
+
+test_case "git -c k=v --no-pager push yields its destination"
+assert_eq 'main' "$(dests 'git -c k=v --no-pager push origin main')"
+
+test_case "the value of -C is not read as remote or branch"
+assert_eq 'main' "$(dests 'git -C main push origin main')"
+
+# --- push_pushes_all_branches: --all/--mirror/--branches (destination unenumerable) --
+all_push() { if push_pushes_all_branches "$1"; then echo yes; else echo no; fi; }
+
+test_case "git push --all origin is an all-branches push"
+assert_eq yes "$(all_push 'git push --all origin')"
+
+test_case "git push --mirror origin is an all-branches push"
+assert_eq yes "$(all_push 'git push --mirror origin')"
+
+test_case "git push --branches origin is an all-branches push"
+assert_eq yes "$(all_push 'git push --branches origin')"
+
+test_case "git push --all in a compound command is caught"
+assert_eq yes "$(all_push 'echo hi && git -C /repo push --all origin')"
+
+test_case "a plain refspec push is NOT an all-branches push"
+assert_eq no "$(all_push 'git push origin main')"
+
+test_case "a push-option VALUE of --all is not an all-branches push (-o skip)"
+assert_eq no "$(all_push 'git push -o --all origin main')"
+
+test_case "--all in a NON-push command does not count"
+assert_eq no "$(all_push 'git branch --all')"
+
+test_case "an all-branches push still emits no refspec destinations (caller must ask)"
+assert_eq '' "$(dests 'git push --all origin')"
+
 # --- push_destination_branches: no false positives ---------------------------------
 test_case "a no-refspec push emits nothing (implicit current branch handled by caller)"
 assert_eq '' "$(dests 'git push')"
