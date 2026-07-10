@@ -17,9 +17,13 @@
 # positionals = refspecs whose DESTINATION is the branch the gate must judge, plus the
 # --all/--mirror/--branches "destination set = every local branch" predicate.
 #
-# Known limit (documented, not silent): a separator metacharacter INSIDE a quoted
-# argument can mis-split (see git-invocation.sh header). The commit-time gates and CI
-# remain as nets. Pure bash, jq-free.
+# Known limits (documented, not silent — see git-invocation.sh header for the full
+# statement): a separator INSIDE a quoted argument mis-splits toward OVER-detect, but a
+# quote/escape on the git-head or subcommand token itself (`"git" push`, `git 'push'`),
+# a glued redirection (`git push>/dev/null`), or a nested `sh -c "git push …"` UNDER-
+# detects (silent pass) — irreducible without a full shell parser. The commit-time
+# gates and the server-side layer (branch protection + CI, ADR 0012) remain as nets.
+# Pure bash, jq-free.
 
 # Resolve the shared walker relative to this lib (works when sourced from any cwd).
 # shellcheck source=git-invocation.sh

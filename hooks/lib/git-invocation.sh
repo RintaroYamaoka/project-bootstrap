@@ -26,10 +26,17 @@
 # ambiguity biases toward DETECTION — for blocking gates that is the safe (closed)
 # side, never the silent-bypass side.
 #
-# Known limit (documented, not silent — same as merge-targets.sh/protected-branch.sh):
-# a separator or a `git <sub>` sequence INSIDE a quoted argument is indistinguishable
-# from a real one without a full shell parser. That can over-detect (a quoted
-# "git commit" in a message arms a gate = fail-closed noise), never silently bypass.
+# Known limits (documented, not silent — same as merge-targets.sh/protected-branch.sh;
+# both are irreducible without a full shell parser):
+#   - quoted SEPARATOR / a `git <sub>` sequence inside a quoted argument: mis-splits
+#     toward OVER-detect (a quoted "git commit" in a message arms a gate = fail-closed
+#     noise on a blocking gate).
+#   - quote/escape on the GIT-HEAD or SUBCOMMAND token itself, a glued redirection, or
+#     a nested-shell launcher: `git 'push' …` / `"git" push …` / `\git push …` /
+#     `git pu\sh …` / `git push>/dev/null …` / `sh -c "git push …"` tokenize to words
+#     this walker does not de-quote/unwrap, so they UNDER-detect (silent pass). This is
+#     the same hole the old regexes had (no regression); the commit-time gates and the
+#     server-side CI/branch-protection layer (ADR 0012) remain as nets.
 # Pure bash + sed/grep, jq-free.
 
 # _git_gopt_takes_value <tok> — return 0 if <tok> is a git GLOBAL option whose value

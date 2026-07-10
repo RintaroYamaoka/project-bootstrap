@@ -16,9 +16,13 @@
 # authority lib/git-invocation.sh (ADR 0019); this lib only owns the MERGE-SPECIFIC
 # shape (which argline tokens are targets vs flags/flag-values).
 #
-# Known limit (documented, not silent): a separator metacharacter INSIDE a quoted merge
-# message (e.g. git merge -m "a && b" feat/x) can mis-split (see git-invocation.sh
-# header). The commit-time arch/test gates and CI remain as nets. Pure bash, jq-free.
+# Known limits (documented, not silent — see git-invocation.sh header for the full
+# statement): a separator INSIDE a quoted merge message (e.g. git merge -m "a && b"
+# feat/x) mis-splits toward OVER-detect / a missed branch, but a quote/escape on the
+# git-head or subcommand token itself (`"git" merge`, `git 'merge'`) or a nested
+# `sh -c "git merge …"` UNDER-detects (silent pass) — irreducible without a full shell
+# parser. The commit-time arch/test gates and the server-side layer (branch protection
+# + CI, ADR 0012) remain as nets. Pure bash, jq-free.
 
 # Resolve the shared walker relative to this lib (works when sourced from any cwd).
 # shellcheck source=git-invocation.sh
