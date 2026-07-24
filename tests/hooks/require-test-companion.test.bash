@@ -116,4 +116,30 @@ test_case "impl file in a comma-named dir with no companion test is blocked (no 
 run_hook require-test-companion.sh "$(input_json "$D/src/foo,bar/baz.ts" "$D")"
 assert_exit 2
 
+# --- worktree: 編集対象 file が cwd と別の project root にある場合 (実測 2026-07-24) ---
+# companion 解決の相対 candidates (tests/...) と find fallback が cwd 基準のため、
+# worktree のファイル編集を session cwd から審査すると companion 実在でも誤 block していた。
+P="$(fixture_dir)"
+mkdir -p "$P/src" "$P/tests"
+printf '{}' > "$P/package.json"
+: > "$P/src/foo.ts"
+: > "$P/tests/foo.test.ts"
+RUN_DIR="$(fixture_dir)"   # 全く別の空 dir = session cwd を模す
+test_case "worktree: companion under the file's own project root passes (cwd mismatch)"
+run_hook require-test-companion.sh "$(input_json "$P/src/foo.ts" "$RUN_DIR")"
+assert_exit 0
+
+# 逆向き: cwd 側に同名 companion があっても、file の root に無ければ block する
+# (cwd の他人の test で緑を偽装しない)
+P2="$(fixture_dir)"
+mkdir -p "$P2/src"
+printf '{}' > "$P2/package.json"
+: > "$P2/src/bar.ts"
+RUN_DIR="$(fixture_dir)"
+mkdir -p "$RUN_DIR/tests"
+: > "$RUN_DIR/tests/bar.test.ts"
+test_case "worktree: companion only in cwd (not the file's root) still blocks"
+run_hook require-test-companion.sh "$(input_json "$P2/src/bar.ts" "$RUN_DIR")"
+assert_exit 2
+
 finish

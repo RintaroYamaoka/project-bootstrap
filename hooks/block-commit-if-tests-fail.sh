@@ -29,6 +29,22 @@ fi
 . "$(dirname "$0")/lib/git-invocation.sh"
 cmd_invokes_git_subcommand "$CMD" commit || exit 0
 
+# commit が実行される tree で test を走らせる（hook の cwd は session cwd。worktree への
+# `cd <dir> && git commit` / `git -C <dir> commit` を session cwd の test で審査すると、
+# 別レーンの Red が緑レーンの commit を誤 block し、逆に緑 cwd が Red tree の commit を
+# 素通しする — 実測 2026-07-24）。パース失敗時は従来どおり cwd（fail-closed 側は不変）。
+TARGET_DIR=$(printf '%s\n' "$CMD" | sed -n 's/.*git[[:space:]]\{1,\}-C[[:space:]]\{1,\}\([^[:space:]]\{1,\}\).*/\1/p' | head -n1)
+if [ -z "$TARGET_DIR" ]; then
+  TARGET_DIR=$(printf '%s\n' "$CMD" | sed -n 's/^[[:space:]]*cd[[:space:]]\{1,\}\([^[:space:];&|]\{1,\}\).*/\1/p' | head -n1)
+fi
+if [ -n "$TARGET_DIR" ]; then
+  TARGET_DIR=${TARGET_DIR%\"}; TARGET_DIR=${TARGET_DIR#\"}
+  TARGET_DIR=${TARGET_DIR%\'}; TARGET_DIR=${TARGET_DIR#\'}
+  if [ -d "$TARGET_DIR" ]; then
+    cd "$TARGET_DIR" || true
+  fi
+fi
+
 # テストコマンドを検出 (= 共有エンジン。merge 関所 block-unreviewed-merge.sh と同一権威で
 # 「テストとは何か」が drift しないようにする — ADR 0005 guard 1)。marker を検出しても
 # runner が PATH に無ければ立てない (= 存在しないコマンドの非ゼロ exit を test fail と誤読
