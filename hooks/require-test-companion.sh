@@ -59,6 +59,22 @@ BASE="${FILE%.*}"
 NAME=$(basename "$BASE")
 DIR=$(dirname "$FILE")
 
+# file が属する project root（marker を上方向に探索）。見つからなければ cwd（従来挙動）。
+# session cwd と別 tree（worktree / 別 repo）のファイル編集でも、その tree の tests/ を
+# 見るため（cwd 基準だと companion 実在でも誤 block・cwd 側の他人の test で誤 pass する
+# — 実測 2026-07-24）。
+ROOT="$DIR"
+while [ -n "$ROOT" ] && [ "$ROOT" != "/" ] && [ "$ROOT" != "." ]; do
+  if [ -e "$ROOT/package.json" ] || [ -e "$ROOT/pyproject.toml" ] || [ -e "$ROOT/go.mod" ] || \
+     [ -e "$ROOT/Cargo.toml" ] || [ -e "$ROOT/Gemfile" ] || [ -e "$ROOT/.git" ]; then
+    break
+  fi
+  ROOT=$(dirname "$ROOT")
+done
+if [ -z "$ROOT" ] || [ "$ROOT" = "/" ] || [ "$ROOT" = "." ]; then
+  ROOT="$PWD"
+fi
+
 # 慣例 test ファイル候補
 CANDIDATES=(
   "${BASE}.test.${EXT}"
@@ -67,31 +83,31 @@ CANDIDATES=(
   "${DIR}/__tests__/${NAME}.test.${EXT}"
   "${DIR}/__tests__/${NAME}.spec.${EXT}"
   "${DIR}/_test/${NAME}.${EXT}"
-  "tests/${NAME}.test.${EXT}"
-  "tests/${NAME}.spec.${EXT}"
-  "tests/${NAME}_test.${EXT}"
-  "test/${NAME}.test.${EXT}"
-  "test/${NAME}_test.${EXT}"
+  "${ROOT}/tests/${NAME}.test.${EXT}"
+  "${ROOT}/tests/${NAME}.spec.${EXT}"
+  "${ROOT}/tests/${NAME}_test.${EXT}"
+  "${ROOT}/test/${NAME}.test.${EXT}"
+  "${ROOT}/test/${NAME}_test.${EXT}"
 )
 
 case "$EXT" in
   py)
     CANDIDATES+=(
       "${DIR}/test_${NAME}.py"
-      "tests/test_${NAME}.py"
-      "test/test_${NAME}.py"
+      "${ROOT}/tests/test_${NAME}.py"
+      "${ROOT}/test/test_${NAME}.py"
     )
     ;;
   go)
     CANDIDATES+=("${BASE}_test.go")
     ;;
   rs)
-    CANDIDATES+=("tests/${NAME}.rs" "tests/${NAME}_test.rs")
+    CANDIDATES+=("${ROOT}/tests/${NAME}.rs" "${ROOT}/tests/${NAME}_test.rs")
     ;;
   rb)
     CANDIDATES+=(
-      "spec/${NAME}_spec.rb"
-      "spec/${DIR#*/}/${NAME}_spec.rb"
+      "${ROOT}/spec/${NAME}_spec.rb"
+      "${ROOT}/spec/${DIR#*/}/${NAME}_spec.rb"
     )
     ;;
 esac
@@ -99,10 +115,10 @@ esac
 # tests/ 配下の深い階層 (tests/unit/infrastructure/foo.test.ts 等) も拾う。
 # 既存 CANDIDATES は tests/${NAME}.test.${EXT} 直下のみだったため、リポジトリで
 # tests/unit/<layer>/ の構造を採用すると red test 済みでも hook が誤検知していた。
-if [ -d tests ] || [ -d test ]; then
+if [ -d "$ROOT/tests" ] || [ -d "$ROOT/test" ]; then
   while IFS= read -r found; do
     [ -n "$found" ] && CANDIDATES+=("$found")
-  done < <(find tests test -type f \( \
+  done < <(find "$ROOT/tests" "$ROOT/test" -type f \( \
     -name "${NAME}.test.${EXT}" -o \
     -name "${NAME}.spec.${EXT}" -o \
     -name "${NAME}_test.${EXT}" \

@@ -127,4 +127,31 @@ test_case "git -c k=v commit is detected and gated"
 run_hook "$HOOK" "$(input_json 'git -c user.name=x commit -m x')"
 assert_exit 2
 
+# --- worktree: commit 先の tree の test を走らせる (実測 2026-07-24) ---
+# hook の cwd は session cwd。`cd <worktree> && git commit` を session cwd の test で
+# 審査すると、別レーンの Red で緑レーンの commit を誤 block していた（逆も然り）。
+fresh_dir
+printf '{"scripts":{"test":"exit 1"}}' > "$RUN_DIR/package.json"   # cwd 側は FAIL
+WT="$(mktemp -d)"
+printf '{"scripts":{"test":"exit 0"}}' > "$WT/package.json"        # cd 先は PASS
+test_case "worktree: cd <dir> && git commit runs the target tree's tests (allows)"
+run_hook "$HOOK" "$(input_json "cd $WT && git commit -m x")"
+assert_exit 0
+
+fresh_dir
+printf '{"scripts":{"test":"exit 0"}}' > "$RUN_DIR/package.json"   # cwd 側は PASS
+WT2="$(mktemp -d)"
+printf '{"scripts":{"test":"exit 1"}}' > "$WT2/package.json"       # cd 先は FAIL
+test_case "worktree: cd <dir> && git commit blocks on the target tree's failing tests"
+run_hook "$HOOK" "$(input_json "cd $WT2 && git commit -m x")"
+assert_exit 2
+
+fresh_dir
+printf '{"scripts":{"test":"exit 1"}}' > "$RUN_DIR/package.json"
+WT3="$(mktemp -d)"
+printf '{"scripts":{"test":"exit 0"}}' > "$WT3/package.json"
+test_case "worktree: git -C <dir> commit runs the target tree's tests (allows)"
+run_hook "$HOOK" "$(input_json "git -C $WT3 commit -m x")"
+assert_exit 0
+
 finish
