@@ -23,7 +23,7 @@
 #   fixrev  = subject が fix:/hotfix/revert (大文字小文字無視) で始まる、または日本語の
 #             defect 語 (修正 / バグ / 不具合 / 誤り — subject 中のどこでも) を含む非 merge
 #             commit 数。user の repo は日本語 subject が主で、英語 prefix だけ数えると
-#             defect 率が 4 倍過小になった (実測 3% vs ~12%。docs/incidents/
+#             defect 率が 4 倍過小になった (実測 3% vs ~12%。docs/bootstrap/incidents/
 #             2026-06-11-velocity-fixrev-japanese-blind)。token は実 cohort で精度検証済み —
 #             「戻す」(業務フロー語: CDへ戻す/差し戻す)、「直し」(やり直し = incident 記録語)、
 #             「解消」(handoff 更新などの非 defect) は false positive を確認し不採用 (罠 4)

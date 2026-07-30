@@ -14,7 +14,7 @@
 #   The defence is to make verification a persistent, shared, fail-closed artifact
 #   whose oracle is external to the AI, and to gate integration on it being closed.
 #
-# Plan file: docs/verification/<branch _-mapped>.md   (line-oriented, jq-free).
+# Plan file: docs/bootstrap/verification/<branch _-mapped>.md   (line-oriented, jq-free).
 #   - `#`-led lines and blank lines are comments/ignored.
 #   - a data row is pipe-delimited, leading field = STATUS:
 #         STATUS | kind | behaviour | oracle | by | evidence/note
@@ -30,7 +30,7 @@
 # Contract (no stdout pollution beyond the documented echoes; pure bash, BSD-safe):
 #   vplan_path_for_branch <dir> <branch>
 #                                -> echoes the plan path for <branch> under <dir>
-#                                   (docs/verification/<branch _-mapped>.md), or "" if
+#                                   (docs/bootstrap/verification/<branch _-mapped>.md), or "" if
 #                                   <branch> is empty. Single authority for the mapping so
 #                                   the merge gate and the doctor can't drift on it.
 #   vplan_row_status <line>      -> echoes UPPERCASE status, or "" if not a data row
@@ -63,13 +63,20 @@
 #     held-out oracle — a judging test outside the impl author's edit surface — is the
 #     structural alternative; record it as a metamorphic/PASS row once wired.)
 
+# Single authority on where the verification directory lives (new docs/bootstrap/ vs
+# legacy docs/, ADR 0020). Sourced here so every consumer of this lib — the merge gate,
+# the drift advisory, the CI check and the cross-repo contract engine — resolves it the
+# same way and cannot drift.
+# shellcheck source=resolve-docs.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/resolve-docs.sh"
+
 # vplan_path_for_branch — see header. Maps a branch name to its plan file. The same
 # derivation the merge gate used inline; factored out so the doctor reuses it verbatim
 # (gate-signal drift is the silent-bypass class this repo treats as a first-class bug).
 vplan_path_for_branch() {
   local dir="$1" branch="$2"
   [ -n "$branch" ] || return 0
-  printf '%s/docs/verification/%s.md' "$dir" "$(printf '%s' "$branch" | tr '/' '_')"
+  printf '%s/%s.md' "$(resolve_docs_dir "$dir" verification)" "$(printf '%s' "$branch" | tr '/' '_')"
 }
 
 # _vplan_trim — strip leading/trailing whitespace (pure bash, no sed).

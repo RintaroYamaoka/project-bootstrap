@@ -4,23 +4,23 @@
 #
 # 背景: sprint 発火はかつて sprint-trigger-reminder.sh (UserPromptSubmit) の **advisory**
 # だけで担保されていた。だが「判定して分解する」のはモデル任せで、長い会話で忘れられると
-# 一度も発火しない (= 実事故あり: docs/incidents/2026-05-31-sprint-advisory-silent)。これは
+# 一度も発火しない (= 実事故あり: docs/bootstrap/incidents/2026-05-31-sprint-advisory-silent)。これは
 # プラグインが他所で否定している「advisory は忘れられる」失敗モードそのもの。さらにその信号は
 # prompt の語彙 (= proxy) で、自然言語は無限だから構造的に穴があり「全統合せよ」「やれ」で素通った。
 #
 # 本 hook は TDD/lane/arch hook と同型: hook は sprint を **起動しない** (worktree 起動=人間 /
 # disjoint 判定=モデルで、ADR 0001 の既約な残余)。強制するのは「gate 判定を済ませた」という
 # **precondition** だけ。信号は語彙ではなく **新規 source file を作る行為そのもの** (= これから
-# feature 面を作る、という判定対象それ自身) に置く。判定の記録 (docs/sprint/.gate) か進行中 sprint
-# (docs/sprint/board.json) が無いまま新規 source 面を作ろうとしたら exit 2 で blocking。
+# feature 面を作る、という判定対象それ自身) に置く。判定の記録 (docs/bootstrap/sprint/.gate) か進行中 sprint
+# (docs/bootstrap/sprint/board.json) が無いまま新規 source 面を作ろうとしたら exit 2 で blocking。
 #
 # fail-mode (memory feedback_gate_signal_and_failmode に準拠):
-#   - 根拠不在 = fail-open。file_path 不在 / 非 git / docs/sprint 未採用 / 既存 file 編集 /
+#   - 根拠不在 = fail-open。file_path 不在 / 非 git / docs/bootstrap/sprint 未採用 / 既存 file 編集 /
 #     test・config・doc / 非 source 拡張子 は「feature 面を作る根拠が無い」→ 素通し。
 #     bug fix / refactor / 既存 file 編集は一切 trip しない。
 #   - block 時の助言は構成的に (= 記録して続行へ誘導。削除/隠蔽を促さない)。
 #
-# opt-in: docs/sprint/ ディレクトリが在るときだけ発火 (= .bootstrap-arch/protected/lane と同じ
+# opt-in: docs/bootstrap/sprint/ ディレクトリが在るときだけ発火 (= .bootstrap-arch/protected/lane と同じ
 # project-local 採用宣言)。無ければ fail-open。jq 非依存。
 
 set -u
@@ -42,8 +42,13 @@ command -v git >/dev/null 2>&1 || exit 0
 TOP=$(git rev-parse --show-toplevel 2>/dev/null | tr '\\\\' '/' | tr -s '/')
 [ -z "$TOP" ] && exit 0
 
-# opt-in: sprint flow を採用した project (= docs/sprint/ が在る) でのみ発火。
-[ -d "$TOP/docs/sprint" ] || exit 0
+# opt-in: sprint flow を採用した project (= sprint ディレクトリが在る) でのみ発火。
+# `docs/bootstrap/sprint` (新) / `docs/sprint` (旧) どちらでも可 (ADR 0020)。
+# shellcheck source=lib/resolve-docs.sh
+. "$(dirname "$0")/lib/resolve-docs.sh"
+SPRINT_DIR="$(resolve_docs_dir "$TOP" sprint)"
+SPRINT_REL="$(resolve_docs_label "$TOP" sprint)"
+[ -d "$SPRINT_DIR" ] || exit 0
 
 # 編集対象を repo 相対 path に正規化 (block-out-of-lane-edit と同方式)。
 FILE_NORM=$(printf '%s' "$FILE" | tr '\\\\' '/' | tr -s '/')
@@ -54,9 +59,9 @@ case "$FILE_NORM" in
 esac
 
 # sprint runtime state 自身 (board.json / .gate) の書き込みは決して止めない。
-case "$REL" in
-  docs/sprint/*|*/docs/sprint/*) exit 0 ;;
-esac
+# 判定は両レイアウトを見る (= 新レイアウトを作る最初の board.json 書き込み時点では
+# docs/bootstrap/sprint/ がまだ無い。ADR 0020)。
+docs_state_face "$REL" sprint && exit 0
 
 # 既存 file の編集/上書きは「新規 feature 面の作成」ではない → fail-open。
 # PreToolUse は書き込み前に走るので、新規作成のときだけ対象 path が未存在になる。
@@ -72,24 +77,24 @@ is_source_path "$REL" || exit 0
 # 進行中の sprint なら lane hook が scope を握る → 素通し。「進行中」は board の**存在**では
 # なく**活性** (= 未完了 task の有無) で判定する。全 task done / task 無し / status 不在の board
 # は sprint 終了後の残置 (stale) でありうるため素通しの根拠にしない — 存在を信号にすると state
-# の lifecycle 終端で gate が無音で fail-open する (実事故: docs/incidents/2026-06-07-stale-board-gate-bypass)。
+# の lifecycle 終端で gate が無音で fail-open する (実事故: docs/bootstrap/incidents/2026-06-07-stale-board-gate-bypass)。
 # 判定エンジンは block-unreviewed-merge.sh と共有 (= 信号の drift 防止)。
 # shellcheck source=lib/board-liveness.sh
 . "$(dirname "$0")/lib/board-liveness.sh"
-board_has_active_tasks "$TOP/docs/sprint/board.json" && exit 0
+board_has_active_tasks "$SPRINT_DIR/board.json" && exit 0
 
 # .gate に記録された判定のうち「生きている」entry に REL が一致すれば、判定済みの feature 面
 # → 素通し。形式: 各行 `<scope-glob>  <YYYY-MM-DD>  <free-text rationale>`。# / 空行は無視。
 # entry は時間 (日付列が TTL 内) と空間 (feature-scoped な glob) の両方で bound する —
 # .gate は feature 単位の ephemeral 判定であり、無期限・無界に信じると 1 行で gate が恒久
 # fail-open する (実事故: 消費先 repo の `src/**` 1 行が source tree 全域の gate を以後ずっと
-# 無音で殺した。docs/incidents/2026-06-11-gate-broad-glob-permanent-fail-open)。
+# 無音で殺した。docs/bootstrap/incidents/2026-06-11-gate-broad-glob-permanent-fail-open)。
 # 日付なし (旧形式) / 失効 / 全域 glob は「判定の活性を証明できない」→ 不採用 (= 解析不能を
 # 素通し側に倒さない)。不採用 entry は block message に列挙する (= 正データを隠させない)。
 # 判定エンジンは lib/gate-entry.sh (= 信号の drift 防止。board-liveness と同慣行)。
 # shellcheck source=lib/gate-entry.sh
 . "$(dirname "$0")/lib/gate-entry.sh"
-GATE="$TOP/docs/sprint/.gate"
+GATE="$SPRINT_DIR/.gate"
 IGNORED=""
 if [ -f "$GATE" ]; then
   while IFS= read -r line || [ -n "$line" ]; do
@@ -123,7 +128,7 @@ WIP_DISPLAY=$(resolve_wip_limit)
 cat >&2 <<EOF
 project-bootstrap: blocking creation of new source file "$REL" — sprint gate not run.
 
-新規の feature 面を作ろうとしている (docs/sprint/ が在る = sprint flow 採用 project)。
+新規の feature 面を作ろうとしている ($SPRINT_REL/ が在る = sprint flow 採用 project)。
 コードに触れる前に sprint 自動分解の発火判定を行うこと:
   ① feature (新規/拡張) か? — bug fix / refactor / 単一 file / 自明な小変更なら逐次
   ② scope 非重複の leaf が 2 個以上に割れるか? (各 task の owned file glob が重ならない)
@@ -132,10 +137,10 @@ project-bootstrap: blocking creation of new source file "$REL" — sprint gate n
 3 つ全部満たすなら sprint-plan skill をロードして board.json + 各 lane の worker 起動文を提示する
 (= 分解後は board.json の存在でこの gate は通る)。
 
-1 つでも欠けたら逐次。その判定を docs/sprint/.gate に 1 行記録してから続行する
+1 つでも欠けたら逐次。その判定を $SPRINT_REL/.gate に 1 行記録してから続行する
 (1 列目 = この作業がカバーする scope glob、2 列目 = 今日の日付、以降は理由):
 
-  printf '%s\n' "src/<area>/<feature>/**  \$(date +%F)  sequential: <理由>" >> docs/sprint/.gate
+  printf '%s\n' "src/<area>/<feature>/**  \$(date +%F)  sequential: <理由>" >> $SPRINT_REL/.gate
 
 scope glob は feature 面に絞る — exact path か、wildcard の前に 2 階層以上のディレクトリ
 prefix を持つ glob のみ有効 (src/** のような全域 glob は entry として無効 = 1 行で gate が

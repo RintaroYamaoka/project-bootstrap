@@ -1,11 +1,11 @@
 ---
 name: incident
-description: AI / 人間が踏んだ事故を docs/incidents/ に記録し、再発防止策を memory `feedback_*.md` / `reference_*.md` まで昇格させるための skill。fix / revert / hotfix commit の後、user 叱責 / 「やり直し」言及の後、同じ問題に複数回 (= 2 回以上) 当たった後に AI 自身がロードする。`/incident <topic>` で明示呼び出しもできるが、上記タイミングで default 挙動として呼ぶことを期待する。incident は永続記録、書きっぱなしにせず必ず memory 転記まで責務に含める。
+description: AI / 人間が踏んだ事故を docs/bootstrap/incidents/ に記録し、再発防止策を memory `feedback_*.md` / `reference_*.md` まで昇格させるための skill。fix / revert / hotfix commit の後、user 叱責 / 「やり直し」言及の後、同じ問題に複数回 (= 2 回以上) 当たった後に AI 自身がロードする。`/incident <topic>` で明示呼び出しもできるが、上記タイミングで default 挙動として呼ぶことを期待する。incident は永続記録、書きっぱなしにせず必ず memory 転記まで責務に含める。
 ---
 
 # /incident — 事故記録 + memory への昇格
 
-このスキルは、踏んだ事故を `docs/incidents/` に記録し、**再発防止を memory に昇格** させるためのもの。
+このスキルは、踏んだ事故を `docs/bootstrap/incidents/` に記録し、**再発防止を memory に昇格** させるためのもの。
 
 事故の記録だけでは効かない (= 次セッションで AI が読まない)。memory `feedback_*.md` / `reference_*.md` に転記して初めて、次回 session 開始時に load されて再発抑止する。
 
@@ -26,7 +26,7 @@ description: AI / 人間が踏んだ事故を docs/incidents/ に記録し、再
 ### Step 1: ディレクトリを切る
 
 ```
-docs/incidents/<YYYY-MM-DD>-<topic>/
+docs/bootstrap/incidents/<YYYY-MM-DD>-<topic>/
 └─ README.md
 ```
 
@@ -36,7 +36,7 @@ docs/incidents/<YYYY-MM-DD>-<topic>/
 
 ### Step 2: 4 節構造で書く
 
-雛形 `templates/docs/incidents/TEMPLATE.md` を踏襲する:
+雛形 `templates/docs/bootstrap/incidents/TEMPLATE.md` を踏襲する:
 
 1. **ミスの一覧** — 時系列または重要度順。AI が踏んだ場合は AI のどの判断ミスかを literal に書く (= 「何をした」「何が問題だった」「user 指摘 / 観測結果」の 3 点)
 2. **真因** — ミス群を貫く構造的な原因を 1-2 文。表面操作ミスではなく、判断枠組み / 確認ルートの欠落を書く
@@ -147,4 +147,4 @@ incident を書く運用が崩れる典型:
 
 - `skills/handoff/SKILL.md` — session を別 Claude に渡す前に incident と handoff の両方を書く
 - `skills/project-bootstrap/SKILL.md` の「完遂責任 — bug fix と同 PR で cohort audit」「AI の癖 9 個」節
-- `templates/docs/incidents/TEMPLATE.md` — incident README.md の雛形
+- `templates/docs/bootstrap/incidents/TEMPLATE.md` — incident README.md の雛形

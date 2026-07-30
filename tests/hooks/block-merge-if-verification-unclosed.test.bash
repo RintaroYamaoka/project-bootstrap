@@ -309,4 +309,65 @@ test_case "touched contract with an unresolved HUMAN row blocks the merge"
 run_hook "$HOOK" "$(merge_input 'git merge lane/survey')"
 assert_exit 2
 
+
+# ---------------------------------------------------------------------------
+# New layout: docs/bootstrap/<name> (ADR 0020).
+# Every fixture above builds the LEGACY docs/<name> layout, so on its own it only
+# proves backward compatibility. These cases prove the gate actually arms under the
+# new parent-folder layout — without them a mis-wired resolver would leave the gate
+# silently fail-open (this plugin's worst fail-mode) with the whole suite still green.
+# ---------------------------------------------------------------------------
+
+adopt_verify_new() { mkdir -p "$REPO/docs/bootstrap/verification"; }
+active_board_new() {
+  mkdir -p "$REPO/docs/bootstrap/sprint"
+  printf '%s' '{"sprint":"s1","wip_limit":2,"tasks":[{"id":"T1","title":"x","branch":"feat/T1-auth","status":"in-review"}]}' > "$REPO/docs/bootstrap/sprint/board.json"
+}
+write_plan_new() {
+  local b="$1"; shift
+  mkdir -p "$REPO/docs/bootstrap/verification"
+  printf '%s\n' "$@" > "$REPO/docs/bootstrap/verification/$(printf '%s' "$b" | tr '/' '_').md"
+}
+
+setup_repo
+active_board_new
+adopt_verify_new
+RUN_DIR="$REPO"
+test_case "new layout: lane merge without a plan is blocked"
+run_hook "$HOOK" "$(merge_input 'git merge feat/T1-auth')"
+assert_exit 2
+assert_stderr_contains 'no verification plan'
+test_case "new layout: the block message names the path that actually exists"
+assert_stderr_contains 'docs/bootstrap/verification'
+
+setup_repo
+active_board_new
+write_plan_new feat/T1-auth \
+  'PASS | contract | keys subset | site output | ai | PR#1' \
+  'DROP | unit | pixel exactness | n/a | ai | low risk'
+RUN_DIR="$REPO"
+test_case "new layout: a closed plan lets the merge pass"
+run_hook "$HOOK" "$(merge_input 'git merge feat/T1-auth')"
+assert_exit 0
+
+setup_repo
+active_board_new
+write_plan_new feat/T1-auth \
+  'TODO | e2e | book end-to-end | submission row | ai |'
+RUN_DIR="$REPO"
+test_case "new layout: an open TODO row still blocks"
+run_hook "$HOOK" "$(merge_input 'git merge feat/T1-auth')"
+assert_exit 2
+
+# Half-migrated: plan directory migrated, plan file left in the legacy path. The new
+# layout wins, so the legacy plan must not be mistaken for a closed one.
+setup_repo
+active_board_new
+adopt_verify_new
+write_plan feat/T1-auth 'PASS | contract | keys subset | site output | ai | PR#1'
+RUN_DIR="$REPO"
+test_case "half-migrated: a legacy-path plan does not close the new-layout gate"
+run_hook "$HOOK" "$(merge_input 'git merge feat/T1-auth')"
+assert_exit 2
+
 finish

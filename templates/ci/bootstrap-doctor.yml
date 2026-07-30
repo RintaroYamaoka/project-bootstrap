@@ -3,7 +3,7 @@
 #
 # なぜ必要か: SessionStart の採用 audit (hooks/bootstrap-session-doctor.sh) は **plugin が在る
 # Claude session でしか発火しない**。plugin を入れず .claude/hooks/ に subset だけ vendoring した
-# repo (= 実際の事故: docs/incidents/2026-06-02-coverage-drift-silent) は、その session audit が
+# repo (= 実際の事故: docs/bootstrap/incidents/2026-06-02-coverage-drift-silent) は、その session audit が
 # そもそも走らない。CI なら plugin 非依存で必ず通るので、採用したのに gate が物理的に欠けている
 # partial 状態 (doctor STATUS=partial → exit 2) を bypass 不可で fail にできる。
 #

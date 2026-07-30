@@ -19,11 +19,11 @@ description: 上位1％の AI 駆動開発を個人の規律でなく構造と�
 
 ### ② 信号選び — 行為を信号にし、fail-mode を選ぶ
 
-gate は **proxy でなく行為そのもの** を信号にする (sprint gate は prompt の語彙でなく「新規 source file を作る行為」を信号に — 語彙は穴が空く proxy)。fail-mode は意図的に選ぶ: **解析不能 = fail-closed** / **根拠不在 = fail-open** (非対象 project を妨げない)。ephemeral state は「存在」でなく **「活性」** で読み (= board.json の有無でなく未完了 task の有無。実事故: `docs/incidents/2026-06-07-stale-board-gate-bypass`)、終端処理 (archive) を所有 skill の責務にする。
+gate は **proxy でなく行為そのもの** を信号にする (sprint gate は prompt の語彙でなく「新規 source file を作る行為」を信号に — 語彙は穴が空く proxy)。fail-mode は意図的に選ぶ: **解析不能 = fail-closed** / **根拠不在 = fail-open** (非対象 project を妨げない)。ephemeral state は「存在」でなく **「活性」** で読み (= board.json の有無でなく未完了 task の有無。実事故: `docs/bootstrap/incidents/2026-06-07-stale-board-gate-bypass`)、終端処理 (archive) を所有 skill の責務にする。
 
 ### ③ 配備の可視化 — 効いていない強制を無音にしない
 
-**hook は消費先 repo で現行版が実際に走って初めて効く**。正しい gate も未配備 / 部分 vendoring では無音で効果ゼロ (実事故: `docs/incidents/2026-06-02-coverage-drift-silent`。sprint 発火 gate は build 前の判断ゆえ CI 後追い不能)。だから強制は**配備カバレッジを可視化する meta 層**を持つ: SessionStart hook (`hooks/bootstrap-session-doctor.sh`) が採用状態を audit し、未採用なら導入を一度だけ尋ね / 配備漏れ (partial) なら警告 (採用は consent ゆえ強制不能)。team-wide net は `templates/ci/bootstrap-doctor.yml`、判定エンジンは `scripts/doctor.sh` (ADR 0003)。同じ原理を **repo drift** にも適用 (`hooks/lib/repo-drift.sh`): `HEAD` の `origin/main` 遅れ (stale checkout) と **merge 済みなのに残っている worktree** (lane 撤去漏れ) を session 起動時に surface する (どれが正しいかは既約な判断 — 強制せず事実だけ出す)。
+**hook は消費先 repo で現行版が実際に走って初めて効く**。正しい gate も未配備 / 部分 vendoring では無音で効果ゼロ (実事故: `docs/bootstrap/incidents/2026-06-02-coverage-drift-silent`。sprint 発火 gate は build 前の判断ゆえ CI 後追い不能)。だから強制は**配備カバレッジを可視化する meta 層**を持つ: SessionStart hook (`hooks/bootstrap-session-doctor.sh`) が採用状態を audit し、未採用なら導入を一度だけ尋ね / 配備漏れ (partial) なら警告 (採用は consent ゆえ強制不能)。team-wide net は `templates/ci/bootstrap-doctor.yml`、判定エンジンは `scripts/doctor.sh` (ADR 0003)。同じ原理を **repo drift** にも適用 (`hooks/lib/repo-drift.sh`): `HEAD` の `origin/main` 遅れ (stale checkout) と **merge 済みなのに残っている worktree** (lane 撤去漏れ) を session 起動時に surface する (どれが正しいかは既約な判断 — 強制せず事実だけ出す)。
 
 ### ④ 計測つきの取引 — 緩めるなら戻る根拠を持つ
 
@@ -33,7 +33,7 @@ gate は **proxy でなく行為そのもの** を信号にする (sprint gate �
 
 Production-affecting な変更 (= 外部 API write / DB write / repo push / 設定書込 / 公開サイトへの影響) を含む実装は、return / commit の前に **実体を read-back で検証** してから完了とする。これを欠くと「return value が success だが live は反映されていない」事故が起きる (Anthropic 公式: "Give Claude a way to verify its work. This is the single highest-leverage thing you can do. If you can't verify it, don't ship it.")。
 
-**何を動作テストすべきかの設計は `verification` skill が権威 (ADR 0007)** — テストは実装からでなく**意図と跨いだ境界**から導く / 各行に**外部オラクル** / 人間しか採点できない行は `HUMAN` / 各 PASS の前に kill-question。成果物 `docs/verification/<branch>.md` は lane merge の precondition (`block-merge-if-verification-unclosed.sh`)。継ぎ目の型 (async / 契約 / 緑の嘘 / オラクル捕獲 等) の詳細は `skills/verification/SKILL.md` を参照。
+**何を動作テストすべきかの設計は `verification` skill が権威 (ADR 0007)** — テストは実装からでなく**意図と跨いだ境界**から導く / 各行に**外部オラクル** / 人間しか採点できない行は `HUMAN` / 各 PASS の前に kill-question。成果物 `docs/bootstrap/verification/<branch>.md` は lane merge の precondition (`block-merge-if-verification-unclosed.sh`)。継ぎ目の型 (async / 契約 / 緑の嘘 / オラクル捕獲 等) の詳細は `skills/verification/SKILL.md` を参照。
 
 verification を「素朴な return チェック」で済ますと AI は以下 4 罠に default で落ちる:
 
@@ -89,7 +89,7 @@ hook A (`hooks/hooks.json`) が「対応 test 不在の実装ファイル編集�
 
 規律:
 
-- **統合 (merge / PR) には AI レビュー記録が必須**: `docs/sprint/reviews/<branch の / → _>.md` + `verdict: approve`。手元 merge は hook が、PR は CI が fail-closed で要求する
+- **統合 (merge / PR) には AI レビュー記録が必須**: `docs/bootstrap/sprint/reviews/<branch の / → _>.md` + `verdict: approve`。手元 merge は hook が、PR は CI が fail-closed で要求する
 - 単発の read-only 探索・要約・計画下書きは従来通り subagent の主用途
 - 最終砦として、hook を経由しない経路も `scripts/arch-check.sh` + CI + git pre-commit (server 側 net) が捕まえる
 
@@ -142,7 +142,7 @@ hook A (`hooks/hooks.json`) が「対応 test 不在の実装ファイル編集�
 
 **sprint 分解は default 挙動 (= 指示待ちにしない)**。並列が得な feature では「並列で」と言われるのを待たず、探索の直後に自動で `sprint-plan` skill をロードする。**発火条件 (feature / disjoint leaf ≥ 2 / ≤ wip_limit) と逐次判定の記録手順は `skills/sprint-plan/SKILL.md` が権威**。disjoint に割れない feature は無理に刻まず逐次 (共有 interface は `depends_on` の直列 spine に切り出す — Amdahl: 直列部分が speedup の上限)。分解結果 (board.json + 各 lane の起動文) は人間に提示する。
 
-> **この判定は advisory でなく fail-closed gate で強制する** (`hooks/block-unplanned-feature-build.sh`, PreToolUse): `docs/sprint/` 採用 project で**新規 source file を作ろうとした瞬間** (②の適用)、sprint 判定の記録 (`docs/sprint/.gate`) も進行中 sprint (`board.json`) も無ければ blocking (既存 file 編集 / bug fix は素通し)。逐次判定の記録手順・TTL・glob 有効条件は sprint-plan skill §大前提 が権威。`hooks/sprint-trigger-reminder.sh` (UserPromptSubmit) は早期ヒントで、強制本体はこの gate。統合 = `skills/integrate/SKILL.md`。
+> **この判定は advisory でなく fail-closed gate で強制する** (`hooks/block-unplanned-feature-build.sh`, PreToolUse): `docs/bootstrap/sprint/` 採用 project で**新規 source file を作ろうとした瞬間** (②の適用)、sprint 判定の記録 (`docs/bootstrap/sprint/.gate`) も進行中 sprint (`board.json`) も無ければ blocking (既存 file 編集 / bug fix は素通し)。逐次判定の記録手順・TTL・glob 有効条件は sprint-plan skill §大前提 が権威。`hooks/sprint-trigger-reminder.sh` (UserPromptSubmit) は早期ヒントで、強制本体はこの gate。統合 = `skills/integrate/SKILL.md`。
 
 ## 依存方向を強制する (architecture)
 
@@ -183,11 +183,11 @@ CLAUDE.md / SKILL.md / memory で代替できないものだけを `docs/` に�
 
 | dir | 用途 | 賞味期限 |
 |---|---|---|
-| `docs/handoffs/` | 並走 Claude / 翌日の自分が cold restore する状態スナップショット | 1-2 週間 |
+| `docs/bootstrap/handoffs/` | 並走 Claude / 翌日の自分が cold restore する状態スナップショット | 1-2 週間 |
 | `docs/decisions/` | ADR (不可逆判断の Context / Decision / Consequences) | 永続 |
-| `docs/incidents/` | 事故と再発防止策。memory `feedback_*` の昇格元 | 永続 |
+| `docs/bootstrap/incidents/` | 事故と再発防止策。memory `feedback_*` の昇格元 | 永続 |
 
-雛形は `templates/docs/`。`current/` / `exploring/` / `reference/` / `ops/` / `archive/` は**採用しない** (CLAUDE.md / コード / memory で代替できるか graveyard 化する)。並列開発時のみ `docs/sprint/board.json` を使う (sprint runtime state = sprint 終了で archive する ephemeral な真実。`sprint-plan` が生成・`integrate` が消費)。handoff を書く規律 = `skills/handoff/SKILL.md`、incident + memory 昇格 = `skills/incident/SKILL.md`。
+雛形は `templates/docs/`。`current/` / `exploring/` / `reference/` / `ops/` / `archive/` は**採用しない** (CLAUDE.md / コード / memory で代替できるか graveyard 化する)。並列開発時のみ `docs/bootstrap/sprint/board.json` を使う (sprint runtime state = sprint 終了で archive する ephemeral な真実。`sprint-plan` が生成・`integrate` が消費)。handoff を書く規律 = `skills/handoff/SKILL.md`、incident + memory 昇格 = `skills/incident/SKILL.md`。
 
 ### 真実の所在 — docs に書かないもの
 

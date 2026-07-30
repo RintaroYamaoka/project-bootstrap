@@ -241,4 +241,52 @@ run_hook "$HOOK" "$(write_input "$REPO/src/foo.ts")"
 assert_exit 2
 assert_stderr_contains '$(date +%F)'
 
+
+# ---------------------------------------------------------------------------
+# New layout: docs/bootstrap/<name> (ADR 0020).
+# Every fixture above builds the LEGACY docs/<name> layout, so on its own it only
+# proves backward compatibility. These cases prove the gate actually arms under the
+# new parent-folder layout — without them a mis-wired resolver would leave the gate
+# silently fail-open (this plugin's worst fail-mode) with the whole suite still green.
+# ---------------------------------------------------------------------------
+
+enable_sprint_new() { mkdir -p "$REPO/docs/bootstrap/sprint"; }
+
+setup_repo; enable_sprint_new; RUN_DIR="$REPO"
+test_case "new layout: new source surface without a recorded gate is blocked"
+run_hook "$HOOK" "$(write_input "$REPO/src/foo.ts")"
+assert_exit 2
+test_case "new layout: the block message names the path that actually exists"
+assert_stderr_contains "docs/bootstrap/sprint/.gate"
+
+setup_repo; enable_sprint_new
+printf '%s\n' "src/foo/**  $TODAY  sequential: single leaf" > "$REPO/docs/bootstrap/sprint/.gate"
+RUN_DIR="$REPO"
+test_case "new layout: a covering .gate entry clears the gate"
+run_hook "$HOOK" "$(write_input "$REPO/src/foo/bar.ts")"
+assert_exit 0
+
+setup_repo; enable_sprint_new
+printf '%s' '{"sprint":"s1","tasks":[{"id":"T1","status":"todo"}]}' > "$REPO/docs/bootstrap/sprint/board.json"
+RUN_DIR="$REPO"
+test_case "new layout: an active board clears the gate"
+run_hook "$HOOK" "$(write_input "$REPO/src/foo.ts")"
+assert_exit 0
+
+# A migrating repo (legacy adopted, writing the new layout) must not be blocked from
+# creating its own new-layout state.
+setup_repo; enable_sprint; RUN_DIR="$REPO"
+test_case "migration: writing new-layout sprint state is never blocked"
+run_hook "$HOOK" "$(write_input "$REPO/docs/bootstrap/sprint/board.json")"
+assert_exit 0
+
+# Half-migrated repo: new dir present AND legacy still on disk => the new one wins, so a
+# stale legacy .gate must NOT clear the gate (otherwise the old file silently governs).
+setup_repo; enable_sprint; enable_sprint_new
+write_gate "src/foo/**  $TODAY  sequential: stale legacy entry"
+RUN_DIR="$REPO"
+test_case "half-migrated: a stale legacy .gate does not clear the new-layout gate"
+run_hook "$HOOK" "$(write_input "$REPO/src/foo/bar.ts")"
+assert_exit 2
+
 finish

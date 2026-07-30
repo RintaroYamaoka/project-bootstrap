@@ -132,4 +132,35 @@ test_case "non-git dir is fail-open"
 run_hook "$HOOK" "$(printf '{"tool_name":"Bash","tool_input":{"command":"git worktree add ../wt"},"cwd":"%s"}' "$NOGIT")"
 assert_exit 0
 
+
+# ---------------------------------------------------------------------------
+# New layout: docs/bootstrap/<name> (ADR 0020).
+# Every fixture above builds the LEGACY docs/<name> layout, so on its own it only
+# proves backward compatibility. These cases prove the gate actually arms under the
+# new parent-folder layout — without them a mis-wired resolver would leave the gate
+# silently fail-open (this plugin's worst fail-mode) with the whole suite still green.
+# ---------------------------------------------------------------------------
+
+adopt_sprint_new() { mkdir -p "$REPO/docs/bootstrap/sprint"; }
+
+setup_repo
+adopt_sprint_new
+set_wip 2
+add_lane lane/a
+add_lane lane/b
+RUN_DIR="$REPO"
+test_case "new layout: at wip_limit a further worktree add is blocked"
+run_hook "$HOOK" "$(wt_input 'git worktree add -b feat/c ../wt-c')"
+assert_exit 2
+assert_stderr_contains "WIP"
+
+setup_repo
+adopt_sprint_new
+set_wip 3
+add_lane lane/a
+RUN_DIR="$REPO"
+test_case "new layout: below the limit still passes"
+run_hook "$HOOK" "$(wt_input 'git worktree add -b feat/c ../wt-c')"
+assert_exit 0
+
 finish

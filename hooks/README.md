@@ -49,13 +49,13 @@ lane 強制は長らく `Edit | Write | MultiEdit` matcher の Hook G にしか�
 
 ### K. PreToolUse on `Edit | Write | MultiEdit` — sprint 発火判定を fail-closed 強制
 
-**新規 source file を作ろうとした瞬間**、sprint 自動分解の発火判定が記録されていなければ `exit 2` で blocking。かつて sprint 発火は `sprint-trigger-reminder.sh` (UserPromptSubmit) の **advisory** だけで担保され、判定も実行もモデル任せだった (= 長い会話で忘れられ一度も発火しない実事故あり: [`docs/incidents/2026-05-31-sprint-advisory-silent/`](../docs/incidents/2026-05-31-sprint-advisory-silent/README.md))。本 hook は TDD/lane/arch と同型に、その判定を precondition として強制する。
+**新規 source file を作ろうとした瞬間**、sprint 自動分解の発火判定が記録されていなければ `exit 2` で blocking。かつて sprint 発火は `sprint-trigger-reminder.sh` (UserPromptSubmit) の **advisory** だけで担保され、判定も実行もモデル任せだった (= 長い会話で忘れられ一度も発火しない実事故あり: [`docs/bootstrap/incidents/2026-05-31-sprint-advisory-silent/`](../docs/bootstrap/incidents/2026-05-31-sprint-advisory-silent/README.md))。本 hook は TDD/lane/arch と同型に、その判定を precondition として強制する。
 
 - **信号は prompt の語彙ではなく「新規 source file を作る行為そのもの」**。語彙 regex は proxy で自然言語の言い回しに穴があったが、行為信号は言い方に依存しない
 - hook は **sprint を起動しない** (worktree 起動=人間 / disjoint 判定=モデル。ADR 0001 の既約な残余)。「gate 判定を済ませた」ことだけを強制する
-- **opt-in**: `docs/sprint/` が在る project でのみ発火 (= `.bootstrap-arch`/`-lane`/`-protected` と同じ採用宣言)。無ければ fail-open
+- **opt-in**: `docs/bootstrap/sprint/` が在る project でのみ発火 (= `.bootstrap-arch`/`-lane`/`-protected` と同じ採用宣言)。無ければ fail-open
 - **fail-open (根拠不在)**: file_path 不在 / 非 git / 既存 file の編集・上書き / test・config・doc / 非 source 拡張子 / `scripts/_*`。bug fix / refactor は一切 trip しない
-- gate を通す記録 = `docs/sprint/.gate` (gitignore, ephemeral)。各行 `<scope-glob>  <YYYY-MM-DD>  <理由>`。entry が判定の証拠になるのは **時間** (日付が 3 日以内 = [`lib/gate-entry.sh`](./lib/gate-entry.sh) の `GATE_TTL_DAYS`) と **空間** (feature-scoped な glob = exact path か wildcard 前に 2 階層以上の prefix) の両方で bound されているときだけ — 無期限・無界に信じると消費先の `src/**` 1 行が source tree 全域の gate を恒久 fail-open にする (実事故: `docs/incidents/2026-06-11-gate-broad-glob-permanent-fail-open`)。日付なし旧形式 / 失効 / 全域 glob の entry は不採用とし、block message に列挙する (= 正データを隠させない)。記録 scope 内の新規 source は素通し、scope 外は再 block (= 新しい disjoint 面 → 再判定)。進行中 sprint なら lane hook が scope を握るので素通し — 「進行中」は board.json の**存在ではなく活性** (= `status` ≠ `done` の task の有無) で判定する。完了済み board の残置 (stale) が gate を無音バイパスさせた実事故があり (`docs/incidents/2026-06-07-stale-board-gate-bypass`)、全 done / task 無し / status 不在の board は素通しの根拠にしない (= 解析不能を素通し側に倒さない)
+- gate を通す記録 = `docs/bootstrap/sprint/.gate` (gitignore, ephemeral)。各行 `<scope-glob>  <YYYY-MM-DD>  <理由>`。entry が判定の証拠になるのは **時間** (日付が 3 日以内 = [`lib/gate-entry.sh`](./lib/gate-entry.sh) の `GATE_TTL_DAYS`) と **空間** (feature-scoped な glob = exact path か wildcard 前に 2 階層以上の prefix) の両方で bound されているときだけ — 無期限・無界に信じると消費先の `src/**` 1 行が source tree 全域の gate を恒久 fail-open にする (実事故: `docs/bootstrap/incidents/2026-06-11-gate-broad-glob-permanent-fail-open`)。日付なし旧形式 / 失効 / 全域 glob の entry は不採用とし、block message に列挙する (= 正データを隠させない)。記録 scope 内の新規 source は素通し、scope 外は再 block (= 新しい disjoint 面 → 再判定)。進行中 sprint なら lane hook が scope を握るので素通し — 「進行中」は board.json の**存在ではなく活性** (= `status` ≠ `done` の task の有無) で判定する。完了済み board の残置 (stale) が gate を無音バイパスさせた実事故があり (`docs/bootstrap/incidents/2026-06-07-stale-board-gate-bypass`)、全 done / task 無し / status 不在の board は素通しの根拠にしない (= 解析不能を素通し側に倒さない)
 - checklist の `wip_limit` 表示は repo root の **`.bootstrap-wip`** (整数 1 行、opt-in) を読んで実値化する (エンジン = [`lib/resolve-wip-limit.sh`](./lib/resolve-wip-limit.sh)、`sprint-trigger-reminder.sh` と共有)。不在・解析不能なら form-aware な既定 (worker 3-4・Workflow lane は wip 非対象、ADR 0006) に fail-open (= 表示であって blocking 信号ではない。解析不能の可視化は `scripts/doctor.sh` が担う)。board.json の `wip_limit` を読まないのは、board が per-sprint の ephemeral state で逸脱値 (`_wip_note`) を含み、sprint 終了後に stale になるため
 
 スクリプト: [`block-unplanned-feature-build.sh`](./block-unplanned-feature-build.sh)
@@ -200,7 +200,7 @@ linter が解決できない (script 無し / runner 不在) 場合は warn し�
 
 ### L. SessionStart — 採用状態の audit (可視化 net)
 
-session を開いた瞬間に `scripts/doctor.sh` で project-bootstrap の採用状態を判定し、**actionable な状態のときだけ** context に注入する。規律 gate は消費先 repo でその hook が現行版で走って初めて効くが、「採用したのに gate が届いていない (partial)」「採用も提案もされない (unadopted)」状態は無音で成立し誰も気づけなかった (実事故: [`docs/incidents/2026-06-02-coverage-drift-silent/`](../docs/incidents/2026-06-02-coverage-drift-silent/README.md))。とりわけ sprint 発火 gate は build 前の判断で CI 後追いができず PreToolUse hook 以外に backstop を持てない (ADR 0002) ため、配備漏れが致命的になる。
+session を開いた瞬間に `scripts/doctor.sh` で project-bootstrap の採用状態を判定し、**actionable な状態のときだけ** context に注入する。規律 gate は消費先 repo でその hook が現行版で走って初めて効くが、「採用したのに gate が届いていない (partial)」「採用も提案もされない (unadopted)」状態は無音で成立し誰も気づけなかった (実事故: [`docs/bootstrap/incidents/2026-06-02-coverage-drift-silent/`](../docs/bootstrap/incidents/2026-06-02-coverage-drift-silent/README.md))。とりわけ sprint 発火 gate は build 前の判断で CI 後追いができず PreToolUse hook 以外に backstop を持てない (ADR 0002) ため、配備漏れが致命的になる。
 
 - **強制ではない** (advisory)。採用は consent 必須なので hook で強制できない。enforcement の本体は per-action gate。本 hook は状態を**可視化する**だけ
 - **unadopted** → 導入するかを user に一度だけ尋ねる (勝手に採用ファイルを作らない)。望まなければ `.bootstrap-declined` を置いて以後黙る
@@ -212,12 +212,12 @@ session を開いた瞬間に `scripts/doctor.sh` で project-bootstrap の採�
 
 ### M. PreToolUse on `Bash` for `git merge` — AI レビューを統合の precondition に強制
 
-並列フローの throughput 天井は「人間が全 diff を直列レビューする」ことに在る (sprint-plan/SKILL.md が明文化。しかも user のレビュー帯域は複数プロジェクト共有の単一資源)。trust ladder の Stage 2 として一次レビューを read-only の adversarial AI レビュー (integrate skill Step 2) に移すが、「レビューを済ませた」を advisory にすると忘れられる — 本 hook は**並列 lane の branch を `git merge` する行為そのもの**を信号に、レビュー記録の存在と verdict を fail-closed で要求する。lane = 活性 board の task branch ∪ **linked worktree に checkout された branch** (= board を作らない Workflow / 手動 worktree 並走でも捕まる。関所を方式に結合すると方式の選択で gate が無音になる — `docs/incidents/2026-06-11-parallel-mode-gate-coverage`、ADR 0004)。GitHub PR 画面の merge は手元 hook を通らないため、PR 経路は `templates/ci/bootstrap-review-gate.yml` が CI で同じ記録を要求する。TDD hook が test の存在を強制するのと同型 (= レビューの「質」は強制できないが「存在と結論」は強制できる)。
+並列フローの throughput 天井は「人間が全 diff を直列レビューする」ことに在る (sprint-plan/SKILL.md が明文化。しかも user のレビュー帯域は複数プロジェクト共有の単一資源)。trust ladder の Stage 2 として一次レビューを read-only の adversarial AI レビュー (integrate skill Step 2) に移すが、「レビューを済ませた」を advisory にすると忘れられる — 本 hook は**並列 lane の branch を `git merge` する行為そのもの**を信号に、レビュー記録の存在と verdict を fail-closed で要求する。lane = 活性 board の task branch ∪ **linked worktree に checkout された branch** (= board を作らない Workflow / 手動 worktree 並走でも捕まる。関所を方式に結合すると方式の選択で gate が無音になる — `docs/bootstrap/incidents/2026-06-11-parallel-mode-gate-coverage`、ADR 0004)。GitHub PR 画面の merge は手元 hook を通らないため、PR 経路は `templates/ci/bootstrap-review-gate.yml` が CI で同じ記録を要求する。TDD hook が test の存在を強制するのと同型 (= レビューの「質」は強制できないが「存在と結論」は強制できる)。
 
-- precondition = `docs/sprint/reviews/<branch の `/`→`_`>.md` が存在し `verdict: approve` 行を持つ
+- precondition = `docs/bootstrap/sprint/reviews/<branch の `/`→`_`>.md` が存在し `verdict: approve` 行を持つ
 - **`verdict: reject` はより強く block** (= 却下されたレビューを踏み越える merge を許さない。対処は修正 → re-review、記録の削除ではない)
 - **fail-closed**: コマンド解析不能 ([`lib/parse-command.sh`](./lib/parse-command.sh) の契約)
-- **fail-open (根拠不在)**: 非 merge / 非 git / docs/sprint 未採用 (opt-in) / merge 対象が lane branch でない (= worktree にも活性 board にも居ない通常 branch の merge を一切妨げない。board の活性判定は [`lib/board-liveness.sh`](./lib/board-liveness.sh) — 存在でなく活性)
+- **fail-open (根拠不在)**: 非 merge / 非 git / docs/bootstrap/sprint 未採用 (opt-in) / merge 対象が lane branch でない (= worktree にも活性 board にも居ない通常 branch の merge を一切妨げない。board の活性判定は [`lib/board-liveness.sh`](./lib/board-liveness.sh) — 存在でなく活性)
 - レビューの質の安全網は gate ではなく `scripts/velocity.sh` の defect rate 監視 (跳ねたらレビューを 1 段厚く戻す)
 - lane 集合 (活性 board ∪ linked worktree) の組み立ては [`lib/lane-set.sh`](./lib/lane-set.sh) — verification gate (Hook N) と共有の単一権威 (verbatim 重複していた ~40 行を抽出)
 
@@ -227,13 +227,13 @@ session を開いた瞬間に `scripts/doctor.sh` で project-bootstrap の採�
 
 コードレベルのバグは TDD hook + レビューで潰れたが、残余の事故は**継ぎ目 (cross-repo 契約 / 要件 / 「実物を見ずの完了」/ 環境)** に移動した — repo 内 unit test の射程外で、緑のテストが誤った契約を固定して false confidence を配る (mood incident: zod `min(1)` の test が緑のまま全予約 reject、ADR 0007)。本 hook は review gate と同じ lane 信号 (活性 board task branch ∪ linked worktree branch) を使い、**lane branch を `git merge` する行為**を信号に、その branch の verification plan が閉じていることを fail-closed で要求する。フォーマット権威は [`lib/verification-plan.sh`](./lib/verification-plan.sh) に集約 (gate/doctor/skill 共有 = drift 防止)。
 
-さらに **cross-repo 契約拡張** (ADR 0011): 既存 plan check の後、lane の OWN delta (`base..lane` を offline 計算) が `docs/verification/contracts` の登記面 (`local_face_glob`) を触ったら、その契約に対し **`[contract:<id>]` タグつきの CLOSED plan 行** + **consumer 側スイートの関所自身による実走 (緑)** を追加で要求する (どちらも無ければ block)。登記の parse と lane delta の計算は単一権威 [`lib/cross-repo-contract.sh`](./lib/cross-repo-contract.sh) に集約 (gate/doctor 共有 = drift 防止)。gate は相手 repo を読まない (consumer 側のみ)、自動で回せない契約は plan 行を `STATUS=HUMAN` にして人間の実出力照合まで OPEN のままにする (free-text PASS では touched 契約を閉じさせない)。
+さらに **cross-repo 契約拡張** (ADR 0011): 既存 plan check の後、lane の OWN delta (`base..lane` を offline 計算) が `docs/bootstrap/verification/contracts` の登記面 (`local_face_glob`) を触ったら、その契約に対し **`[contract:<id>]` タグつきの CLOSED plan 行** + **consumer 側スイートの関所自身による実走 (緑)** を追加で要求する (どちらも無ければ block)。登記の parse と lane delta の計算は単一権威 [`lib/cross-repo-contract.sh`](./lib/cross-repo-contract.sh) に集約 (gate/doctor 共有 = drift 防止)。gate は相手 repo を読まない (consumer 側のみ)、自動で回せない契約は plan 行を `STATUS=HUMAN` にして人間の実出力照合まで OPEN のままにする (free-text PASS では touched 契約を閉じさせない)。
 
-- precondition = `docs/verification/<branch の `/`→`_`>.md` が存在し、データ行を 1 つ以上持ち、OPEN 行 (TODO/FAIL/HUMAN) がゼロ、理由なき DROP がゼロ
+- precondition = `docs/bootstrap/verification/<branch の `/`→`_`>.md` が存在し、データ行を 1 つ以上持ち、OPEN 行 (TODO/FAIL/HUMAN) がゼロ、理由なき DROP がゼロ
 - **cross-repo 契約 (ADR 0011)**: lane delta が登記面を触ったら、その契約 id を CLOSED にした `[contract:<id>]` 行 AND consumer スイートの実走 (緑) も追加 precondition。無ければ block
 - **plan 不在は fail-open に逃さず block** (= 「計画を書かない」で gate を素通りさせない。ADR 0002 の教訓)
 - **fail-closed**: コマンド解析不能 / 採用済み lane branch の plan 不在・空・OPEN 行残存・理由なき DROP
-- **fail-open (根拠不在)**: 非 merge / 非 git / `docs/verification/` 未採用 (opt-in) / merge 対象が lane branch でない
+- **fail-open (根拠不在)**: 非 merge / 非 git / `docs/bootstrap/verification/` 未採用 (opt-in) / merge 対象が lane branch でない
 - 射程の境界: 統合 (merge) を信号にするので branch を切らない逐次作業は捕まえない (そこは `verification` skill が plan 時に担う)。kill-question「緑のままユーザーが困る状態はあるか?」は skill 側の doctrine
 - GitHub PR 画面の merge は手元 hook を通らないため、PR 経路は `templates/ci/bootstrap-verification-gate.yml` が CI で同じ計画を要求する (review gate と同型)
 - lane 集合の組み立ては [`lib/lane-set.sh`](./lib/lane-set.sh) — review gate (Hook M) と共有の単一権威
@@ -246,7 +246,7 @@ session を開いた瞬間に `scripts/doctor.sh` で project-bootstrap の採�
 
 **誤検知 > false negative** の方針で、全条件が揃ったときだけ `exit 2`:
 
-- (a) `docs/sprint/` 採用 (opt-in)
+- (a) `docs/bootstrap/sprint/` 採用 (opt-in)
 - (b) **main worktree に居る** (lane worktree は `block-out-of-lane-edit.sh` が所有 → 譲る)
 - (c) **active な linked worktree lane が在る** (= 並列 mutation が物理的に存在)
 - (d) **統合操作中でない** (`MERGE_HEAD` / rebase / cherry-pick / revert — lead の conflict 解決は通す)
@@ -262,7 +262,7 @@ session を開いた瞬間に `scripts/doctor.sh` で project-bootstrap の採�
 
 - **限界 (ADR 0005)**: hook は Workflow 内部の isolation worktree 生成を観測できない (main session の Bash tool 呼び出しではないため)。縛るのは観測可能な `git worktree add` (skill / 人間 / lead が開く lane)。Workflow 内部 lane の暴走は統合の入口 (`block-unreviewed-merge.sh`: 各 lane に review 記録 + 実スイート) が review 帯域を守る最終 net
 - **fail-closed**: コマンド解析不能 ([`lib/parse-command.sh`](./lib/parse-command.sh) の契約)
-- **fail-open (根拠不在)**: 非 worktree-add / 非 git / `docs/sprint/` 未採用 (opt-in) / `.bootstrap-wip` 未宣言 or 整数として解析不能 (= 宣言した repo でだけ縛る)
+- **fail-open (根拠不在)**: 非 worktree-add / 非 git / `docs/bootstrap/sprint/` 未採用 (opt-in) / `.bootstrap-wip` 未宣言 or 整数として解析不能 (= 宣言した repo でだけ縛る)
 
 スクリプト: [`block-over-wip-parallel.sh`](./block-over-wip-parallel.sh)
 
@@ -339,7 +339,7 @@ bypass は **規律を壊す**。bypass する前に「なぜそれが必要な�
 
 - **形態**: `Stop` イベントの **prompt hook** (`type: "prompt"`)。各ターン終了時に Haiku が `$ARGUMENTS` を評価し `{"ok": bool, "reason": str}` を返す。
 - **warn-only (block しない)**: `Stop` で `ok:false` のとき reason が **Claude に戻り作業を継続**する (= deny でなく nudge)。「cohort audit を忘れたかも」を促すだけで止めない。
-- **cry-wolf 抑制**: prompt は「user-facing bug fix かつ cohort audit 不在のときだけ `ok:false` / feature・refactor・docs・test・config・不確実は `ok:true`」。誤検知は guard を無効化する (`docs/incidents/2026-05-29`) ので false negative 寄りに倒す。
+- **cry-wolf 抑制**: prompt は「user-facing bug fix かつ cohort audit 不在のときだけ `ok:false` / feature・refactor・docs・test・config・不確実は `ok:true`」。誤検知は guard を無効化する (`docs/bootstrap/incidents/2026-05-29`) ので false negative 寄りに倒す。
 - **なぜ default にしないか**: 確率 gate を全 consumer に毎ターン強制するのは pilot でなく full rollout。opt-in で blast radius を絞り、誤検知率を実運用で観測してから default 昇格を判断する (ADR 0008 条件 b)。
 - **CI でテストできない** (モデルを呼ぶため `tests/hooks/` の射程外)。安全網は実運用の手動観測 — `scripts/velocity.sh` の defect-rate と並べ、誤検知が多ければ撤回する。
 
@@ -358,7 +358,7 @@ bypass は **規律を壊す**。bypass する前に「なぜそれが必要な�
 
 **CC をアップグレードしたら再検証する** (= 外部前提は閉じたら再検証、ADR 0004 の原則)。とくに fail-open の 2 key (`file_path` / `transcript_path`) が現行 [docs](https://code.claude.com/docs/en/hooks) と一致するかを確認する。`tests/hooks/*.test.bash` は**期待スキーマ**を pin する (= 期待 key で parse できることを保証) が、合成入力ゆえ**実ハーネスの変更そのものは検出できない** — そこは本表 + アップグレード時の手動再検証が担う。
 
-**なぜ runtime で自動警告 (doctor の 4 軸目) を足さないか**: SessionStart で「key が rename されたか」を自動判定しようとすると、rename と「その surface では元々その key が無い」を区別できない (= 本 repo の test fixture 自体が `transcript_path` を持たない正当な SessionStart payload。surface ごとに差がある)。区別できない自動警告は**誤検知で gate 不信を生む** (cry-wolf。`docs/incidents/2026-05-29-cross-wip-bash-false-positive` が「cry-wolf は guard を無効化する」と記録)。だから自動 advisory を足さず、依存を**本表で明示**して人間のアップグレード再検証に委ねる方を選ぶ (= 強制できない判断を advisory に逃さず、可視化に留める ①②の境界)。
+**なぜ runtime で自動警告 (doctor の 4 軸目) を足さないか**: SessionStart で「key が rename されたか」を自動判定しようとすると、rename と「その surface では元々その key が無い」を区別できない (= 本 repo の test fixture 自体が `transcript_path` を持たない正当な SessionStart payload。surface ごとに差がある)。区別できない自動警告は**誤検知で gate 不信を生む** (cry-wolf。`docs/bootstrap/incidents/2026-05-29-cross-wip-bash-false-positive` が「cry-wolf は guard を無効化する」と記録)。だから自動 advisory を足さず、依存を**本表で明示**して人間のアップグレード再検証に委ねる方を選ぶ (= 強制できない判断を advisory に逃さず、可視化に留める ①②の境界)。
 
 ## 公式 docs
 

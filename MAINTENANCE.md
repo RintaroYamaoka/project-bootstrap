@@ -14,13 +14,15 @@
 
 1. `CHANGELOG.md` の `[Unreleased]` を新バージョンに昇格
 2. `.claude-plugin/plugin.json` の `version` を bump
-3. `.claude-plugin/marketplace.json` の `plugins[].version` も同値に bump
-4. commit:
+3. commit:
    ```bash
-   git add .claude-plugin/plugin.json .claude-plugin/marketplace.json CHANGELOG.md
+   git add .claude-plugin/plugin.json CHANGELOG.md
    git commit -m "Release X.Y.Z"
    ```
-5. tag + push:
+   ※ `marketplace.json` は 0.30.0 (#21) で配布インデックス専用 repo
+   <https://github.com/RintaroYamaoka/claude-plugins> へ切り出し済み。`plugins[].version`
+   の同期はそちらの repo 側で行う (この repo には実体が無い)。
+4. tag + push:
    ```bash
    git tag vX.Y.Z && git push origin main vX.Y.Z
    ```

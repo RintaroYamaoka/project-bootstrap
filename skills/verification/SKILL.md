@@ -1,6 +1,6 @@
 ---
 name: verification
-description: 動作テスト (behavioral verification) を「意図と跨いだ境界から導く verification plan」として設計し、人間と共同で記録・クローズするための skill。コードレベルのバグは TDD hook が潰すが、残余リスクは継ぎ目 (cross-repo 契約 / 要件 / 「実物を見ずの完了」/ 環境) に移動しており、それらは repo 内 unit test の射程外で緑のテストが誤った契約を固定して false confidence を配る (mood incident)。この skill は「何を動作テストすべきか」を実装からでなく意図から導き、各行に外部オラクルを与え、`docs/verification/<branch>.md` に記録し、OPEN 行がゼロになるまで統合を通さない (ADR 0007 / `block-merge-if-verification-unclosed.sh`)。さらに実装者が可視オラクルを能動的に騙す失敗 (special-casing / grader 書き換え / harness 脱出 = テストゲーミング / ハードコード決め打ち) は 7 番目の seam として held-out oracle と metamorphic で潰す (ADR 0016)。feature 実装が in-review に近づいたとき・統合 (merge) の前・「動作確認/テスト設計して」と言われたとき・抽象指示で実装した直後 (人間が何を確かめるべきか知らないとき)・ハードコードやテスト決め打ちを疑うときにロードする。
+description: 動作テスト (behavioral verification) を「意図と跨いだ境界から導く verification plan」として設計し、人間と共同で記録・クローズするための skill。コードレベルのバグは TDD hook が潰すが、残余リスクは継ぎ目 (cross-repo 契約 / 要件 / 「実物を見ずの完了」/ 環境) に移動しており、それらは repo 内 unit test の射程外で緑のテストが誤った契約を固定して false confidence を配る (mood incident)。この skill は「何を動作テストすべきか」を実装からでなく意図から導き、各行に外部オラクルを与え、`docs/bootstrap/verification/<branch>.md` に記録し、OPEN 行がゼロになるまで統合を通さない (ADR 0007 / `block-merge-if-verification-unclosed.sh`)。さらに実装者が可視オラクルを能動的に騙す失敗 (special-casing / grader 書き換え / harness 脱出 = テストゲーミング / ハードコード決め打ち) は 7 番目の seam として held-out oracle と metamorphic で潰す (ADR 0016)。feature 実装が in-review に近づいたとき・統合 (merge) の前・「動作確認/テスト設計して」と言われたとき・抽象指示で実装した直後 (人間が何を確かめるべきか知らないとき)・ハードコードやテスト決め打ちを疑うときにロードする。
 ---
 
 # /verification — 動作テスト設計と共同記録
@@ -42,7 +42,7 @@ description: 動作テスト (behavioral verification) を「意図と跨いだ�
 - **partial-update の入口で「未送信 (absent)」と「空 (empty)」を同一値に潰す所** ← absent/empty 混同 seam。form/JSON/query の `?? ""` / `String(form.get(k) ?? "")` が三値 (absent/empty/value) を二値に潰し、その値が破壊的更新 (空→null クリア) に流れ、**離れた消費者** (cron/通知/外部同期) が「その列は永続する」前提で動く、の三段。unit test は関数を直接呼ぶ (absent が `undefined` で来る) ので**緑のまま**、バグは route の `String()` 強制を通った時だけ存在する (緑の嘘×継ぎ目)。一度の wipe が同期 (即時 GCal) と非同期 (後続 cron) の両方へ無音で分岐しうる (appo-followup 2026-06-26 名前 wipe incident)
 - **実装者が可視なオラクルを能動的に満たす所** ← オラクル捕獲 / テストゲーミング seam。3 形 = special-casing / grader 書き換え / harness 脱出。**同じ lane が impl と judging test を共著する時に余地が生まれる** (「著者=採点者の円環」の能動版)。定義・2 クラス・緩和の権威は下の **「7 番目の seam」節** (ADR 0016)
 
-> **cross-repo seam を持つ repo は、共有面を `docs/verification/contracts` に登記する** (ADR 0011)。`id | local_face_glob | peer_repo | peer_face | note`。宣言なき共有スキーマは片側変更で無音に割れる (mood と同型)。登記された面を lane で触ると、その契約の動作テスト (consumer-driven) が統合の precondition になる (`block-merge-if-verification-unclosed.sh` が lane の OWN delta で判定)。
+> **cross-repo seam を持つ repo は、共有面を `docs/bootstrap/verification/contracts` に登記する** (ADR 0011)。`id | local_face_glob | peer_repo | peer_face | note`。宣言なき共有スキーマは片側変更で無音に割れる (mood と同型)。登記された面を lane で触ると、その契約の動作テスト (consumer-driven) が統合の precondition になる (`block-merge-if-verification-unclosed.sh` が lane の OWN delta で判定)。
 > **注意: Pact (中央 Broker 型 consumer-driven) には寄せない** — 中央 Broker が並列開発の**直列化点・単一障害点**になり、二重メンテ・外部 provider 不適合でレビュー帯域律速の単一 orchestrator には重い。この repo の登記方式は軽量な行指向 FACT に留め、フル契約管理が要るなら **Specmatic/OpenAPI 型 spec-as-contract** を比較検討する (要自己検証)。
 
 ### Step 3: 挙動ごとに技法とオラクルを選ぶ
@@ -84,7 +84,7 @@ description: 動作テスト (behavioral verification) を「意図と跨いだ�
 
 ### Step 4: verification plan を書く
 
-`docs/verification/<branch>.md` (branch の `/` は `_` に)。1 行 = 1 ケース、先頭が STATUS:
+`docs/bootstrap/verification/<branch>.md` (branch の `/` は `_` に)。1 行 = 1 ケース、先頭が STATUS:
 
 ```markdown
 # verification plan — <意図を 1 文>
@@ -103,7 +103,7 @@ STATUS 語彙: `TODO` (未実施) / `FAIL` (失敗) / `HUMAN` (人間の実施�
 
 **`gameable` = 7 番目の seam (オラクル捕獲、ADR 0016) を宣言する行。** 正解が推測・列挙しやすく、実装が special-case / grader 書き換えで緑にできてしまう挙動に付ける (定義・緩和の権威は上の「7 番目の seam」節)。**`gameable` 行は必ず `metamorphic` 行か held-out oracle (実装 lane の編集面の外のテストで採点) で裏打ちする** — `gameable` 行があって `metamorphic` 行が無いと、SessionStart doctor が盲点 advisory を出す (`verification-drift.sh` axis 3、`async`→`monitor` と同型。kind フィールドだけを見る = prose を走査しない)。held-out を張ったら、その判定行を `metamorphic`/PASS として記録する。
 
-cross-repo 契約を CLOSED にする行は、note か behaviour に**必ずアンカー付きタグ `[contract:<id>]` を書く** (`docs/verification/contracts` の id を角括弧で囲んで参照)。関所はこの角括弧タグを**リテラル一致**で探す — 素の id を prose に書いただけや、別 id の substring (例: `booking` の行が `booking-payload` を参照しているだけ) では**閉じない**。fail-closed の関所に「文字列が含まれていればいい」という穴を空けないため (kind フィールドと同じ「統制語彙トークンだけを見る・prose を走査しない」D4 ドクトリン)。lane が登記面を触ったとき、その id をアンカー付きで CLOSED にした行が無ければ統合は通らない (free-text PASS では閉じない — 関所が consumer 側スイートを実走するか、人間が相手の実出力で照合して HUMAN→PASS にする)。
+cross-repo 契約を CLOSED にする行は、note か behaviour に**必ずアンカー付きタグ `[contract:<id>]` を書く** (`docs/bootstrap/verification/contracts` の id を角括弧で囲んで参照)。関所はこの角括弧タグを**リテラル一致**で探す — 素の id を prose に書いただけや、別 id の substring (例: `booking` の行が `booking-payload` を参照しているだけ) では**閉じない**。fail-closed の関所に「文字列が含まれていればいい」という穴を空けないため (kind フィールドと同じ「統制語彙トークンだけを見る・prose を走査しない」D4 ドクトリン)。lane が登記面を触ったとき、その id をアンカー付きで CLOSED にした行が無ければ統合は通らない (free-text PASS では閉じない — 関所が consumer 側スイートを実走するか、人間が相手の実出力で照合して HUMAN→PASS にする)。
 
 ### Step 5: 実行して閉じる (人間と共同記録)
 
@@ -123,7 +123,7 @@ cross-repo 契約を CLOSED にする行は、note か behaviour に**必ずア�
 
 ## 関所と射程
 
-`block-merge-if-verification-unclosed.sh` が、lane branch の merge に対し plan の存在・非空・OPEN 行ゼロ・理由なき DROP ゼロを fail-closed で要求する (opt-in = `docs/verification/` を置く)。**ただしこのローカル hook は「速い feedback 層」であって権威ではない** (ADR 0012): ローカル `git merge` しか捕まえず、GitHub の Merge ボタン (サーバ側) は素通りする。**恒久 enforcement はサーバ側に二層化する** — 同じ判定を `hooks/lib/verification-ci-check.sh` が CI で再実行し (`templates/github/workflows/verification-gate.yml`)、それを **required status check + branch protection (`enforce_admins=true`) + merge queue** に登録する (`scripts/setup-server-enforcement.sh`)。これで全マージ経路を覆い、単一 orchestrator が自分の関所を admin で素通りする穴と stale lane の統合破壊を塞ぐ。判定ロジックは `verification-plan.sh` の単一権威のまま (ローカル/CI が同じ lib を呼ぶ = drift しない)。**加えて (ADR 0011)**: lane の OWN delta (= base..lane を offline で計算) が `docs/verification/contracts` の登記面に当たった契約 id ごとに、その id を CLOSED にした plan 行 + consumer 側スイートの実走 (緑) を要求する。自動で回せない契約は `HUMAN` 行にして人間が相手の実出力で照合するまで OPEN。consumer 側のみ判定し相手 repo は読まない (相手 checkout が無いマシンで誤発火しない)。
+`block-merge-if-verification-unclosed.sh` が、lane branch の merge に対し plan の存在・非空・OPEN 行ゼロ・理由なき DROP ゼロを fail-closed で要求する (opt-in = `docs/bootstrap/verification/` を置く)。**ただしこのローカル hook は「速い feedback 層」であって権威ではない** (ADR 0012): ローカル `git merge` しか捕まえず、GitHub の Merge ボタン (サーバ側) は素通りする。**恒久 enforcement はサーバ側に二層化する** — 同じ判定を `hooks/lib/verification-ci-check.sh` が CI で再実行し (`templates/github/workflows/verification-gate.yml`)、それを **required status check + branch protection (`enforce_admins=true`) + merge queue** に登録する (`scripts/setup-server-enforcement.sh`)。これで全マージ経路を覆い、単一 orchestrator が自分の関所を admin で素通りする穴と stale lane の統合破壊を塞ぐ。判定ロジックは `verification-plan.sh` の単一権威のまま (ローカル/CI が同じ lib を呼ぶ = drift しない)。**加えて (ADR 0011)**: lane の OWN delta (= base..lane を offline で計算) が `docs/bootstrap/verification/contracts` の登記面に当たった契約 id ごとに、その id を CLOSED にした plan 行 + consumer 側スイートの実走 (緑) を要求する。自動で回せない契約は `HUMAN` 行にして人間が相手の実出力で照合するまで OPEN。consumer 側のみ判定し相手 repo は読まない (相手 checkout が無いマシンで誤発火しない)。
 
 **SessionStart doctor (`verification-drift.sh`)** は逐次経路と盲点を可視化する (advisory・強制ではない): ① 採用済み repo で未判断の source 変更がある / ② plan に `async` 行があるのに実オラクルの `monitor` 行が無い / ③ plan に `gameable` 行があるのに `metamorphic` 行が無い (7th seam、ADR 0016)。どれも kind フィールドだけを見る (prose を走査しない)。② と ③ は「宣言されたリスクを対応 kind で裏打ちしていない」同型 — 宣言駆動ゆえ TDD 全レーンで鳴らない (impl+test 共著の自動検知はノイズになるので採らない)。
 

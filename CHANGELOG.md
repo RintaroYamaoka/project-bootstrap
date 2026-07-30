@@ -7,6 +7,24 @@
 
 ## [Unreleased]
 
+## [0.31.0] - 2026-07-30
+
+### Changed
+
+- **docs 成果物を `docs/bootstrap/` フォルダ 1 つに集約した (ADR 0020)**。ADR 0015 が repo root の 6 マーカーを `.bootstrap/` にまとめたのと同じ整理が `docs/` 側に残っていた: `sprint/` `verification/` `handoffs/` `incidents/` が採用 repo の `docs/` 直下にプロジェクト自身の doc と兄弟で並び、「どれが道具の作業面か」が名前から読めなかった (dogfood の marketing-app では kanban-flow の `requirements.md` / `glossary.md` / `design/` と literally 隣接)。4 つを **`docs/bootstrap/<name>`** へ移す。**`docs/decisions/` は動かさない** — ADR は一般的な工学慣習であってこのプラグインの成果物ではなく、他ツール (kanban-flow) も同じ場所に書く共有面なので、行き先を分けると 1 repo の決定記録が 2 系統に割れる。囲うべきは道具の作業面であって、成果物の正本ではない。
+- **後方互換は「新優先・旧 fallback」の単一 resolver (`hooks/lib/resolve-docs.sh`)**。ここは ADR 0015 より危険度が高い — 各 gate の opt-in 判定は**ディレクトリの存在**で、flag day で移すと採用済み repo は plugin 更新の瞬間に sprint / review / verification / wip / 未隔離編集の 5 gate が**一斉に無音で fail-open** する (memory `feedback_gate_distribution_coverage` が最も嫌う破綻)。`resolve_docs_dir` が `docs/bootstrap/<name>` を優先し `docs/<name>` に落ちる。両方在れば新が勝つ。どちらも無ければ新 canonical を返すので `[ -d ]` の不在判定は従来どおり。旧読みは撤去条件つきの移行補助 (全 dogfood repo の移行完了で削除、ADR に明記)。
+- **block message も解決結果に従う (`resolve_docs_label`)**。旧レイアウトの repo に `docs/bootstrap/sprint/.gate` へ記録しろと案内すると人は空ディレクトリへ送られ、そこに書いた記録は gate に読まれない (案内と強制の不一致 = 別種の無音破綻)。sprint gate・verification gate・drift advisory の各メッセージが実際に解決したパスを名指しする。
+- **gate の自己状態の書き込み例外 (`docs_state_face`) だけは resolver を通さず両レイアウトを無条件マッチ**。この述語はまだ存在しない path を分類する (PreToolUse は書き込み前に走る) ので、新レイアウトを作る最初の `board.json` を書く瞬間には `docs/bootstrap/sprint/` がまだ無く、resolver は旧側に倒れて**その file 自身を block する**。自分が所有する path の fail-open 例外を広げるだけなので両マッチが厳密に安全側。
+- **`scripts/doctor.sh` が旧 flat レイアウトの残存を advisory で可視化する**。ISSUE (partial) にはしない — 旧レイアウトは互換読みで gate が効いており「整合しない」わけではないため。だが旧読みは撤去予定なので、残っていること自体が無音であってはならない。
+- 配線先: 5 hook (`block-unplanned-feature-build` / `block-uniso-main-edit` / `block-over-wip-parallel` / `block-unreviewed-merge` / `block-merge-if-verification-unclosed`)、5 lib (`lane-set` / `verification-plan` / `cross-repo-contract` / `verification-drift` / `verification-ci-check`)、`scripts/doctor.sh`。直書きパスは全廃 (= 信号 drift 防止、ADR 0005 guard 1 と同じ思想)。`templates/docs/` と本 repo 自身の docs も新レイアウトへ移動 (dogfood)。
+- **歴史的記録は書き換えない** — CHANGELOG・ADR 0001〜0019・incidents / handoffs の本文は書かれた当時のレイアウトを記述した日付つき記録なので path 表記を遡らせない。書き換えたのは live な面 (README / hooks / skills / templates / scripts) だけ。
+
+### Added
+
+- `hooks/lib/resolve-docs.sh` — docs 成果物の所在の単一権威 (`resolve_docs_dir` / `resolve_docs_label` / `docs_state_face`)。純 bash・jq 非依存。
+- `docs/decisions/0020-consolidate-docs-artifacts-into-bootstrap-dir.md` — 上記の決定・後方互換・撤去条件・代償 (半移行状態は fail-closed 側に倒れる)。
+- **テスト: 新レイアウトのカバレッジを 8 スイートに追加** (専用 suite `resolve-docs.test.bash` 24 assertion + 各 gate の新レイアウト発火/解除/半移行ケース)。既存 fixture は全て旧レイアウトを組むので、そのままでは**後方互換しか証明しない**。resolver を旧 path 固定に潰す mutation で 11 suite が落ち、各 gate の「exit 2 期待 → 0」= 無音 fail-open が確実に検出されることを実測。suite 数 45 → 46。
+
 ## [0.30.0] - 2026-07-10
 
 ### Added

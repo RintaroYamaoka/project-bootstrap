@@ -24,7 +24,7 @@
 #                       key. Per-line user regex is deliberately NOT supported — it would
 #                       re-import the unreviewed greedy-match / string-proxy bug class.
 #   <memory-slug-or-path>  the memory entry holding the fix, e.g. feedback_deploy_author_fix
-#                          (or docs/incidents/2026-06-20-deploy-author/README.md). Injected
+#                          (or docs/bootstrap/incidents/2026-06-20-deploy-author/README.md). Injected
 #                          verbatim as a pointer; the hook does not read the file for you.
 #   <note>              a one-line reminder of the actual fix, surfaced inline with the slug.
 #

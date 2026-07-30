@@ -33,10 +33,10 @@ doctor は採用済みなのに必要 hook が欠けている `partial` 状態�
 
 ## 統合レビュー gate の PR 経路 (bootstrap-review-gate)
 
-`hooks/block-unreviewed-merge.sh` (Stage 2 の統合関所) は Claude session の手元の `git merge` しか見られない。**GitHub の PR 画面で押す merge ボタンは手元の hook を一切通らない** — 実際に並列開発 10 branch が PR merge で統合された実績がある (`docs/incidents/2026-06-11-parallel-mode-gate-coverage`)。PR 経路の関所は CI にしか置けない。
+`hooks/block-unreviewed-merge.sh` (Stage 2 の統合関所) は Claude session の手元の `git merge` しか見られない。**GitHub の PR 画面で押す merge ボタンは手元の hook を一切通らない** — 実際に並列開発 10 branch が PR merge で統合された実績がある (`docs/bootstrap/incidents/2026-06-11-parallel-mode-gate-coverage`)。PR 経路の関所は CI にしか置けない。
 
 1. `templates/ci/bootstrap-review-gate.yml` を `.github/workflows/` にコピー
-2. レビュー記録の規約は手元の hook と共通: `docs/sprint/reviews/<branch の / を _ に置換>.md` に `verdict: approve`。branch 上でレビューを回し、記録を commit してから PR を出す
+2. レビュー記録の規約は手元の hook と共通: `docs/bootstrap/sprint/reviews/<branch の / を _ に置換>.md` に `verdict: approve`。branch 上でレビューを回し、記録を commit してから PR を出す
 
 GitHub 側では「この branch が並列 lane だったか」を判別できないため、**この file を置いた repo では全 PR にレビュー記録を要求する** (= PR を作ること自体を統合行為とみなす。語彙/命名の proxy に逃げない)。
 
@@ -47,7 +47,7 @@ GitHub 側では「この branch が並列 lane だったか」を判別でき�
 `hooks/block-merge-if-verification-unclosed.sh` (ADR 0007 の統合関所) も同じく手元の `git merge` しか見られない。**PR 画面の merge ボタンは手元の hook を通らない**ので、動作テスト計画 (verification plan) を PR 経路でも要求するには CI が要る。
 
 1. `templates/ci/bootstrap-verification-gate.yml` を `.github/workflows/` にコピー (self-contained なので plugin lib の vendoring 不要)
-2. 計画の規約は手元の hook と共通: `docs/verification/<branch の / を _ に置換>.md`。OPEN 行 (TODO/FAIL/HUMAN) ゼロ・理由なき DROP ゼロを満たしてから PR を出す
+2. 計画の規約は手元の hook と共通: `docs/bootstrap/verification/<branch の / を _ に置換>.md`。OPEN 行 (TODO/FAIL/HUMAN) ゼロ・理由なき DROP ゼロを満たしてから PR を出す
 
 review gate と同型に「PR を作ること自体を統合行為とみなし全 PR に閉じた計画を要求する」。required 化の判断も review gate と同じ。
 

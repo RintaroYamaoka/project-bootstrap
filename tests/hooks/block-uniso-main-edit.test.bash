@@ -123,4 +123,39 @@ test_case "existing source-file edit in main during lanes is blocked"
 run_hook "$HOOK" "$(edit_input "$REPO/src/existing.ts")"
 assert_exit 2
 
+
+# ---------------------------------------------------------------------------
+# New layout: docs/bootstrap/<name> (ADR 0020).
+# Every fixture above builds the LEGACY docs/<name> layout, so on its own it only
+# proves backward compatibility. These cases prove the gate actually arms under the
+# new parent-folder layout — without them a mis-wired resolver would leave the gate
+# silently fail-open (this plugin's worst fail-mode) with the whole suite still green.
+# ---------------------------------------------------------------------------
+
+adopt_sprint_new() { mkdir -p "$REPO/docs/bootstrap/sprint"; }
+
+setup_repo
+adopt_sprint_new
+add_lane lane/a >/dev/null
+RUN_DIR="$REPO"
+test_case "new layout: main-tree source edit during active lanes is blocked"
+run_hook "$HOOK" "$(edit_input "$REPO/src/x.ts")"
+assert_exit 2
+assert_stderr_contains "isolation"
+
+setup_repo
+adopt_sprint_new
+add_lane lane/a >/dev/null
+RUN_DIR="$REPO"
+test_case "new layout: writing new-layout sprint state is never blocked"
+run_hook "$HOOK" "$(edit_input "$REPO/docs/bootstrap/sprint/board.json")"
+assert_exit 0
+
+setup_repo
+add_lane lane/a >/dev/null
+RUN_DIR="$REPO"
+test_case "neither layout adopted: still fail-open (opt-in preserved)"
+run_hook "$HOOK" "$(edit_input "$REPO/src/x.ts")"
+assert_exit 0
+
 finish

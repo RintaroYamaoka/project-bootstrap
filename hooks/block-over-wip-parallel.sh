@@ -15,10 +15,10 @@
 #
 # fail-mode (memory feedback_gate_signal_and_failmode 準拠):
 #   - コマンド解析不能 = fail-closed (parse-command の契約。bypass 防止)
-#   - 根拠不在 = fail-open: 非 worktree-add / 非 git / docs/sprint 未採用 (opt-in) /
+#   - 根拠不在 = fail-open: 非 worktree-add / 非 git / docs/bootstrap/sprint 未採用 (opt-in) /
 #     .bootstrap-wip 未宣言 or 整数として解析不能 (= 宣言した repo でだけ縛る。opt-in 尊重)
 #
-# opt-in: docs/sprint/ が在るときだけ発火。jq 非依存。
+# opt-in: docs/bootstrap/sprint/ が在るときだけ発火。jq 非依存。
 
 set -u
 
@@ -42,7 +42,10 @@ TOP=$(git rev-parse --show-toplevel 2>/dev/null | tr '\\' '/' | tr -s '/')
 [ -z "$TOP" ] && exit 0
 
 # opt-in: sprint flow を採用した project でのみ発火。
-[ -d "$TOP/docs/sprint" ] || exit 0
+# ディレクトリは `docs/bootstrap/sprint` (新) / `docs/sprint` (旧) どちらでも可 (ADR 0020)。
+# shellcheck source=lib/resolve-docs.sh
+. "$(dirname "$0")/lib/resolve-docs.sh"
+[ -d "$(resolve_docs_dir "$TOP" sprint)" ] || exit 0
 
 # 宣言された wip_limit を整数で取る。未宣言/解析不能は fail-open (opt-in を尊重)。
 # 判定は表示版 resolve_wip_limit と同じ lib (= 単一権威。drift 防止)。

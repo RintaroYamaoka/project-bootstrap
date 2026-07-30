@@ -18,7 +18,7 @@
 # the judgment's visibility, not the act).
 #
 # OPT-IN & OFFLINE (same bars as the merge gate + repo-drift): fires only when
-# docs/verification/ is adopted, and never fetches — the committed-ahead check compares
+# docs/bootstrap/verification/ is adopted, and never fetches — the committed-ahead check compares
 # against the LOCAL main remote-tracking ref (drift_main_ref). A repo with no such ref
 # falls back to the uncommitted set only (fail-open: under-reports, never false-alarms).
 #
@@ -118,12 +118,12 @@ _vd_has_real_monitor() {
 # Fires iff the plan has >=1 kind=async row AND no monitor row with a real oracle. The caller
 # guarantees a source-face change already gated this (so docs-only branches are silent).
 _vd_async_blindspot_block() {
-  local plan="$1" cur="$2"
+  local plan="$1" cur="$2" vdir_rel="${3:-docs/bootstrap/verification}"
   vplan_has_kind "$plan" async || return 0           # no async work declared → nothing to say
   _vd_has_real_monitor "$plan" && return 0           # a real monitor backs it → covered
   printf 'async / scheduled な検証行があるのに、外部オラクルを持つ monitor 行がありません (silent-skip の盲点):\n'
-  printf '  branch %s の plan (docs/verification/%s.md) に kind=async 行があるが、kind=monitor で\n' \
-    "${cur:-?}" "$(printf '%s' "${cur:-?}" | tr '/' '_')"
+  printf '  branch %s の plan (%s/%s.md) に kind=async 行があるが、kind=monitor で\n' \
+    "${cur:-?}" "$vdir_rel" "$(printf '%s' "${cur:-?}" | tr '/' '_')"
   printf '  実オラクル (field-4 ≠ n/a) を持つ行が無い。cron が無音で skip した / queue が live な\n'
   printf '  heartbeat の裏で stall した、は同期の「自分の返答を読み返す」では捕まらない (async の盲点)。\n'
   cat <<'EOF'
@@ -139,12 +139,12 @@ EOF
 # row. Same controlled-vocab keying as the async axis (never a prose scan). The caller
 # guarantees a source-face change already gated this (so docs-only branches are silent).
 _vd_heldout_blindspot_block() {
-  local plan="$1" cur="$2"
+  local plan="$1" cur="$2" vdir_rel="${3:-docs/bootstrap/verification}"
   vplan_has_kind "$plan" gameable || return 0        # no gameable path declared → nothing to say
   vplan_has_kind "$plan" metamorphic && return 0     # a metamorphic mitigation backs it → covered
   printf 'オラクル捕獲 (テストゲーミング) の盲点: kind=gameable 行があるのに kind=metamorphic 行がありません:\n'
-  printf '  branch %s の plan (docs/verification/%s.md) に kind=gameable 行 (実装が special-case /\n' \
-    "${cur:-?}" "$(printf '%s' "${cur:-?}" | tr '/' '_')"
+  printf '  branch %s の plan (%s/%s.md) に kind=gameable 行 (実装が special-case /\n' \
+    "${cur:-?}" "$vdir_rel" "$(printf '%s' "${cur:-?}" | tr '/' '_')"
   printf '  ハードコードで通り抜けうると宣言した行) があるが、それを崩す kind=metamorphic 行が無い。\n'
   printf '  実装がテスト入力を検知して期待値を返す・例のケースに決め打ちする、は同じ入力なら緑のまま\n'
   printf '  通る (7 番目の seam、ADR 0016)。mutation では捕まらない (special-case された実装は「強い」に見える)。\n'
@@ -158,9 +158,10 @@ EOF
 
 # verification_drift_report — see header.
 verification_drift_report() {
-  local dir="$1" cur plan changed count async_block heldout_block
+  local dir="$1" cur plan changed count async_block heldout_block vdir_rel
   git -C "$dir" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
-  [ -d "$dir/docs/verification" ] || return 0        # opt-in, same bar as the merge gate
+  [ -d "$(resolve_docs_dir "$dir" verification)" ] || return 0   # opt-in, same bar as the merge gate
+  vdir_rel="$(resolve_docs_label "$dir" verification)"
 
   changed="$(_vd_changed_sources "$dir" | sort -u)"
   [ -n "$changed" ] || return 0                      # no unverified source work → silent
@@ -172,11 +173,11 @@ verification_drift_report() {
   # empty-plan early-return below. Keyed only on the controlled-vocab kind field; already
   # gated on a source-face change above (so docs-only branches stay silent). Advisory only.
   if [ -n "$plan" ] && [ -s "$plan" ]; then
-    async_block="$(_vd_async_blindspot_block "$plan" "$cur")"
+    async_block="$(_vd_async_blindspot_block "$plan" "$cur" "$vdir_rel")"
     [ -n "$async_block" ] && printf '%s' "$async_block"
     # AXIS 3 (held-out / metamorphic blind spot, 7th seam / ADR 0016) — same populated-plan,
     # controlled-vocab, source-face-gated shape as axis 2. Distinct advisory; both may fire.
-    heldout_block="$(_vd_heldout_blindspot_block "$plan" "$cur")"
+    heldout_block="$(_vd_heldout_blindspot_block "$plan" "$cur" "$vdir_rel")"
     [ -n "$heldout_block" ] && printf '%s' "$heldout_block"
   fi
 
@@ -189,13 +190,13 @@ verification_drift_report() {
 
   count="$(printf '%s\n' "$changed" | grep -c .)"
   printf '未判断の trunk source 変更 (verification の要否判断が記録されていない — 逐次作業は merge gate の射程外):\n'
-  printf '  branch %s に source 変更 %s 件、だが docs/verification/%s.md に判断が無い。\n' \
-    "${cur:-?}" "$count" "$(printf '%s' "${cur:-?}" | tr '/' '_')"
+  printf '  branch %s に source 変更 %s 件、だが %s/%s.md に判断が無い。\n' \
+    "${cur:-?}" "$count" "$vdir_rel" "$(printf '%s' "${cur:-?}" | tr '/' '_')"
   printf '%s\n' "$changed" | head -3 | while IFS= read -r p; do printf '    %s\n' "$p"; done
   [ "$count" -gt 3 ] 2>/dev/null && printf '    … 他 %s 件\n' "$((count - 3))"
-  cat <<'EOF'
+  cat <<EOF
   対処 (verification skill): 意図と跨いだ境界から検証すべき挙動を導き、各行に外部オラクルを与えて
-  docs/verification/<branch>.md に記録する。テストしないと判断した挙動は理由つき DROP 行で明示する
+  $vdir_rel/<branch>.md に記録する。テストしないと判断した挙動は理由つき DROP 行で明示する
   (= 無音で省かない)。強制ではない — 記録すべきは「テストの有無」でなく「要否の判断」そのもの。
 EOF
   return 0

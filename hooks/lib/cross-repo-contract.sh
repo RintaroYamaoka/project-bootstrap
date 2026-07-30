@@ -18,7 +18,7 @@
 #   "you touched a shared face → run its contract test / record a HUMAN-closed row"
 #   requirement on the LANE branch's OWN delta intersecting a declared glob.
 #
-# Declaration file: docs/verification/contracts (line-oriented, jq-free):
+# Declaration file: docs/bootstrap/verification/contracts (line-oriented, jq-free):
 #   - `#`-led and blank lines are comments/ignored.
 #   - a contract row is pipe-delimited:  id | local_face_glob | peer_repo | peer_face | note
 #
@@ -37,7 +37,7 @@
 #
 # Contract (pure bash + git porcelain, jq-free, no network, no stdout pollution beyond the
 # documented echoes):
-#   crc_contracts_file <dir>            -> echo docs/verification/contracts path under <dir>
+#   crc_contracts_file <dir>            -> echo docs/bootstrap/verification/contracts path under <dir>
 #   crc_each_contract <file>            -> echo each contract row (raw, trimmed-of-nothing),
 #                                          one per line; comments/blank skipped. "" if absent.
 #   crc_field <row> <n>                 -> echo the nth pipe field, trimmed
@@ -73,7 +73,9 @@ _crc_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # crc_contracts_file — see header.
 crc_contracts_file() {
-  printf '%s/docs/verification/contracts' "$1"
+  # resolve_docs_dir comes in via verification-plan.sh (ADR 0020): new docs/bootstrap/
+  # preferred, legacy docs/ as fallback.
+  printf '%s/contracts' "$(resolve_docs_dir "$1" verification)"
 }
 
 # _crc_trim — strip leading/trailing whitespace (pure bash, no sed).

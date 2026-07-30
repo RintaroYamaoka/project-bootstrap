@@ -30,8 +30,10 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 TOP="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 [ -z "$TOP" ] && { echo "verification-ci-check: not a git repo — neutral pass." >&2; exit 0; }
 
-# opt-in: only repos that adopted the verification flow.
-[ -d "$TOP/docs/verification" ] || { echo "verification-ci-check: docs/verification/ not adopted — neutral pass." >&2; exit 0; }
+# opt-in: only repos that adopted the verification flow. New docs/bootstrap/verification
+# is preferred, legacy docs/bootstrap/verification still honoured (ADR 0020).
+VERIF_DIR="$(resolve_docs_dir "$TOP" verification)"
+[ -d "$VERIF_DIR" ] || { echo "verification-ci-check: verification directory not adopted (looked for docs/bootstrap/verification and docs/verification) — neutral pass." >&2; exit 0; }
 
 BRANCH="${1:-}"
 [ -z "$BRANCH" ] && BRANCH="${GITHUB_HEAD_REF:-}"

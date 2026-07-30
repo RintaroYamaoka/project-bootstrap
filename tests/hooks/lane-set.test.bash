@@ -83,4 +83,41 @@ assert_eq no "$(contains feat/c "$SET")"
 test_case "empty token never matches (empty lines are not lanes)"
 assert_eq no "$(contains '' "$SET")"
 
+
+# ---------------------------------------------------------------------------
+# New layout: docs/bootstrap/<name> (ADR 0020).
+# Every fixture above builds the LEGACY docs/<name> layout, so on its own it only
+# proves backward compatibility. These cases prove the gate actually arms under the
+# new parent-folder layout — without them a mis-wired resolver would leave the gate
+# silently fail-open (this plugin's worst fail-mode) with the whole suite still green.
+# ---------------------------------------------------------------------------
+
+mkrepo
+mkdir -p "$REPO/docs/bootstrap/sprint"
+cat > "$REPO/docs/bootstrap/sprint/board.json" <<'EOF'
+{"tasks":[
+  {"id":"T1","branch":"feat/a","status":"doing"},
+  {"id":"T2","branch":"feat/b","status":"done"}
+]}
+EOF
+test_case "new layout: an active board contributes its task branches"
+assert_eq 'feat/a,feat/b' "$(lanes)"
+
+mkrepo
+mkdir -p "$REPO/docs/bootstrap/sprint"
+cat > "$REPO/docs/bootstrap/sprint/board.json" <<'EOF'
+{"tasks":[{"id":"T1","branch":"feat/a","status":"done"}]}
+EOF
+test_case "new layout: an all-done board still contributes nothing (liveness)"
+assert_eq '' "$(lanes)"
+
+# Half-migrated: the new directory wins, so a stale legacy board must not be read.
+mkrepo
+mkdir -p "$REPO/docs/bootstrap/sprint" "$REPO/docs/sprint"
+cat > "$REPO/docs/sprint/board.json" <<'EOF'
+{"tasks":[{"id":"T9","branch":"feat/stale","status":"doing"}]}
+EOF
+test_case "half-migrated: the stale legacy board is not read"
+assert_eq '' "$(lanes)"
+
 finish

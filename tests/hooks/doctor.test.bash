@@ -207,4 +207,71 @@ test_case ".bootstrap/arch with a layer directive is ok (new layout adopted)"
 run_doctor "$REPO"
 assert_doctor_status ok
 
+
+# ---------------------------------------------------------------------------
+# New layout: docs/bootstrap/<name> (ADR 0020).
+# Every fixture above builds the LEGACY docs/<name> layout, so on its own it only
+# proves backward compatibility. These cases prove the gate actually arms under the
+# new parent-folder layout — without them a mis-wired resolver would leave the gate
+# silently fail-open (this plugin's worst fail-mode) with the whole suite still green.
+# ---------------------------------------------------------------------------
+
+setup_repo
+mkdir -p "$REPO/docs/bootstrap/sprint"
+test_case "new layout: sprint adoption is detected (not unadopted)"
+run_doctor "$REPO"
+assert_doctor_status ok
+assert_doctor_exit 0
+
+setup_repo
+mkdir -p "$REPO/docs/bootstrap/verification"
+test_case "new layout: verification adoption is detected"
+run_doctor "$REPO"
+assert_doctor_status ok
+
+setup_repo
+mkdir -p "$REPO/docs/bootstrap/incidents"
+test_case "new layout: external-memory adoption is detected"
+run_doctor "$REPO"
+assert_doctor_status ok
+
+# docs/decisions/ stays flat by design (shared ADR convention) — it must still count.
+setup_repo
+mkdir -p "$REPO/docs/decisions"
+test_case "docs/decisions stays flat and still counts as adoption"
+run_doctor "$REPO"
+assert_doctor_status ok
+
+# The vendored-coverage gap must still be detected under the new layout (the partial
+# signal is the whole point of the doctor; a layout change must not mute it).
+setup_repo
+mkdir -p "$REPO/docs/bootstrap/sprint"
+vendor_core
+test_case "new layout: vendored-coverage gap is still partial"
+run_doctor "$REPO"
+assert_doctor_status partial
+assert_doctor_exit 2
+
+
+# 旧 flat レイアウト残存は advisory であって partial ではない (互換読みで gate は効いている)。
+setup_repo
+mkdir -p "$REPO/docs/sprint"
+test_case "legacy layout alone stays ok (compat read keeps the gate armed)"
+run_doctor "$REPO"
+assert_doctor_status ok
+test_case "legacy layout is surfaced as an advisory, not silently accepted"
+assert_out_contains "旧 flat レイアウトが残存"
+assert_out_contains "docs/sprint"
+
+setup_repo
+mkdir -p "$REPO/docs/bootstrap/sprint"
+test_case "a fully migrated repo gets no legacy advisory"
+run_doctor "$REPO"
+assert_doctor_status ok
+TESTS_RUN=$((TESTS_RUN + 1))
+case "$DOCTOR_OUT" in
+  *"旧 flat レイアウトが残存"*) TESTS_FAILED=$((TESTS_FAILED + 1)); echo "  FAIL [$CURRENT_TEST] advisory fired on a migrated repo" ;;
+  *) echo "  ok   [$CURRENT_TEST] no legacy advisory" ;;
+esac
+
 finish
