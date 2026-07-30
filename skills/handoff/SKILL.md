@@ -1,11 +1,11 @@
 ---
 name: handoff
-description: session の cold restore に必要な状態を docs/handoffs/ に書き残すための skill。session 終了前 / `/clear` 前 / 別 Claude (= 別ターミナル / 翌日の自分 / 並走 session) に context を渡す前にロードする。`/handoff <topic>` で明示呼び出しもできるが、上記タイミングで AI 自身が default として呼ぶことを期待する。handoff は **1 session = 1 file**、賞味期限 1-2 週間で破棄可。永続記録 (= ADR / incident) ではない。
+description: session の cold restore に必要な状態を docs/bootstrap/handoffs/ に書き残すための skill。session 終了前 / `/clear` 前 / 別 Claude (= 別ターミナル / 翌日の自分 / 並走 session) に context を渡す前にロードする。`/handoff <topic>` で明示呼び出しもできるが、上記タイミングで AI 自身が default として呼ぶことを期待する。handoff は **1 session = 1 file**、賞味期限 1-2 週間で破棄可。永続記録 (= ADR / incident) ではない。
 ---
 
 # /handoff — session を cold restore 可能にする
 
-このスキルは、session を **別 Claude が cold で復元できる** 形で `docs/handoffs/` に書き残すためのもの。
+このスキルは、session を **別 Claude が cold で復元できる** 形で `docs/bootstrap/handoffs/` に書き残すためのもの。
 
 ## いつ呼ばれるか
 
@@ -23,7 +23,7 @@ description: session の cold restore に必要な状態を docs/handoffs/ に�
 ### Step 1: ファイル名を決める
 
 ```
-docs/handoffs/<YYYY-MM-DD>-<topic>.md
+docs/bootstrap/handoffs/<YYYY-MM-DD>-<topic>.md
 ```
 
 - `<YYYY-MM-DD>` は当日の日付
@@ -32,7 +32,7 @@ docs/handoffs/<YYYY-MM-DD>-<topic>.md
 
 ### Step 2: 7 節構造で書く
 
-雛形 `templates/docs/handoffs/TEMPLATE.md` を踏襲する:
+雛形 `templates/docs/bootstrap/handoffs/TEMPLATE.md` を踏襲する:
 
 1. **1 行で言うと** — 最終結果を 1 文 + 数値
 2. **残課題** — 表 (識別子 / 状況 / 対応案)。**解決済みは書かない**
@@ -46,7 +46,7 @@ docs/handoffs/<YYYY-MM-DD>-<topic>.md
 
 詳細は別 doc にリンクで逃がす:
 
-- 事故 → `docs/incidents/`
+- 事故 → `docs/bootstrap/incidents/`
 - 不可逆判断 → `docs/decisions/`
 - 既存仕様 → コード本体 / `CLAUDE.md`
 - 規律 → `skills/<name>/SKILL.md`
@@ -62,7 +62,7 @@ handoff に書くのは **「次の Claude が動き出すための最小限」*
 「次セッションへの起動文」は **コピペでそのまま貼れる** 形で書く:
 
 ```
-docs/handoffs/<YYYY-MM-DD>-<topic>.md を読んで状況把握してから、
+docs/bootstrap/handoffs/<YYYY-MM-DD>-<topic>.md を読んで状況把握してから、
 残課題の <識別子> から作業を続けて。
 ```
 
@@ -81,7 +81,7 @@ handoff は **1-2 週間で破棄可**。古い handoff を残しても次セッ
 
 永続記録は:
 - 不可逆判断 → `docs/decisions/` (ADR)
-- 事故と再発防止 → `docs/incidents/`
+- 事故と再発防止 → `docs/bootstrap/incidents/`
 - AI に再注入する教訓 → memory `feedback_*.md` / `reference_*.md`
 
 handoff から永続記録に昇格すべきものがあれば、handoff 書いた後に対応 skill (= `incident` / ADR 起こし) に進む。

@@ -7,7 +7,7 @@
 # commit-time / CI で後追いできず、PreToolUse hook 以外に backstop を持てない (ADR 0002)。
 # つまり「採用したのに gate が届いていない」状態が無音で成立すると、誰も止められない。実際に
 # 起きた: sprint flow 採用済みの repo に block-unplanned-feature-build.sh が未配備で、判断ミスを
-# 止める裏が無かった (会話: 2026-06-02 / docs/incidents/2026-06-02-coverage-drift-silent)。
+# 止める裏が無かった (会話: 2026-06-02 / docs/bootstrap/incidents/2026-06-02-coverage-drift-silent)。
 #
 # 本 script は repo の採用状態を 1 つの verdict に判定する。SessionStart hook (session 起動時に
 # 可視化) と CI template (plugin 非依存の team-wide net) の両方が同じエンジンを呼ぶ。
@@ -49,6 +49,19 @@ have() { [ -e "$REPO/$1" ]; }
 RESOLVER_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd)/hooks/lib/resolve-marker.sh"
 # shellcheck source=../hooks/lib/resolve-marker.sh
 [ -f "$RESOLVER_LIB" ] && . "$RESOLVER_LIB"
+
+# docs 成果物 (sprint/verification/handoffs/incidents) の所在も同じ形で単一権威に委譲 —
+# `docs/bootstrap/<name>` (新) を優先し `docs/<name>` (旧) に fallback (ADR 0020)。
+DOCS_RESOLVER_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd)/hooks/lib/resolve-docs.sh"
+# shellcheck source=../hooks/lib/resolve-docs.sh
+[ -f "$DOCS_RESOLVER_LIB" ] && . "$DOCS_RESOLVER_LIB"
+docs_dir() {
+  if command -v resolve_docs_dir >/dev/null 2>&1; then resolve_docs_dir "$REPO" "$1"
+  else printf '%s/docs/%s' "$REPO" "$1"; fi
+}
+have_docs() { [ -d "$(docs_dir "$1")" ]; }
+# repo 相対の表示ラベル (実際に解決したパス — 旧レイアウトの repo に新 path を案内しない)。
+docs_rel() { local p; p="$(docs_dir "$1")"; printf '%s' "${p#"$REPO"/}"; }
 marker() {
   if command -v resolve_marker >/dev/null 2>&1; then resolve_marker "$REPO" "$1"
   else printf '%s/.bootstrap-%s' "$REPO" "$1"; fi
@@ -63,9 +76,9 @@ have_marker arch       && ARCH=1
 have_marker protected  && PROT=1
 have_marker lint       && LINT=1
 have_marker lane       && LANE=1
-[ -d "$REPO/docs/sprint" ] && SPRINT=1
-[ -d "$REPO/docs/verification" ] && VERIFY=1
-{ [ -d "$REPO/docs/decisions" ] || [ -d "$REPO/docs/handoffs" ] || [ -d "$REPO/docs/incidents" ]; } && MEM=1
+have_docs sprint       && SPRINT=1
+have_docs verification && VERIFY=1
+{ [ -d "$REPO/docs/decisions" ] || have_docs handoffs || have_docs incidents; } && MEM=1
 
 ADOPTED=0
 [ $((ARCH + PROT + LINT + LANE + SPRINT + VERIFY + MEM)) -gt 0 ] && ADOPTED=1
@@ -79,12 +92,12 @@ if [ "$ADOPTED" = 0 ]; then
   fi
   echo "STATUS: unadopted"
   cat <<'EOF'
-この repo は project-bootstrap を採用していない (.bootstrap-* / docs/{sprint,decisions,handoffs,incidents} いずれも無い)。
+この repo は project-bootstrap を採用していない (.bootstrap/* / docs/bootstrap/{sprint,verification,handoffs,incidents} / docs/decisions いずれも無い)。
 規律 gate (TDD 先行 / 依存方向 / 並列 lane / sprint 発火 / protected push / commit test) は marker を置くまで何も効かない。
 
 → 導入するかを user に **一度だけ尋ねる**。勝手に採用ファイルを作らない。導入するなら最低限:
-  - docs/{decisions,handoffs,incidents}/  (external memory)
-  - 必要に応じ .bootstrap-arch (依存方向) / .bootstrap-protected (push 保護) / docs/sprint/ (並列開発) / .bootstrap-lint
+  - docs/bootstrap/{handoffs,incidents}/ + docs/decisions/  (external memory)
+  - 必要に応じ .bootstrap/arch (依存方向) / .bootstrap/protected (push 保護) / docs/bootstrap/sprint/ (並列開発) / .bootstrap/lint
 導入を望まないと言われたら、この提案を以後黙らせるため repo root に空の .bootstrap-declined を置く。
 EOF
   exit 0
@@ -164,10 +177,23 @@ if [ -f "$AGLIB" ]; then
   else
     # No registry. If an incident is tagged as a repeat-prone action, the fix it records is
     # not armed to re-surface — point at the actions marker. Cheap grep over incident dirs.
-    if [ -d "$REPO/docs/incidents" ] && grep -rilE 'repeat[- ]?action' "$REPO/docs/incidents" >/dev/null 2>&1; then
-      ACTIONS_LINE="actions: no actions marker, but a docs/incidents entry is tagged repeat-action — arm its action-key (templates/bootstrap-actions.example) so the recorded fix re-surfaces at the action"
+    if have_docs incidents && grep -rilE 'repeat[- ]?action' "$(docs_dir incidents)" >/dev/null 2>&1; then
+      ACTIONS_LINE="actions: no actions marker, but a $(docs_rel incidents) entry is tagged repeat-action — arm its action-key (templates/bootstrap-actions.example) so the recorded fix re-surfaces at the action"
     fi
   fi
+fi
+
+# --- 旧 flat docs レイアウトの残存を可視化 (ADR 0020) ---
+# advisory であって ISSUE ではない: 旧レイアウトは resolve-docs.sh が読むので gate は
+# 効いている (= 整合しないわけではない)。だが旧読みは撤去条件つきの移行補助なので、
+# 残っていること自体は見えていないといけない (無音で移行漏れを溜めない)。
+LEGACY_DOCS=""
+for _n in sprint verification handoffs incidents; do
+  [ -d "$REPO/docs/$_n" ] && LEGACY_DOCS="$LEGACY_DOCS docs/$_n"
+done
+LEGACY_LINE=""
+if [ -n "$LEGACY_DOCS" ]; then
+  LEGACY_LINE="docs layout: 旧 flat レイアウトが残存 ($(printf '%s' "${LEGACY_DOCS# }")) — 現在は互換読みで gate は効いているが、旧読みは撤去予定 (ADR 0020)。移行: git mv <上記> docs/bootstrap/"
 fi
 
 if [ "${#ISSUES[@]}" -gt 0 ]; then
@@ -175,6 +201,7 @@ if [ "${#ISSUES[@]}" -gt 0 ]; then
   echo "project-bootstrap 採用済みだが整合しない点がある ($SUM):"
   for i in "${ISSUES[@]}"; do echo "  - $i"; done
   [ -n "$ACTIONS_LINE" ] && echo "  - $ACTIONS_LINE"
+  [ -n "$LEGACY_LINE" ] && echo "  - $LEGACY_LINE"
   if [ "$VENDORED" = no ]; then
     echo "(plugin 経由採用は plugin の install/版を repo から検証不能。team-wide に強制するなら .claude/hooks/ への vendoring か templates/ci/bootstrap-doctor.yml を CI に置く)"
   fi
@@ -184,6 +211,7 @@ fi
 echo "STATUS: ok"
 echo "project-bootstrap 採用済み・整合 ($SUM)。"
 [ -n "$ACTIONS_LINE" ] && echo "  - $ACTIONS_LINE"
+[ -n "$LEGACY_LINE" ] && echo "  - $LEGACY_LINE"
 if [ "$VENDORED" = no ]; then
   echo "注: hook は plugin 経由 (repo に vendoring 無し)。plugin が未 install / 旧版の環境では gate が静かに効かない —"
   echo "    team-wide net には .claude/hooks/ への vendoring か templates/ci/bootstrap-doctor.yml (plugin 非依存) を検討。"

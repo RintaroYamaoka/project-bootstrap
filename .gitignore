@@ -2,4 +2,6 @@
 # lane は worktree-local。.bootstrap/ 配下の他マーカー (wip 等) は commit するので lane だけ無視する。
 .bootstrap/lane
 .bootstrap-lane
+docs/bootstrap/sprint/.gate
+# 旧 flat レイアウト (ADR 0020 の移行期間中のみ)
 docs/sprint/.gate

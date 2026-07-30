@@ -50,7 +50,7 @@ DRIFT=$(drift_report "$CWD" 2>/dev/null)
 # (3) verification drift audit — 逐次 trunk 変更に動作テストの要否判断が記録されていない無音状態を
 #     可視化。merge gate (block-merge-if-verification-unclosed) は lane branch の merge しか信号に
 #     しないので branch を切らない逐次作業はその射程外 (ADR 0007 が doctor に委ねた半分)。採用
-#     (docs/verification/) していなければ空 (無音)。判定エンジンは lib/verification-drift.sh。
+#     (docs/bootstrap/verification/) していなければ空 (無音)。判定エンジンは lib/verification-drift.sh。
 # shellcheck source=lib/verification-drift.sh
 . "$DIR/lib/verification-drift.sh"
 VDRIFT=$(verification_drift_report "$CWD" 2>/dev/null)

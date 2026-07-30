@@ -75,12 +75,24 @@ assert_eq 0 "$(vplan_open_rows "/no/such/file" | grep -c .)"
 
 # --- vplan_path_for_branch: single authority for branch -> plan path (shared by the
 #     merge gate AND the SessionStart doctor so the two surfaces can't drift). ---
+# The directory half is resolved through resolve-docs.sh (ADR 0020): a repo with
+# neither layout on disk gets the new canonical docs/bootstrap/verification, so an
+# un-adopted path reads the same place the gate would create.
 test_case "plan path maps a slashed branch to an underscored filename"
-assert_eq "/tmp/r/docs/verification/feat_x.md" "$(vplan_path_for_branch /tmp/r feat/x)"
+assert_eq "/tmp/r/docs/bootstrap/verification/feat_x.md" "$(vplan_path_for_branch /tmp/r feat/x)"
 test_case "plan path for a flat branch name"
-assert_eq "/tmp/r/docs/verification/main.md" "$(vplan_path_for_branch /tmp/r main)"
+assert_eq "/tmp/r/docs/bootstrap/verification/main.md" "$(vplan_path_for_branch /tmp/r main)"
 test_case "plan path collapses every slash (nested branch)"
-assert_eq "/tmp/r/docs/verification/feat_foo_bar.md" "$(vplan_path_for_branch /tmp/r feat/foo/bar)"
+assert_eq "/tmp/r/docs/bootstrap/verification/feat_foo_bar.md" "$(vplan_path_for_branch /tmp/r feat/foo/bar)"
+
+# A repo still on the legacy flat layout must keep resolving to ITS plans — otherwise
+# the merge gate would look at an empty directory and fail open on upgrade.
+VP_LEGACY="$(mktemp -d)"; mkdir -p "$VP_LEGACY/docs/verification"
+test_case "plan path follows the legacy layout when that is what the repo has"
+assert_eq "$VP_LEGACY/docs/verification/feat_x.md" "$(vplan_path_for_branch "$VP_LEGACY" feat/x)"
+VP_NEW="$(mktemp -d)"; mkdir -p "$VP_NEW/docs/bootstrap/verification"
+test_case "plan path follows the new layout once migrated"
+assert_eq "$VP_NEW/docs/bootstrap/verification/feat_x.md" "$(vplan_path_for_branch "$VP_NEW" feat/x)"
 test_case "empty branch yields empty path (caller detects)"
 assert_eq "" "$(vplan_path_for_branch /tmp/r '')"
 

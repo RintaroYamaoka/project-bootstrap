@@ -16,7 +16,7 @@ description: 並列開発した複数の feature branch を依存順に統合し
 
 ### Step 1: board を読み、依存順を決める
 
-`docs/sprint/board.json` を読む。`depends_on` で **topological order** を作る (= 直列 spine task が先、その下流が後)。`in-review` / `done` でない task があれば、それを待つか lead が引き取る。
+`docs/bootstrap/sprint/board.json` を読む。`depends_on` で **topological order** を作る (= 直列 spine task が先、その下流が後)。`in-review` / `done` でない task があれば、それを待つか lead が引き取る。
 
 ### Step 2: merge 前に adversarial AI レビュー → verdict を記録 (人間は全 diff を読まない)
 
@@ -25,7 +25,7 @@ throughput の律速は人間のレビュー帯域 (しかも user は複数プ�
 依存順に、各 task について merge の**前に**:
 
 1. **adversarial レビュー agent を回す** (read-only)。プロンプトの態度は「この branch を落とすつもりで読む」: 正しさ / 統合境界 (共有 interface の前提ずれ) / verification 4 罠 / scope 逸脱。観点が複数要るなら lens を分けて並列に — これは ADR 0005 の breadth 顔なので **Workflow で 1 lens = 1 subagent に最大 16 ファンアウト**してよい (read-only・隔離不要・`wip_limit` 非対象)。ただし**各 lens を `reviews/<branch>.md` に並行追記させない** (verdict 行が競合して監査証跡が壊れる) — 各 subagent は指摘を**返り値で返し**、main session が 1 つの verdict 記録に集約する
-2. **結果を `docs/sprint/reviews/<branch名の `/` を `_` に置換>.md` に書く**。必須行は `verdict: approve` または `verdict: reject`、以下に指摘一覧。この記録は commit する (= defect 発生時に「どの verdict が通したか」を遡る監査証跡)
+2. **結果を `docs/bootstrap/sprint/reviews/<branch名の `/` を `_` に置換>.md` に書く**。必須行は `verdict: approve` または `verdict: reject`、以下に指摘一覧。この記録は commit する (= defect 発生時に「どの verdict が通したか」を遡る監査証跡)
 3. **人間が読むのは: verdict / 指摘一覧 / diff のサンプル 1-2 割 / 統合境界だけ**。全 diff の目視はしない — それをやると lane を増やしても throughput が増えない
 4. `reject` なら worker lane に指摘を差し戻し、修正後に re-review。記録は上書きでなく verdict 行を更新する
 
@@ -46,7 +46,7 @@ scope を disjoint に切れていれば file conflict はほぼ出ない。出�
 
 ### Step 4: cohort / verification の最終確認
 
-各 task の `docs/verification/<branch>.md` が閉じている (OPEN 行ゼロ・理由なき DROP ゼロ) ことを確認する。`block-merge-if-verification-unclosed.sh` が lane branch の merge で fail-closed に要求するが、計画の設計と `HUMAN` 行の実施は `verification` skill (ADR 0007) で済ませておく — 統合フェーズで初めて書くものではない。さらに lane の delta が登記済みの cross-repo 契約 (`docs/verification/contracts`) の面を触っているなら、同 gate はその契約に対し `[contract:<id>]` タグつきの CLOSED plan 行 + consumer 側スイートの緑 (関所自身が実走) も要求する (ADR 0011) ので、これも閉じていることを確認する。統合後、production-affecting な変更があれば `project-bootstrap` SKILL の verification 4 罠を最終 gate として確認する。user-facing bug fix を含むなら同根 cohort audit も。
+各 task の `docs/bootstrap/verification/<branch>.md` が閉じている (OPEN 行ゼロ・理由なき DROP ゼロ) ことを確認する。`block-merge-if-verification-unclosed.sh` が lane branch の merge で fail-closed に要求するが、計画の設計と `HUMAN` 行の実施は `verification` skill (ADR 0007) で済ませておく — 統合フェーズで初めて書くものではない。さらに lane の delta が登記済みの cross-repo 契約 (`docs/bootstrap/verification/contracts`) の面を触っているなら、同 gate はその契約に対し `[contract:<id>]` タグつきの CLOSED plan 行 + consumer 側スイートの緑 (関所自身が実走) も要求する (ADR 0011) ので、これも閉じていることを確認する。統合後、production-affecting な変更があれば `project-bootstrap` SKILL の verification 4 罠を最終 gate として確認する。user-facing bug fix を含むなら同根 cohort audit も。
 
 ### Step 5: claim を閉じ、worktree を撤去
 
@@ -59,7 +59,7 @@ git branch -d feat/<id>-<topic>   # merge 済を確認してから
 
 > ⚠️ **`git mv` は index の既存 blob を rename して運ぶ**。`status` を `done` に編集した board を**未 stage のまま `git mv`** すると編集が落ち、archive に `status: todo` のまま commit される (実バグ: 2026-06-25 の 2 sprint で連続発生)。回避: **編集後に `git add board.json` で stage してから `git mv`** する (または先に archive へ `git mv` し、archived 側を `done` に編集して `git add`)。同じ罠は reviews / verification plan を status 編集してから mv する経路にも効く — 「編集 → stage → 移動」の順を崩さない。
 
-board の全 task が done になったら sprint 終了。**board.json と `reviews/` を必ず `docs/sprint/archive/` へ移す** (board は `archive/<sprint>.json`、レビュー記録は `archive/<sprint>-reviews/`) (= sprint 終了の定義に board の終端処理を含める。残置は任意ではない)。**閉じた `docs/verification/<branch>.md` も同様に終端処理する** (`docs/verification/archive/` へ移す + 自動行の設計は永続テスト/CI に昇格、本番に逃げた行は incident→memory へ。ADR 0007 の lifecycle 責務 — verification plan も per-branch ephemeral で、所有者は integrate)。ephemeral state の残置は権威の分散そのもので、実際に完了済み board の残置が sprint 発火 gate を 2 週間無音バイパスさせた (`docs/incidents/2026-06-07-stale-board-gate-bypass`)。gate 側も信号を「board の存在」から「未完了 task の有無 (活性)」に直してあるが、archive は防御の二重化ではなく lifecycle の責務 — 次の sprint-plan が古い board と衝突しないための正本整理。
+board の全 task が done になったら sprint 終了。**board.json と `reviews/` を必ず `docs/bootstrap/sprint/archive/` へ移す** (board は `archive/<sprint>.json`、レビュー記録は `archive/<sprint>-reviews/`) (= sprint 終了の定義に board の終端処理を含める。残置は任意ではない)。**閉じた `docs/bootstrap/verification/<branch>.md` も同様に終端処理する** (`docs/bootstrap/verification/archive/` へ移す + 自動行の設計は永続テスト/CI に昇格、本番に逃げた行は incident→memory へ。ADR 0007 の lifecycle 責務 — verification plan も per-branch ephemeral で、所有者は integrate)。ephemeral state の残置は権威の分散そのもので、実際に完了済み board の残置が sprint 発火 gate を 2 週間無音バイパスさせた (`docs/bootstrap/incidents/2026-06-07-stale-board-gate-bypass`)。gate 側も信号を「board の存在」から「未完了 task の有無 (活性)」に直してあるが、archive は防御の二重化ではなく lifecycle の責務 — 次の sprint-plan が古い board と衝突しないための正本整理。
 
 ## やってはいけないこと
 

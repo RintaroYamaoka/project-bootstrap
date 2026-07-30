@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Shared judge for "is a single .gate entry LIVE EVIDENCE of a sprint-gate decision".
 #
-# Born from docs/incidents/2026-06-11-gate-broad-glob-permanent-fail-open: the sprint
+# Born from docs/bootstrap/incidents/2026-06-11-gate-broad-glob-permanent-fail-open: the sprint
 # gate used to honor a recorded .gate entry FOREVER and at ANY breadth. A `.gate` line
 # is a per-feature ephemeral judgment ("this scope was judged sequential"), but with no
 # expiry and no breadth bound, one `src/**` line recorded for one feature on 2026-06-02

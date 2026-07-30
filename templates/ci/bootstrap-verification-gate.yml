@@ -3,7 +3,7 @@
 #
 # なぜ必要か: hooks/block-merge-if-verification-unclosed.sh は Claude session の手元の
 # `git merge` しか見られない。GitHub の PR 画面で押す merge ボタンは手元の hook を一切
-# 通らない (review gate と同じ穴: docs/incidents/2026-06-11-parallel-mode-gate-coverage)。
+# 通らない (review gate と同じ穴: docs/bootstrap/incidents/2026-06-11-parallel-mode-gate-coverage)。
 # PR 側の関所は CI にしか置けない。
 #
 # 信号設計: GitHub 側では「この branch が並列 lane だったか」を判別できないため、**この file
@@ -12,7 +12,7 @@
 #
 # verification plan の format (hooks/lib/verification-plan.sh と同一。このチェックは consumer
 # repo が plugin lib を vendoring していなくても動くよう self-contained):
-#   docs/verification/<head branch の / を _ に置換>.md、行指向。
+#   docs/bootstrap/verification/<head branch の / を _ に置換>.md、行指向。
 #   data 行 = 非空・非 `#`・`|` 区切りで先頭が STATUS:
 #       STATUS | kind | behaviour | oracle | by | evidence/note
 #   STATUS: TODO/FAIL/HUMAN = OPEN、PASS = CLOSED、DROP = CLOSED (理由=6 列目 必須)。
@@ -34,7 +34,7 @@ jobs:
           HEAD_REF: ${{ github.head_ref }}
         run: |
           set -u
-          PLAN="docs/verification/$(printf '%s' "$HEAD_REF" | tr '/' '_').md"
+          PLAN="docs/bootstrap/verification/$(printf '%s' "$HEAD_REF" | tr '/' '_').md"
 
           if [ ! -s "$PLAN" ]; then
             echo "::error::統合 (PR merge) の前提条件: 動作テスト計画 $PLAN が無い。意図と跨いだ境界から検証すべき挙動を導き (実装からでなく)、各行に外部オラクルを与えて記録すること (verification skill / ADR 0007)。"

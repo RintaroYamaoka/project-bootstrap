@@ -1,4 +1,4 @@
-# docs/sprint/
+# docs/bootstrap/sprint/
 
 並列開発 (sprint) の **唯一の真実 (board)**。`sprint-plan` skill が生成し、`integrate` skill が消費する。
 
@@ -31,26 +31,26 @@ tests/hooks/require-test-companion.test.bash
 
 ## .gate — sprint 発火判定の記録
 
-`docs/sprint/` を置いた時点で `block-unplanned-feature-build.sh` hook が有効になり、**新規 source file を作ろうとした瞬間**に「sprint 発火判定を済ませたか」を fail-closed で要求する (= advisory な語彙 reminder の穴を根治)。判定の記録は `docs/sprint/.gate` に置く:
+`docs/bootstrap/sprint/` を置いた時点で `block-unplanned-feature-build.sh` hook が有効になり、**新規 source file を作ろうとした瞬間**に「sprint 発火判定を済ませたか」を fail-closed で要求する (= advisory な語彙 reminder の穴を根治)。判定の記録は `docs/bootstrap/sprint/.gate` に置く:
 
 ```
-# docs/sprint/.gate  (各行: <scope glob>  <YYYY-MM-DD>  <理由>)
+# docs/bootstrap/sprint/.gate  (各行: <scope glob>  <YYYY-MM-DD>  <理由>)
 src/auth/**   2026-06-11   sequential: 単一画面の責務、disjoint >=2 leaf に割れない
 ```
 
 - 並列にすると決めたら `board.json` を作れば gate は通る (lane hook が scope を握る)
-- 逐次にすると決めたら、その scope・**今日の日付**・理由を上記 1 行で記録する: `printf '%s\n' "src/<area>/<feature>/**  $(date +%F)  sequential: <理由>" >> docs/sprint/.gate`
-- entry は時間と空間で bound される (= 1 entry が判定として有効なのは **記録から 3 日以内** かつ **feature-scoped な glob** — exact path か wildcard 前に 2 階層以上の prefix を持つ glob — のときだけ)。`src/**` のような全域 glob・日付なし旧形式・失効 entry は無効。1 行の広域 glob が gate を恒久 fail-open にした実事故から (`docs/incidents/2026-06-11-gate-broad-glob-permanent-fail-open`)
+- 逐次にすると決めたら、その scope・**今日の日付**・理由を上記 1 行で記録する: `printf '%s\n' "src/<area>/<feature>/**  $(date +%F)  sequential: <理由>" >> docs/bootstrap/sprint/.gate`
+- entry は時間と空間で bound される (= 1 entry が判定として有効なのは **記録から 3 日以内** かつ **feature-scoped な glob** — exact path か wildcard 前に 2 階層以上の prefix を持つ glob — のときだけ)。`src/**` のような全域 glob・日付なし旧形式・失効 entry は無効。1 行の広域 glob が gate を恒久 fail-open にした実事故から (`docs/bootstrap/incidents/2026-06-11-gate-broad-glob-permanent-fail-open`)
 - 失効したら同じ行を日付だけ更新して再記録する (= その再記録が「まだ同一 feature 面か」の再判定)。失効行の削除は不要 (無視されるだけ)
 - 記録 scope 外の新規 source を作ると再 block (= 新しい disjoint 面 → 再判定)
 - `.gate` は ephemeral。**`.gitignore` に追加する** (= commit しない)
 
 ## reviews/ — AI レビューの verdict 記録
 
-merge の前に read-only の adversarial AI レビューを回し (integrate skill Step 2)、結果を `docs/sprint/reviews/<branch の / を _ に置換>.md` に書く。必須行は `verdict: approve` または `verdict: reject`、以下に指摘一覧。
+merge の前に read-only の adversarial AI レビューを回し (integrate skill Step 2)、結果を `docs/bootstrap/sprint/reviews/<branch の / を _ に置換>.md` に書く。必須行は `verdict: approve` または `verdict: reject`、以下に指摘一覧。
 
 ```
-# docs/sprint/reviews/feat_T1-auth.md
+# docs/bootstrap/sprint/reviews/feat_T1-auth.md
 verdict: approve
 - 指摘: token 失効パスのテストが境界値 (exp ちょうど) を見ていない → worker が追加済み
 - サンプル監査: 該当 diff の 15% を人間が確認、逸脱なし

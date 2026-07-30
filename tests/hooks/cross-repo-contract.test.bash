@@ -41,8 +41,16 @@ assert_eq "src/schemas/demoSiteSurvey.*" "$(crc_field 'demo-survey-schema | src/
 test_case "field 3 (peer_repo) is extracted and trimmed"
 assert_eq "demo-site" "$(crc_field 'demo-survey-schema | src/schemas/demoSiteSurvey.* | demo-site | x | y' 3)"
 
-test_case "crc_contracts_file maps dir to docs/verification/contracts"
-assert_eq "/tmp/r/docs/verification/contracts" "$(crc_contracts_file /tmp/r)"
+# The directory half is resolved through resolve-docs.sh (ADR 0020): neither layout
+# on disk => the new canonical docs/bootstrap/verification.
+test_case "crc_contracts_file maps an un-adopted dir to the new canonical path"
+assert_eq "/tmp/r/docs/bootstrap/verification/contracts" "$(crc_contracts_file /tmp/r)"
+CRC_LEGACY="$(mktemp -d)"; mkdir -p "$CRC_LEGACY/docs/verification"
+test_case "crc_contracts_file still finds a legacy repo's declaration"
+assert_eq "$CRC_LEGACY/docs/verification/contracts" "$(crc_contracts_file "$CRC_LEGACY")"
+CRC_NEW="$(mktemp -d)"; mkdir -p "$CRC_NEW/docs/bootstrap/verification"
+test_case "crc_contracts_file follows the new layout once migrated"
+assert_eq "$CRC_NEW/docs/bootstrap/verification/contracts" "$(crc_contracts_file "$CRC_NEW")"
 
 # crc_glob_matches <path> <glob> — repo-relative path vs declared glob.
 test_case "glob match: extension wildcard hits a concrete file"

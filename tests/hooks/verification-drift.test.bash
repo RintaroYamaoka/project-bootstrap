@@ -206,4 +206,38 @@ verification_drift_report "$R" >/dev/null 2>&1
 test_case "verification_drift_report returns 0 even when the held-out advisory fires"
 assert_eq 0 "$?"
 
+
+# ---------------------------------------------------------------------------
+# New layout: docs/bootstrap/<name> (ADR 0020).
+# Every fixture above builds the LEGACY docs/<name> layout, so on its own it only
+# proves backward compatibility. These cases prove the gate actually arms under the
+# new parent-folder layout — without them a mis-wired resolver would leave the gate
+# silently fail-open (this plugin's worst fail-mode) with the whole suite still green.
+# ---------------------------------------------------------------------------
+
+adopt_new() { mkdir -p "$1/docs/bootstrap/verification"; }
+
+R="$(mkrepo)"; adopt_new "$R"
+printf 'export const x = 1\n' > "$R/app.ts"
+OUT="$(verification_drift_report "$R")"
+test_case "new layout: adopted + uncommitted source + no plan speaks"
+if spoke "$OUT"; then assert_eq spoke spoke; else assert_eq spoke silent; fi
+test_case "new layout: the advisory names the path that actually exists"
+case "$OUT" in *"docs/bootstrap/verification/main.md"*) assert_eq ok ok ;; *) assert_eq ok FAIL ;; esac
+
+R="$(mkrepo)"; adopt_new "$R"
+printf 'export const x = 1\n' > "$R/app.ts"
+printf 'DROP | unit | trivial | n/a | ai | low risk, internal\n' > "$R/docs/bootstrap/verification/main.md"
+test_case "new layout: a recorded judgment is silent"
+assert_eq "" "$(verification_drift_report "$R")"
+
+# Half-migrated: the new directory wins, so a plan left at the legacy path must not
+# silence the advisory (otherwise the drift signal dies quietly on migration).
+R="$(mkrepo)"; adopt_new "$R"; mkdir -p "$R/docs/verification"
+printf 'export const x = 1\n' > "$R/app.ts"
+printf 'DROP | unit | trivial | n/a | ai | low risk\n' > "$R/docs/verification/main.md"
+OUT="$(verification_drift_report "$R")"
+test_case "half-migrated: a legacy-path plan does not silence the advisory"
+if spoke "$OUT"; then assert_eq spoke spoke; else assert_eq spoke silent; fi
+
 finish

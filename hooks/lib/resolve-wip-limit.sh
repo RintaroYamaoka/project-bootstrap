@@ -5,7 +5,7 @@
 # and block-unplanned-feature-build.sh (plus 4 docs). A project that raises its
 # lane count for an experiment had no single declaration the hooks would follow —
 # and board.json cannot be that source: it is per-sprint EPHEMERAL state whose
-# wip_limit may be a sprint-specific deviation (see docs/sprint/board.json's
+# wip_limit may be a sprint-specific deviation (see docs/bootstrap/sprint/board.json's
 # _wip_note) and goes stale when the sprint ends.
 #
 # The wip marker (`.bootstrap/wip` new / `.bootstrap-wip` legacy) at the repo root

@@ -7,20 +7,20 @@
 # レビュー (integrate skill Step 2) に移し、人間は verdict + 指摘 + サンプル + 統合境界だけを
 # 読む。だが「レビューを済ませた」を advisory にすると忘れられる — 本 hook は TDD hook が
 # test の存在を強制するのと同型に、**統合行為 (= 並列 lane の branch の git merge)** を信号
-# として、レビュー記録 (docs/sprint/reviews/<branch>.md, `/`→`_`) の存在と verdict を
+# として、レビュー記録 (docs/bootstrap/sprint/reviews/<branch>.md, `/`→`_`) の存在と verdict を
 # precondition 化する。「良いレビュー」は強制できないが「レビューの存在と結論」は強制できる。
 #
 # 「並列 lane の branch」は 2 つの集合の和 (ADR 0004):
 #   (a) 活性 board の task branch (= sprint flow の正式 lane)
 #   (b) この repo の linked worktree に checkout されている branch (= Workflow サブエージェント
 #       の隔離 worktree / 手動 worktree 並走)。実際の並列開発は board を作らない形でも起きており
-#       (docs/incidents/2026-06-11-parallel-mode-gate-coverage)、関所が「どの方式で作ったか」に
+#       (docs/bootstrap/incidents/2026-06-11-parallel-mode-gate-coverage)、関所が「どの方式で作ったか」に
 #       依存すると方式の選択 (= モデルの気分) で gate が無音になる。worktree という物理的痕跡を
 #       信号にすれば、どの方式でも統合の入口で必ず捕まる。
 #
 # fail-mode (memory feedback_gate_signal_and_failmode 準拠):
 #   - コマンド解析不能 = fail-closed (parse-command の契約。bypass 防止)
-#   - 根拠不在 = fail-open: 非 merge コマンド / 非 git / docs/sprint 未採用 (= opt-in、他 gate
+#   - 根拠不在 = fail-open: 非 merge コマンド / 非 git / docs/bootstrap/sprint 未採用 (= opt-in、他 gate
 #     と同じ採用宣言) / merge 対象が (a)(b) のどちらでもない (通常の merge を一切妨げない)。
 #     board の活性判定は lib/board-liveness.sh (存在ではなく活性 — 2026-06-07 incident)
 #   - verdict: reject の記録がある merge は**より強く** block (却下の踏み越えを許さない)
@@ -114,8 +114,12 @@ command -v git >/dev/null 2>&1 || exit 0
 TOP=$(git rev-parse --show-toplevel 2>/dev/null | tr '\\' '/' | tr -s '/')
 [ -z "$TOP" ] && exit 0
 
-# opt-in: sprint flow を採用した project (= docs/sprint/ が在る) でのみ発火。
-[ -d "$TOP/docs/sprint" ] || exit 0
+# opt-in: sprint flow を採用した project (= sprint ディレクトリが在る) でのみ発火。
+# `docs/bootstrap/sprint` (新) / `docs/sprint` (旧) どちらでも可 (ADR 0020)。
+# shellcheck source=lib/resolve-docs.sh
+. "$(dirname "$0")/lib/resolve-docs.sh"
+SPRINT_DIR="$(resolve_docs_dir "$TOP" sprint)"
+[ -d "$SPRINT_DIR" ] || exit 0
 
 # 並列 lane の branch 集合 (活性 board の task branch ∪ linked worktree の branch、ADR 0004)
 # は単一権威 lib/lane-set.sh で組み立てる (= verification gate と drift しない)。
@@ -194,7 +198,7 @@ EOF
     exit 2
   fi
 
-  REVIEW="$TOP/docs/sprint/reviews/$(printf '%s' "$BRANCH" | tr '/' '_').md"
+  REVIEW="$SPRINT_DIR/reviews/$(printf '%s' "$BRANCH" | tr '/' '_').md"
 
   if [ -s "$REVIEW" ] && grep -qiE '^[[:space:]]*verdict:[[:space:]]*approve' "$REVIEW"; then
     NEEDS_SUITE=1

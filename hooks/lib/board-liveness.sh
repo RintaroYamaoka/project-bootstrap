@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Shared judge for "is a sprint ACTIVE" — the liveness (not existence) of board.json.
 #
-# Born from docs/incidents/2026-06-07-stale-board-gate-bypass: the sprint gate used to
+# Born from docs/bootstrap/incidents/2026-06-07-stale-board-gate-bypass: the sprint gate used to
 # treat a NON-EMPTY board.json as "sprint in progress", but a board is per-sprint
 # ephemeral state with a terminal phase (all tasks done, not yet archived) where
 # existence and liveness diverge — a leftover done-board silently disarmed the gate

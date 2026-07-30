@@ -4,14 +4,14 @@
 # なぜ必要か: hooks/block-unreviewed-merge.sh は Claude session の手元の `git merge` しか
 # 見られない。GitHub の PR 画面で押す merge ボタンは手元の hook を一切通らず、実際に
 # 並列開発 10 branch が PR merge で統合された実績がある (consumer repo 2026-06-03、
-# docs/incidents/2026-06-11-parallel-mode-gate-coverage)。PR 側の関所は CI にしか置けない。
+# docs/bootstrap/incidents/2026-06-11-parallel-mode-gate-coverage)。PR 側の関所は CI にしか置けない。
 #
 # 信号設計: GitHub 側では「この branch が並列 lane だったか」(worktree の有無) を判別
 # できないため、**この file を置いた repo では「PR を作る = 統合行為」とみなし、全 PR に
 # レビュー記録を要求する** (= 語彙や命名規約の proxy に逃げない。導入自体が opt-in)。
 #
 # 前提:
-#   - レビュー記録は docs/sprint/reviews/<head branch の / を _ に置換>.md (integrate skill
+#   - レビュー記録は docs/bootstrap/sprint/reviews/<head branch の / を _ に置換>.md (integrate skill
 #     Step 2 と同じ規約)。branch 上で AI レビューを回し、verdict を commit してから PR を出す
 #   - 必須行: "verdict: approve" (pass) / "verdict: reject" (fail) / 記録なし (fail)
 #
@@ -33,7 +33,7 @@ jobs:
           HEAD_REF: ${{ github.head_ref }}
         run: |
           set -u
-          REVIEW="docs/sprint/reviews/$(printf '%s' "$HEAD_REF" | tr '/' '_').md"
+          REVIEW="docs/bootstrap/sprint/reviews/$(printf '%s' "$HEAD_REF" | tr '/' '_').md"
           if [ ! -s "$REVIEW" ]; then
             echo "::error::統合 (PR merge) の前提条件: AI レビュー記録 $REVIEW が無い。branch 上で adversarial レビューを回し、verdict を commit すること (integrate skill Step 2)。"
             exit 1

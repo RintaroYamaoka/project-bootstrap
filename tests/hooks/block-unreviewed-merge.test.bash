@@ -265,4 +265,58 @@ test_case "compound merge of two approved lanes passes"
 run_hook "$HOOK" "$(merge_input 'git merge feat/T1-auth && git merge feat/T2-api')"
 assert_exit 0
 
+
+# ---------------------------------------------------------------------------
+# New layout: docs/bootstrap/<name> (ADR 0020).
+# Every fixture above builds the LEGACY docs/<name> layout, so on its own it only
+# proves backward compatibility. These cases prove the gate actually arms under the
+# new parent-folder layout — without them a mis-wired resolver would leave the gate
+# silently fail-open (this plugin's worst fail-mode) with the whole suite still green.
+# ---------------------------------------------------------------------------
+
+active_board_new() {
+  mkdir -p "$REPO/docs/bootstrap/sprint"
+  printf '%s' '{"sprint":"s1","wip_limit":2,"tasks":[{"id":"T1","title":"x","branch":"feat/T1-auth","status":"in-review"}]}' > "$REPO/docs/bootstrap/sprint/board.json"
+}
+write_review_new() {
+  local b="$1"; shift
+  mkdir -p "$REPO/docs/bootstrap/sprint/reviews"
+  printf '%s\n' "$@" > "$REPO/docs/bootstrap/sprint/reviews/$(printf '%s' "$b" | tr '/' '_').md"
+}
+
+setup_repo
+active_board_new
+RUN_DIR="$REPO"
+test_case "new layout: task-branch merge without a review record is blocked"
+run_hook "$HOOK" "$(merge_input 'git merge feat/T1-auth')"
+assert_exit 2
+assert_stderr_contains 'reviews/'
+
+setup_repo
+active_board_new
+write_review_new feat/T1-auth 'verdict: approve' '- finding: none'
+RUN_DIR="$REPO"
+test_case "new layout: an approved review record lets the merge pass"
+run_hook "$HOOK" "$(merge_input 'git merge feat/T1-auth')"
+assert_exit 0
+
+setup_repo
+active_board_new
+write_review_new feat/T1-auth 'verdict: reject' '- finding: broken auth check'
+RUN_DIR="$REPO"
+test_case "new layout: a rejection still blocks"
+run_hook "$HOOK" "$(merge_input 'git merge feat/T1-auth')"
+assert_exit 2
+assert_stderr_contains 'reject'
+
+# Half-migrated: board in the new layout, review record left behind in the legacy one.
+# The new layout wins, so the stale legacy approval must NOT clear the gate.
+setup_repo
+active_board_new
+write_review feat/T1-auth 'verdict: approve' '- finding: none'
+RUN_DIR="$REPO"
+test_case "half-migrated: a legacy-path approval does not clear the new-layout gate"
+run_hook "$HOOK" "$(merge_input 'git merge feat/T1-auth')"
+assert_exit 2
+
 finish

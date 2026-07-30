@@ -9,7 +9,7 @@
 # 本 hook はそれを塞ぐ。
 #
 # 信号の精密さ (誤検知 > false negative — ADR 0004)。全条件が揃ったときだけ block:
-#   (a) docs/sprint 採用 (opt-in)
+#   (a) docs/bootstrap/sprint 採用 (opt-in)
 #   (b) main worktree に居る (lane worktree は block-out-of-lane が所有 → 譲る)
 #   (c) active な linked worktree lane が在る (= 並列 mutation が物理的に存在)
 #   (d) 統合操作中でない (MERGE_HEAD / rebase / cherry-pick / revert — lead の conflict 解決は通す)
@@ -36,7 +36,10 @@ TOP=$(git rev-parse --show-toplevel 2>/dev/null | tr '\\' '/' | tr -s '/')
 [ -z "$TOP" ] && exit 0
 
 # (a) opt-in: sprint flow を採用した project でのみ発火。
-[ -d "$TOP/docs/sprint" ] || exit 0
+# ディレクトリは `docs/bootstrap/sprint` (新) / `docs/sprint` (旧) どちらでも可 (ADR 0020)。
+# shellcheck source=lib/resolve-docs.sh
+. "$(dirname "$0")/lib/resolve-docs.sh"
+[ -d "$(resolve_docs_dir "$TOP" sprint)" ] || exit 0
 
 # (b) lane worktree (lane marker 在り) は block-out-of-lane-edit が所有 → 譲る。
 # marker は `.bootstrap/lane` (新) / `.bootstrap-lane` (旧) どちらでも可。
@@ -71,9 +74,9 @@ case "$FILE_NORM" in
 esac
 
 # sprint runtime state (board.json / reviews / .gate) の書き込みは決して止めない。
-case "$REL" in
-  docs/sprint/*|*/docs/sprint/*) exit 0 ;;
-esac
+# 判定は両レイアウトを見る (= 新レイアウトを作る最初の board.json 書き込み時点では
+# docs/bootstrap/sprint/ がまだ無い。ADR 0020)。
+docs_state_face "$REL" sprint && exit 0
 
 # (e) source 面のみ対象。docs/config/test/非 source は fail-open。判定は block-unplanned と
 #     共有エンジン (= 単一権威。drift 防止)。

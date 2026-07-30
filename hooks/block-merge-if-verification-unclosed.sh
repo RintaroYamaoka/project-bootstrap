@@ -16,7 +16,7 @@
 #
 # fail-mode (memory feedback_gate_signal_and_failmode 準拠):
 #   - コマンド解析不能 = fail-closed (parse-command の契約。bypass 防止)
-#   - 根拠不在 = fail-open: 非 merge / 非 git / docs/verification/ 未採用 (= opt-in) /
+#   - 根拠不在 = fail-open: 非 merge / 非 git / docs/bootstrap/verification/ 未採用 (= opt-in) /
 #     merge 対象が lane branch でない (通常の merge を一切妨げない)
 #   - 採用済みで lane branch を merge するのに計画が無い / 空 / 未解決行が残る = fail-closed
 #     (= 「計画を書かない」で gate を素通りさせない。強制したい判定を advisory に逃さない)
@@ -27,7 +27,7 @@
 #
 # ── cross-repo contract drift (D3・ADR 0011・fail-CLOSED 拡張) ───────────────────────
 # 既存 plan check の後に、もう 1 軸を見る: lane branch の OWN delta (= base..lane を OFFLINE で
-# 計算 — 後述) が docs/verification/contracts で宣言された local_face_glob に当たる契約 id ごとに、
+# 計算 — 後述) が docs/bootstrap/verification/contracts で宣言された local_face_glob に当たる契約 id ごとに、
 #   (1) その id を参照する CLOSED な plan 行 (PASS / 理由つき DROP) を要求し、無ければ block。
 #   (2) consumer 側の contract test を関所自身が実走し (detect-test-suite.sh + block-unreviewed-
 #       merge.sh と同じ「関所がスイートを回す」move)、red なら block。自動で回せない時は plan 行を
@@ -40,7 +40,7 @@
 # **consumer 側のみ**: 関所は sibling repo を読まない / diff しない (peer は人間の手掛かり)。
 #   sibling checkout が無いマシンでも誤発火しない。下流専用変更は本 repo に lane branch を生まない
 #   = 構造的に到達不能 (governing 側 no-op。「カバー」と無音で匂わせない)。
-# fail-OPEN (no-grounds): docs/verification 未採用 / contracts 不在・契約ゼロ / delta が宣言面に
+# fail-OPEN (no-grounds): docs/bootstrap/verification 未採用 / contracts 不在・契約ゼロ / delta が宣言面に
 #   当たらない / lane branch でない / sibling 未読。← 通常 merge も非対象 lane も決して妨げない。
 #
 # bypass: 例外的に必要なら /permissions で本 hook を一時 deny。
@@ -67,8 +67,12 @@ command -v git >/dev/null 2>&1 || exit 0
 TOP=$(git rev-parse --show-toplevel 2>/dev/null | tr '\\' '/' | tr -s '/')
 [ -z "$TOP" ] && exit 0
 
-# opt-in: verification flow を採用した project (= docs/verification/ が在る) でのみ発火。
-[ -d "$TOP/docs/verification" ] || exit 0
+# opt-in: verification flow を採用した project (= verification ディレクトリが在る) でのみ発火。
+# `docs/bootstrap/verification` (新) / `docs/verification` (旧) どちらでも可 (ADR 0020)。
+# shellcheck source=lib/resolve-docs.sh
+. "$(dirname "$0")/lib/resolve-docs.sh"
+VERIF_REL="$(resolve_docs_label "$TOP" verification)"
+[ -d "$(resolve_docs_dir "$TOP" verification)" ] || exit 0
 
 # 並列 lane の branch 集合 (review gate と同じ信号) は単一権威 lib/lane-set.sh で組み立てる
 # (活性 board の task branch ∪ linked worktree の branch、ADR 0004。board 不在なら (a) は空)。
@@ -101,7 +105,7 @@ while IFS= read -r BRANCH; do
 project-bootstrap: blocking merge of "$BRANCH" — no verification plan.
 
 並列 lane の branch を、動作テスト計画なしに統合しようとした。verification flow を採用した
-repo (docs/verification/) では、統合の precondition として計画が要る。対処 (verification skill):
+repo ($VERIF_REL/) では、統合の precondition として計画が要る。対処 (verification skill):
   1. 意図と「跨いだ境界」から検証すべき挙動を導く (実装からでなく — 実装追認テストを避ける)
   2. $PLAN に記録する。各行: STATUS | kind | behaviour | oracle | by | evidence
   3. 自動行を実行して PASS に、人間しか採点できない行は HUMAN にして実施・記録、テストしないと
@@ -168,7 +172,7 @@ EOF
     cat >&2 <<EOF
 project-bootstrap: blocking merge of "$BRANCH" — cross-repo contract "$CID" touched but not closed (D3, fail-closed).
 
-この lane は docs/verification/contracts で宣言された共有 face を変更しました (契約 id: $CID)
+この lane は $VERIF_REL/contracts で宣言された共有 face を変更しました (契約 id: $CID)
 が、$PLAN にその契約を CLOSED にした行がありません。宣言なき共有スキーマの片側変更は無音で割れます
 (sibling がフォーム項目を落としたのに zod 必須のまま → CV 全 reject、の同類 — ADR 0011)。対処:
   1. consumer-driven な contract テストを起こす (オラクル = 相手 repo の実出力)。verification skill

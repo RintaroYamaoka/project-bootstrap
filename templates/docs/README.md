@@ -2,21 +2,38 @@
 
 このプロジェクトの **AI 駆動開発の context 経済** を支える外部記憶。`CLAUDE.md` / `SKILL.md` / `memory/` で代替できないものだけを置く。
 
-## 採用する 3 ディレクトリ
+## レイアウト (ADR 0020)
+
+**このプラグインの作業面は `docs/bootstrap/` 配下に集約する**。プロジェクト自身の doc
+(要件・設計・用語集など) と、道具が回すための面を、名前で分ける:
 
 ```
 docs/
-├─ README.md       ← この文書 (= 歩き方)
-├─ handoffs/       並走 / 再開のための時系列スナップショット
-├─ decisions/      ADR (= なぜそう選んだか、永続記録)
-└─ incidents/      事故・調査記録 (= 再発防止教材、永続)
+├─ README.md              ← この文書 (= 歩き方)
+├─ decisions/             ADR (= なぜそう選んだか、永続記録) ※直下のまま
+└─ bootstrap/             ← project-bootstrap の作業面はここに閉じる
+   ├─ handoffs/           並走 / 再開のための時系列スナップショット
+   ├─ incidents/          事故・調査記録 (= 再発防止教材、永続)
+   ├─ sprint/             opt-in: sprint / 並列 lane 系 gate の on-switch
+   └─ verification/       opt-in: 統合前の動作テスト計画 (ADR 0007)
 ```
+
+`decisions/` だけ `docs/` 直下に残す — ADR は一般的な工学慣習であって、このプラグインの
+成果物ではない。他のツール (kanban-flow 等) も同じ場所に書くので、行き先を分けると 1 つの
+repo の決定記録が 2 系統に割れる。
+
+> **旧レイアウトからの移行**: 以前は 4 つとも `docs/` 直下に flat に置いていた。gate は
+> `docs/bootstrap/<name>` を優先しつつ旧 `docs/<name>` も読むので、**更新した瞬間に gate が
+> 落ちることはない** (ADR 0020)。移行は `git mv docs/{sprint,verification,handoffs,incidents}
+> docs/bootstrap/` を各自のタイミングで。旧読みは全 dogfood repo の移行完了後に撤去する。
+
+## 記録する 3 ディレクトリ
 
 | dir | 賞味期限 | 書く対象 | 書かない |
 |---|---|---|---|
-| `handoffs/` | 1-2 週間 | 並走 Claude / 別ターミナル / 翌日の自分 が cold restore するための状態スナップショット | 普遍ルール (= `SKILL.md`) / 既定仕様 (= `CLAUDE.md`) |
+| `bootstrap/handoffs/` | 1-2 週間 | 並走 Claude / 別ターミナル / 翌日の自分 が cold restore するための状態スナップショット | 普遍ルール (= `SKILL.md`) / 既定仕様 (= `CLAUDE.md`) |
 | `decisions/` | 永続 | 不可逆な選択の **理由** (= ADR Context / Decision / Consequences) | 機能の解説 (= コード本体) |
-| `incidents/` | 永続 | AI / 人間が踏んだ事故と再発防止策。memory `feedback_*` の昇格元 | 個人攻撃 / 業務固有の客先情報 |
+| `bootstrap/incidents/` | 永続 | AI / 人間が踏んだ事故と再発防止策。memory `feedback_*` の昇格元 | 個人攻撃 / 業務固有の客先情報 |
 
 ## opt-in の 2 ディレクトリ (= gate の on-switch)
 
@@ -24,8 +41,8 @@ docs/
 
 | dir | 有効になる gate | 規約 |
 |---|---|---|
-| `sprint/` | sprint 発火判定 gate + 並列 lane 系 hook | `templates/docs/sprint/README.md` (board.json / .gate / reviews/) |
-| `verification/` | 統合前に閉じた動作テスト計画を要求 (ADR 0007) | `docs/verification/<branch の / を _ に置換>.md`。**閉じた plan の `archive/` への移動は終端責務** (滞留させない) |
+| `bootstrap/sprint/` | sprint 発火判定 gate + 並列 lane 系 hook | `templates/docs/bootstrap/sprint/README.md` (board.json / .gate / reviews/) |
+| `bootstrap/verification/` | 統合前に閉じた動作テスト計画を要求 (ADR 0007) | `docs/bootstrap/verification/<branch の / を _ に置換>.md`。**閉じた plan の `archive/` への移動は終端責務** (滞留させない) |
 
 ## 採用しないディレクトリと理由
 
@@ -54,8 +71,8 @@ docs/
 
 `docs/` に書くのは:
 - **何を / なぜ決めたか** (= `decisions/`)
-- **次の Claude が cold restore に必要な状態** (= `handoffs/`)
-- **AI が踏んだ事故と教訓** (= `incidents/`)
+- **次の Claude が cold restore に必要な状態** (= `bootstrap/handoffs/`)
+- **AI が踏んだ事故と教訓** (= `bootstrap/incidents/`)
 
 これ以外は二重化禁止。
 

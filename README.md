@@ -67,8 +67,8 @@ scripts/setup-server-enforcement.sh           # 保護設定を適用 (下記「
 | `.bootstrap/lint` | commit 前の lint gate | 空ファイル (在るだけで有効) |
 | `.bootstrap/wip` | 並列 worker 数の上限 | 整数 1 行 (例 `4`) |
 | `.bootstrap/actions` | 本番操作の瞬間に出すプロジェクト固有メモ | `prod-deploy \| <memo-slug> \| <一行メモ>` |
-| `docs/sprint/` (ディレクトリ) | 並列開発フロー一式の有効化 | 採用マーカー |
-| `docs/verification/` (ディレクトリ) | 動作テスト計画の merge gate | 採用マーカー |
+| `docs/bootstrap/sprint/` (ディレクトリ) | 並列開発フロー一式の有効化 | 採用マーカー |
+| `docs/bootstrap/verification/` (ディレクトリ) | 動作テスト計画の merge gate | 採用マーカー |
 
 > **後方互換 (本 README で唯一の注記)**: マーカーの解決は単一権威 `hooks/lib/resolve-marker.sh` が担い、`.bootstrap/<name>` (新フォルダ) を優先し旧 flat path `.bootstrap-<name>` (repo root 直下) に fallback する。両方在れば新が勝つ。既存採用 repo は移行不要。本 README / skills 内の表記は新フォルダ形に統一してある。
 
@@ -76,7 +76,7 @@ scripts/setup-server-enforcement.sh           # 保護設定を適用 (下記「
 
 - **レビューを薄くする trust ladder**: 全 diff を人間が目視するのが本当の律速。AI が一次レビューして `approve/reject` を記録 → 人間は**verdict とサンプルだけ**読む。安全網は `scripts/velocity.sh` の defect率 — 跳ねたらレビューを 1 段濃く戻す、という客観データで運用する。
 - **本番操作メモの自動表示** (ADR 0010/0013/0014): 過去にハマった操作 (本番デプロイ・データ修復) を**打つ瞬間**に教訓が出る。「メモはあったのに事故った」を構造的に潰す。`prod-deploy` と `data-backfill` は arm 不要で普遍メモが出る。
-- **複数 repo にまたがる契約の保護** (ADR 0011): フロントとバックなど別 repo の共有スキーマを `docs/verification/contracts` に登記しておくと、片側を変えたとき相手側のテストを通すまで合流できない (無音で割れる事故を防ぐ)。
+- **複数 repo にまたがる契約の保護** (ADR 0011): フロントとバックなど別 repo の共有スキーマを `docs/bootstrap/verification/contracts` に登記しておくと、片側を変えたとき相手側のテストを通すまで合流できない (無音で割れる事故を防ぐ)。
 - **verification の `HUMAN` 行**: AI が確かめられない「これがユーザーの欲しかった物か」は人間に手渡される。あなたが実機で確認して `PASS/FAIL` を記録するまで統合が閉じない。
 - **AI の「ハードコード / テスト決め打ち」への備え** (ADR 0016): AI が生成コードで陥りがちな失敗は 2 種ある。① 能力限界の決め打ち (例に合わせた固定値・中身のない stub・secrets/env 埋め込み) と ② テストを通すためだけのごまかし (テスト入力を検知して期待値を返す・採点コードを書き換える)。②は「もっと厳しくレビュー」では消えない (AI が採点表を触れるのが原因) ので、`verification` skill は**判定に使うテストを実装者の手の届かない所に置く (held-out oracle)** ことと、**入力を少しずらすと決め打ちが壊れる metamorphic テスト**を緩和として教える。①の secrets/env は gitleaks 等を `.bootstrap/lint`+CI に足すのが定石 (独自スキャナは作らない)。
 - **サーバ側の恒久ガード** (ADR 0012): 手元の hook は GitHub の「Merge」ボタンを止められない。`scripts/setup-server-enforcement.sh` で branch protection + required check + merge queue を 1 コマンド設定すれば、Web からのマージや admin の素通りも塞げる (下記)。
@@ -115,7 +115,7 @@ scripts/setup-server-enforcement.sh --merge-queue   # (任意) 古いレーン�
 - **verification 最高レバレッジ**: production-affecting な変更は read-back / live assert で実体確認してから完了とする。silent failure / 既存リソース表記推測 / escape 多段 / pattern 拡張 cohort 副作用の 4 罠を `SKILL.md` で明示
 - **AI の癖を抑止**: 実装先行 / ハルシネーション / スコープ拡大 / 症状隠蔽 / 既存パターン無視 / 抽象用語に逃げる / 不在を grep 断定 / ルール過剰一般化 / 共有環境独占 の 9 癖を `SKILL.md` で明示
 - **bug fix 完遂責任**: user-facing bug の fix は同 PR で同根 cohort audit を要求 (= 報告 N 件の裏で silent dropout が桁違いに居る前提)
-- **external memory として docs/ 整備**: `docs/handoffs/` (cold restore) / `docs/decisions/` (ADR) / `docs/incidents/` (事故記録 + memory 昇格) の 3 dir に絞る。`current/` `exploring/` `reference/` `ops/` `archive/` は採用しない (= CLAUDE.md / コード / memory で代替できるか graveyard 化する)。`skills/handoff/` `skills/incident/` が AI の default 経路で書く
+- **external memory として docs/ 整備**: `docs/bootstrap/handoffs/` (cold restore) / `docs/decisions/` (ADR) / `docs/bootstrap/incidents/` (事故記録 + memory 昇格) の 3 dir に絞る。`current/` `exploring/` `reference/` `ops/` `archive/` は採用しない (= CLAUDE.md / コード / memory で代替できるか graveyard 化する)。`skills/handoff/` `skills/incident/` が AI の default 経路で書く
 
 ## 提供物
 
@@ -127,11 +127,11 @@ scripts/setup-server-enforcement.sh --merge-queue   # (任意) 古いレーン�
 |---|---|
 | `skills/project-bootstrap/SKILL.md` | 規律本体 — 強制の技芸 4 判断 / verification 4 罠 / AI 癖 9 / TDD / 並列 3 形態と統合関所 / 依存方向強制 / docs 整備 / cohort audit。常時ロード |
 | `skills/plan/SKILL.md` | `/plan` — 探索 → 計画 → 提示。実装前に計画書を出して停止 |
-| `skills/handoff/SKILL.md` | `/handoff` — cold restore 用スナップショットを `docs/handoffs/` に残す |
-| `skills/incident/SKILL.md` | `/incident` — 事故を `docs/incidents/` に記録し memory `feedback_*`/`reference_*` へ昇格 |
+| `skills/handoff/SKILL.md` | `/handoff` — cold restore 用スナップショットを `docs/bootstrap/handoffs/` に残す |
+| `skills/incident/SKILL.md` | `/incident` — 事故を `docs/bootstrap/incidents/` に記録し memory `feedback_*`/`reference_*` へ昇格 |
 | `skills/sprint-plan/SKILL.md` | `/sprint-plan` — feature を scope 非重複 task に分解し worktree + lane を用意。発火条件 (disjoint leaf ≥ 2 等) を満たすと明示呼び出しを待たず自動起動。並列判定・wip_limit の権威 |
 | `skills/integrate/SKILL.md` | `/integrate` — 並列 branch を依存順 merge + 統合 verify + claim close + 終端処理 (board/plan の archive) |
-| `skills/verification/SKILL.md` | `/verification` — 動作テストを意図と跨いだ境界から設計し、外部オラクル + `HUMAN` 行で `docs/verification/<branch>.md` に記録・クローズ (ADR 0007)。継ぎ目 7 種 (緑の嘘 / オラクル捕獲 = held-out oracle + metamorphic、ADR 0016 含む) の権威 |
+| `skills/verification/SKILL.md` | `/verification` — 動作テストを意図と跨いだ境界から設計し、外部オラクル + `HUMAN` 行で `docs/bootstrap/verification/<branch>.md` に記録・クローズ (ADR 0007)。継ぎ目 7 種 (緑の嘘 / オラクル捕獲 = held-out oracle + metamorphic、ADR 0016 含む) の権威 |
 
 ### ADR (不可逆判断の記録、`docs/decisions/`)
 
@@ -145,7 +145,7 @@ scripts/setup-server-enforcement.sh --merge-queue   # (任意) 古いレーン�
 | `0008-claude-code-new-primitive-adoption.md` | 新 primitive 採用方針 — `/deep-research` 編入 / cohort-audit prompt hook は opt-in pilot (default 19 hook 外、当時) / exec-form・saved workflow 却下 |
 | `0009-stale-trunk-push-freshness-gate.md` | stale checkout からの trunk push を freshness gate (fetch + behind > 0) で block |
 | `0010-inject-memory-at-repeat-prone-action.md` | 再発しやすい ACTION の瞬間に記録済み memo を注入 (block しない・CLOSED action-key enum) |
-| `0011-cross-repo-contract-drift-gate.md` | cross-repo 契約を `docs/verification/contracts` に登記し、触れた lane に CLOSED plan 行 + consumer スイート緑を要求 |
+| `0011-cross-repo-contract-drift-gate.md` | cross-repo 契約を `docs/bootstrap/verification/contracts` に登記し、触れた lane に CLOSED plan 行 + consumer スイート緑を要求 |
 | `0012-server-side-enforcement-durable-layer.md` | enforcement をローカル hook (速い feedback) + サーバ側 (required check / `enforce_admins=true` / merge queue) に二層化 |
 | `0013-surface-repair-vs-spec-intent-at-data-write.md` | data 修復の瞬間に「修復か仕様か」を表面化 (`data-backfill` は arm 不要の普遍 floor) |
 | `0014-surface-completion-verification-at-prod-deploy.md` | 本番デプロイの瞬間に完了照合 (逐語照合 / 再解釈はモック確認) を表面化 (`prod-deploy` floor) |
@@ -159,7 +159,7 @@ scripts/setup-server-enforcement.sh --merge-queue   # (任意) 古いレーン�
 | `hooks/block-merge-if-verification-unclosed.sh` + `hooks/lib/verification-plan.sh` | lane merge に plan の存在・OPEN 行ゼロ・理由なき DROP ゼロを fail-closed 要求 (ADR 0007)。format 権威は lib に集約。ローカルは速い feedback 層 — 恒久は CI twin (ADR 0012) |
 | `hooks/lib/verification-ci-check.sh` | 上記のサーバ側 (CI) twin。required status check `verification-closed` として全マージ経路 (Merge ボタン含む) を覆う |
 | `hooks/bootstrap-session-doctor.sh` + `scripts/doctor.sh` + `hooks/lib/repo-drift.sh` + `hooks/lib/verification-drift.sh` | SessionStart で 3 軸を可視化 — 採用状態 audit (ADR 0003) / repo drift (stale checkout・merge 済み残置 worktree) / 未判断 trunk 変更 (逐次経路、ADR 0007 委任。source 面判定は `lib/source-face.sh` を再利用)。強制でなく可視化 |
-| `hooks/block-unplanned-feature-build.sh` | 新規 source file 作成を信号に、sprint 判定記録 (`docs/sprint/.gate` or 活性 board) を fail-closed 要求 |
+| `hooks/block-unplanned-feature-build.sh` | 新規 source file 作成を信号に、sprint 判定記録 (`docs/bootstrap/sprint/.gate` or 活性 board) を fail-closed 要求 |
 | `hooks/sprint-trigger-reminder.sh` | feature っぽい prompt への早期ヒント (強制本体は上記 gate) |
 | `hooks/block-unreviewed-merge.sh` | lane branch の merge にレビュー記録 `verdict: approve` + 検出スイートの実走を要求。PR 経路は `templates/ci/bootstrap-review-gate.yml` が CI で同等要求 |
 | `hooks/lib/gate-entry.sh` | `.gate` entry の活性判定 (TTL 3 日 / feature-scoped glob のみ有効) |
@@ -184,7 +184,7 @@ scripts/setup-server-enforcement.sh --merge-queue   # (任意) 古いレーン�
 | `templates/CLAUDE.md` | 新規プロジェクト用 CLAUDE.md 雛形 (prune 済) |
 | `templates/.bootstrap/` | opt-in マーカー雛形一式 (arch / protected / lint / wip / actions.example)。フォルダごとコピーして不要分を消す |
 | `templates/docs/` | 採用 dir (handoffs / decisions / incidents / sprint) の README + TEMPLATE 一式 |
-| `templates/docs/verification/contracts.example` | cross-repo 契約宣言の雛形 (ADR 0011)。1 行 = `id \| local_face_glob \| peer_repo \| peer_face \| note` |
+| `templates/docs/bootstrap/verification/contracts.example` | cross-repo 契約宣言の雛形 (ADR 0011)。1 行 = `id \| local_face_glob \| peer_repo \| peer_face \| note` |
 | `templates/github/workflows/verification-gate.yml` | サーバ側 verification gate の配布雛形 (ADR 0012)。plugin を pin ref で checkout し `verification-ci-check.sh` を実行 |
 | `templates/github/workflows/secret-scan.yml` | gitleaks secret-scan の配布雛形 (ADR 0016 Class A の静的半分。独自 matcher は持たない) |
 | `templates/github/ruleset.json` | repository ruleset 雛形 — `bypass_actors: []` + required check + merge queue (ADR 0012) |
@@ -223,8 +223,8 @@ cp -r /path/to/project-bootstrap/templates/docs /path/to/your-project/docs
 - commit 前に hook B が test 実行
 - bulk-stage / destructive git op / cross-session WIP 混入を hook C-E が blocking
 - `project-bootstrap` / `plan` / `handoff` / `incident` skill が必要に応じて参照される
-- session 終了前 / `/clear` 前は `handoff` skill が `docs/handoffs/` に状態を残す
-- 事故 / fix / revert / user 叱責の後は `incident` skill が `docs/incidents/` + memory に教訓を残す
+- session 終了前 / `/clear` 前は `handoff` skill が `docs/bootstrap/handoffs/` に状態を残す
+- 事故 / fix / revert / user 叱責の後は `incident` skill が `docs/bootstrap/incidents/` + memory に教訓を残す
 
 ## バージョン / 保守
 

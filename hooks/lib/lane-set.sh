@@ -9,7 +9,7 @@
 # lib/board-liveness.sh (ADR 0005 guard 1).
 #
 # The lane set is the union of two sources (ADR 0004):
-#   (a) task branches of an ACTIVE board (docs/sprint/board.json) — liveness, not
+#   (a) task branches of an ACTIVE board (docs/bootstrap/sprint/board.json) — liveness, not
 #       existence, judged by lib/board-liveness.sh (a leftover all-done board must not
 #       arm the gates: 2026-06-07 incident).
 #   (b) branches checked out in LINKED worktrees — the physical trace of parallel
@@ -22,6 +22,9 @@
 # Single authority on board liveness (resolved relative to this lib).
 # shellcheck source=board-liveness.sh
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/board-liveness.sh"
+# Single authority on where the sprint directory lives (new docs/bootstrap/ vs legacy docs/).
+# shellcheck source=resolve-docs.sh
+. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/resolve-docs.sh"
 
 # lane_branches <top> — print the lane-branch union, one per line (may include empty
 # lines; lane_set_contains ignores them). Absent board / no linked worktrees simply
@@ -29,7 +32,7 @@
 # treat it as no-grounds -> fail-open).
 lane_branches() {
   local top="$1" board branches="" wt=""
-  board="$top/docs/sprint/board.json"
+  board="$(resolve_docs_dir "$top" sprint)/board.json"
   if board_has_active_tasks "$board"; then
     branches=$(grep -oE '"branch"[[:space:]]*:[[:space:]]*"[^"]*"' "$board" | sed 's/.*"branch"[[:space:]]*:[[:space:]]*"//; s/"$//')
   fi
