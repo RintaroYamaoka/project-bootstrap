@@ -1,6 +1,6 @@
-# docs/verification/contracts — cross-repo contract declaration (project-bootstrap, ADR 0011)
+# docs/bootstrap/verification/contracts — cross-repo contract declaration (project-bootstrap, ADR 0011)
 #
-# このファイルを各「参加 repo」の docs/verification/contracts に置く (commit する)。宣言なき
+# このファイルを各「参加 repo」の docs/bootstrap/verification/contracts に置く (commit する)。宣言なき
 # 共有スキーマは無音で割れる: sibling repo がフォームから 1 項目落としたのに、こちら repo の
 # zod は必須のままで CV が全 reject された (mood incident の同類) — どこ repo と何を共有して
 # いるかが「どこにも書かれていない」ことが事故の温床だった。この宣言が、その継ぎ目を
@@ -32,7 +32,7 @@
 #   (緑) が無いと merge を block する (fail-CLOSED)。オラクルが自動で回せない場合は plan 行を
 #   STATUS=HUMAN にして人間が PASS+証拠を記録するまで OPEN のまま (free-text PASS では閉じない)。
 #
-# fail-OPEN (無音・通常 merge を妨げない): 非 merge / 非 git / docs/verification 未採用 /
+# fail-OPEN (無音・通常 merge を妨げない): 非 merge / 非 git / docs/bootstrap/verification 未採用 /
 #   このファイルが無い・契約ゼロ / delta が宣言面に当たらない / merge 先が lane branch でない /
 #   sibling 未読 (相手 diff は取らない)。下流専用変更はこちら repo に lane branch を生まない =
 #   構造的に到達不能 (= governing 側の no-op。「カバーしている」と無音で匂わせない)。

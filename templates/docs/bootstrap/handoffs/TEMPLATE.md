@@ -64,7 +64,7 @@
 ## 次セッションへの起動文 (= コピペ用)
 
 ```
-docs/handoffs/<YYYY-MM-DD>-<topic>.md を読んで状況把握してから、
+docs/bootstrap/handoffs/<YYYY-MM-DD>-<topic>.md を読んで状況把握してから、
 残課題の <識別子> から作業を続けて。
 ```
 
