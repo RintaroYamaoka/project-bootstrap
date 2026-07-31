@@ -52,6 +52,7 @@
 scripts/doctor.sh                 # この repo に bootstrap がちゃんと効いてるか点検 (CI でも使える)
 scripts/velocity.sh [repo ...]    # 週次の commit数・defect率を複数repo横断で集計 (レビューを薄くした後の"壊れてない"判定)
 scripts/arch-check.sh [file ...]  # 依存方向(レイヤ)違反を検査。Claude非依存なので pre-commit/CI で全員に効かせられる
+scripts/retired-check.sh <base>   # 引退した名前が追加行に混入していないか検査 (PR は origin/main...HEAD を渡す)
 scripts/setup-server-enforcement.sh --check   # GitHub側の保護設定を監査 (admin素通りの穴を検出)
 scripts/setup-server-enforcement.sh           # 保護設定を適用 (下記「サーバ側」参照)
 ```
@@ -67,6 +68,7 @@ scripts/setup-server-enforcement.sh           # 保護設定を適用 (下記「
 | `.bootstrap/lint` | commit 前の lint gate | 空ファイル (在るだけで有効) |
 | `.bootstrap/wip` | 並列 worker 数の上限 | 整数 1 行 (例 `4`) |
 | `.bootstrap/actions` | 本番操作の瞬間に出すプロジェクト固有メモ | `prod-deploy \| <memo-slug> \| <一行メモ>` |
+| `.bootstrap/retired` | 改名で引退した名前の混入を commit で blocking | `typeNo \| typeId \| <射程 glob> \| <note>` |
 | `docs/bootstrap/sprint/` (ディレクトリ) | 並列開発フロー一式の有効化 | 採用マーカー |
 | `docs/bootstrap/verification/` (ディレクトリ) | 動作テスト計画の merge gate | 採用マーカー |
 
@@ -105,6 +107,7 @@ scripts/setup-server-enforcement.sh --merge-queue   # (任意) 古いレーン�
 - **テスト先行**: 実装ファイルを編集する瞬間、対応する test ファイルが無ければ blocking (Red phase 強制)
 - **failing test での commit 禁止**: `git commit` 前に test 実行、fail なら blocking
 - **依存方向の強制 (architecture)**: project-local の `.bootstrap/arch` で宣言した layer 依存方向に反する import を blocking。edit 時に早期 block (`block-cross-layer-import.sh`)、commit 時に全 file を権威検証 (`block-arch-violations.sh`)。cross-layer は default-deny。SOLID を散文で recite するのではなく、依存辺を deterministic に強制する
+- **引退した名前の混入を止める (ADR 0021)**: 改名で引退した語を `.bootstrap/retired` に登記しておくと、**その commit が新しく足した行**に旧称が混ざったとき blocking する (`block-commit-if-retired-term.sh`)。改名は「改名した PR の自己申告」では原理的に漏れる — 改名の *後に* 書く人は、grep すべき語が在ることを知らないから (実例: `Intent.typeNo` 改名の 1h12m 後にマージされた別 PR が旧称を参照し続け、常に `undefined` のまま 3 日以上 UI が壊れた)。検査は追加行だけ (既存の残存で無関係な commit を止めない)。旧称を**説明するために**書いた行 (改名コメント・test fixture・旧 column を読む migration) は、その行に `bootstrap-retired-ok` と書けば 1 行だけ除外できる (marker を消す/パスごと外すより狭く、diff に残るのでレビューで見える)。蓄積した残存は SessionStart の doctor が件数で可視化する。CI net = `scripts/retired-check.sh`
 - **lint gate**: commit 前に project の linter (`npm run lint` / `ruff` / `clippy` / `rubocop` 等) を実行、fail なら blocking (`block-commit-if-lint-fails.sh`)。「綺麗さ」のうち linter が見る deterministic な層 (命名規約 / format / 複雑度) だけ gate し、taste (命名の質・設計のセンス) は review に委ねる
 - **並列 Claude 安全運用 + 並列開発フロー (sprint)**: 防御 (= 作業を消す/巻き込む経路の blocking) に加え、1 feature を複数 Claude で分業して組み戻す generative フロー
     - `git add -A` / `git commit -a` / `git stash` (path 指定なし) 等の bulk-staging を blocking
@@ -113,7 +116,7 @@ scripts/setup-server-enforcement.sh --merge-queue   # (任意) 古いレーン�
     - `.bootstrap/protected` で宣言した branch への直接 push を blocking (opt-in、feature branch + PR / integrate skill 経由に矯正)
     - `sprint-plan` で scope 非重複 task に分解 → worktree の lane (`.bootstrap/lane`) 範囲外の編集 / commit を blocking (ADR 0017) → `integrate` で依存順 merge + 統合 verify
 - **verification 最高レバレッジ**: production-affecting な変更は read-back / live assert で実体確認してから完了とする。silent failure / 既存リソース表記推測 / escape 多段 / pattern 拡張 cohort 副作用の 4 罠を `SKILL.md` で明示
-- **AI の癖を抑止**: 実装先行 / ハルシネーション / スコープ拡大 / 症状隠蔽 / 既存パターン無視 / 抽象用語に逃げる / 不在を grep 断定 / ルール過剰一般化 / 共有環境独占 の 9 癖を `SKILL.md` で明示
+- **AI の癖を抑止**: 実装先行 / ハルシネーション / スコープ拡大 / 症状隠蔽 / 既存パターン無視 / 抽象用語に逃げる / 不在を grep 断定 / ルール過剰一般化 / 共有環境独占 / 改名後も旧称で書く の 10 癖を `SKILL.md` で明示
 - **bug fix 完遂責任**: user-facing bug の fix は同 PR で同根 cohort audit を要求 (= 報告 N 件の裏で silent dropout が桁違いに居る前提)
 - **external memory として docs/ 整備**: `docs/bootstrap/handoffs/` (cold restore) / `docs/decisions/` (ADR) / `docs/bootstrap/incidents/` (事故記録 + memory 昇格) の 3 dir に絞る。`current/` `exploring/` `reference/` `ops/` `archive/` は採用しない (= CLAUDE.md / コード / memory で代替できるか graveyard 化する)。`skills/handoff/` `skills/incident/` が AI の default 経路で書く
 
@@ -150,12 +153,13 @@ scripts/setup-server-enforcement.sh --merge-queue   # (任意) 古いレーン�
 | `0013-surface-repair-vs-spec-intent-at-data-write.md` | data 修復の瞬間に「修復か仕様か」を表面化 (`data-backfill` は arm 不要の普遍 floor) |
 | `0014-surface-completion-verification-at-prod-deploy.md` | 本番デプロイの瞬間に完了照合 (逐語照合 / 再解釈はモック確認) を表面化 (`prod-deploy` floor) |
 | `0016-hardcode-two-classes-and-held-out-oracle.md` | ハードコード 2 クラス (能力限界 / テストゲーミング) と held-out oracle — 7 番目の seam。secrets は gitleaks を lint+CI へ |
+| `0021-retired-name-gate-at-commit-chokepoint.md` | 引退した名前の混入を「commit が足した行」で blocking し、蓄積した残存は doctor で可視化。重複検出は実例が出るまで作らない |
 
 ### hooks / lib (強制の実体)
 
 | 提供物 | 要約 |
 |---|---|
-| `hooks/hooks.json` | 20 hook を `plugin.json` 経由でデフォルト発火 — SessionStart doctor / test 先行 / commit 前 lint+test / destructive git op・bulk-stage・cross-session WIP / 保護 branch 直 push・stale push (ADR 0009) / lane 外の編集と commit (ADR 0017) / 未隔離 main tree 編集 (guard 2)・wip 超過 worktree (guard 3) / 依存方向 edit+commit / sprint 発火 gate + reminder / merge 関所 (review + verification) / inject-action-memory |
+| `hooks/hooks.json` | 21 hook を `plugin.json` 経由でデフォルト発火 — SessionStart doctor / test 先行 / commit 前 lint+test / destructive git op・bulk-stage・cross-session WIP / 保護 branch 直 push・stale push (ADR 0009) / lane 外の編集と commit (ADR 0017) / 未隔離 main tree 編集 (guard 2)・wip 超過 worktree (guard 3) / 依存方向 edit+commit / sprint 発火 gate + reminder / merge 関所 (review + verification) / 引退名の混入 (ADR 0021) / inject-action-memory |
 | `hooks/block-merge-if-verification-unclosed.sh` + `hooks/lib/verification-plan.sh` | lane merge に plan の存在・OPEN 行ゼロ・理由なき DROP ゼロを fail-closed 要求 (ADR 0007)。format 権威は lib に集約。ローカルは速い feedback 層 — 恒久は CI twin (ADR 0012) |
 | `hooks/lib/verification-ci-check.sh` | 上記のサーバ側 (CI) twin。required status check `verification-closed` として全マージ経路 (Merge ボタン含む) を覆う |
 | `hooks/bootstrap-session-doctor.sh` + `scripts/doctor.sh` + `hooks/lib/repo-drift.sh` + `hooks/lib/verification-drift.sh` | SessionStart で 3 軸を可視化 — 採用状態 audit (ADR 0003) / repo drift (stale checkout・merge 済み残置 worktree) / 未判断 trunk 変更 (逐次経路、ADR 0007 委任。source 面判定は `lib/source-face.sh` を再利用)。強制でなく可視化 |
@@ -171,6 +175,8 @@ scripts/setup-server-enforcement.sh --merge-queue   # (任意) 古いレーン�
 | `hooks/lib/resolve-wip-limit.sh` | `wip_limit` の共通 resolver (`.bootstrap/wip` > form-aware 既定、ADR 0006) |
 | `hooks/lib/action-gate.sh` | inject-action-memory の単一権威 — CLOSED action-key enum (`prod-deploy`/`prod-db-migrate`/`data-backfill`) + 普遍 floor memo (ADR 0010/0013/0014)。正規化は `merge-targets.sh` と共有 |
 | `hooks/lib/cross-repo-contract.sh` | cross-repo 契約宣言の単一権威 (ADR 0011) — lane の OWN delta を offline 計算し touched 契約 id を返す。consumer 側のみ |
+| `hooks/block-commit-if-retired-term.sh` + `hooks/lib/retired-terms.sh` | 引退した名前 (`.bootstrap/retired`) が **この commit の追加行**に混入したら blocking (ADR 0021)。判定エンジンは gate / CI net / doctor の 3 消費者で共有 |
+| `hooks/lib/commit-files.sh` | 「この commit が運ぶ file」と `-a` 判定 (`commit_stages_all`) の単一権威 — lane / lint / retired の 3 gate で共有 |
 | `hooks/lib/resolve-marker.sh` | opt-in マーカー解決の単一権威 (新フォルダ優先・旧 flat 後方互換、ADR 0015。上記「opt-in 設定ファイル」の注記参照) |
 | `tests/hooks/` | 全 hook の bash テスト (jq 非依存ハーネス)。`.github/workflows/test.yml` が self-CI |
 
@@ -180,15 +186,16 @@ scripts/setup-server-enforcement.sh --merge-queue   # (任意) 古いレーン�
 |---|---|
 | `scripts/velocity.sh` | 週次 throughput / defect rate の複数 repo 横断計測 — trust ladder の安全網 |
 | `scripts/arch-check.sh` | 依存方向検査 CLI (pre-commit / CI 用) |
+| `scripts/retired-check.sh` | 引退名検査 CLI (CI 用)。PR は三点差分 `origin/<base>...HEAD` を渡す — 二点だと base 側の改名をこの branch のせいにする |
 | `scripts/setup-server-enforcement.sh` | branch protection (required checks / `enforce_admins=true` / PR 必須・人間承認 0) の冪等設定 + `--check` 監査 + `--merge-queue` (ADR 0012) |
 | `templates/CLAUDE.md` | 新規プロジェクト用 CLAUDE.md 雛形 (prune 済) |
-| `templates/.bootstrap/` | opt-in マーカー雛形一式 (arch / protected / lint / wip / actions.example)。フォルダごとコピーして不要分を消す |
+| `templates/.bootstrap/` | opt-in マーカー雛形一式 (arch / protected / lint / wip / actions.example / retired.example)。フォルダごとコピーして不要分を消す |
 | `templates/docs/` | 採用 dir (handoffs / decisions / incidents / sprint) の README + TEMPLATE 一式 |
 | `templates/docs/bootstrap/verification/contracts.example` | cross-repo 契約宣言の雛形 (ADR 0011)。1 行 = `id \| local_face_glob \| peer_repo \| peer_face \| note` |
 | `templates/github/workflows/verification-gate.yml` | サーバ側 verification gate の配布雛形 (ADR 0012)。plugin を pin ref で checkout し `verification-ci-check.sh` を実行 |
 | `templates/github/workflows/secret-scan.yml` | gitleaks secret-scan の配布雛形 (ADR 0016 Class A の静的半分。独自 matcher は持たない) |
 | `templates/github/ruleset.json` | repository ruleset 雛形 — `bypass_actors: []` + required check + merge queue (ADR 0012) |
-| `templates/ci/bootstrap-doctor.yml` / `templates/ci/bootstrap-review-gate.yml` | plugin 非依存の team-wide CI net (採用 audit / PR レビュー gate) |
+| `templates/ci/bootstrap-doctor.yml` / `templates/ci/bootstrap-review-gate.yml` / `templates/ci/bootstrap-retired.yml` | plugin 非依存の team-wide CI net (採用 audit / PR レビュー gate / 引退名検査) |
 
 ## 使い方
 

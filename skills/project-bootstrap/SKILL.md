@@ -1,6 +1,6 @@
 ---
 name: project-bootstrap
-description: 上位1％の AI 駆動開発を個人の規律でなく構造として default 化する規律。純粋な強制は到達不能なので強制を4つの設計判断に作り替える = ① 分解 (precondition を fail-closed で強制・判断は逃さない) / ② 信号選び (行為を信号に・fail-mode を選ぶ) / ③ 配備の可視化 (効いていない強制を無音にしない) / ④ 計測つきの取引 (緩めるなら戻る根拠を metric で持つ)。Anthropic 公式 best practice (verification 最高レバレッジ / hooks deterministic / CLAUDE.md advisory) に整合する。verification 4 罠 / AI の癖 9 個 / TDD ループ / 根本修正 / 並列 Claude 安全運用 / subagent の mutation は隔離 worktree + 統合関所つきで可 (hook は subagent にも効く: 2026-06-11 実測検証、ADR 0004) / 環境隔離 / external memory として docs/ 整備 (handoffs / decisions / incidents)。新機能・バグ修正・リファクタ・調査など、あらゆるコーディング作業で常にロードする。
+description: 上位1％の AI 駆動開発を個人の規律でなく構造として default 化する規律。純粋な強制は到達不能なので強制を4つの設計判断に作り替える = ① 分解 (precondition を fail-closed で強制・判断は逃さない) / ② 信号選び (行為を信号に・fail-mode を選ぶ) / ③ 配備の可視化 (効いていない強制を無音にしない) / ④ 計測つきの取引 (緩めるなら戻る根拠を metric で持つ)。Anthropic 公式 best practice (verification 最高レバレッジ / hooks deterministic / CLAUDE.md advisory) に整合する。verification 4 罠 / AI の癖 10 個 (改名後も旧称で書く癖を含む) / TDD ループ / 根本修正 / 並列 Claude 安全運用 / subagent の mutation は隔離 worktree + 統合関所つきで可 (hook は subagent にも効く: 2026-06-11 実測検証、ADR 0004) / 環境隔離 / external memory として docs/ 整備 (handoffs / decisions / incidents)。新機能・バグ修正・リファクタ・調査など、あらゆるコーディング作業で常にロードする。
 ---
 
 # AI 駆動開発の規律
@@ -66,6 +66,7 @@ regex / filter / pattern / 集計範囲を拡張する fix は対象 cohort が�
 7. **「ない / 不可能」を grep の不一致で断定する** — app code に無い ≠ 不可能 (設定 / 資格情報 / 外部リソース経由の可能性が残る)。→ **不在主張の前に対象リソース自身への diagnostic を最低 1 回叩く**。外部の事実 (3rd-party の挙動 / API 仕様) なら diagnostic は **`/deep-research`** (read-only の breadth 腕、ADR 0005) — オラクルを AI の外に置く同じ原理
 8. **ルール / memory / fix を射程外まで過剰一般化する** — 禁則を本来除外すべき context まで適用する。→ **ルール記述には「射程: ~ のみ。~ は除外」を必ず添え、適用時に射程条件を 1 文で読み返す**
 9. **共有環境を独占資源として扱う** — 並走 session の WIP を `git add -A` / `git commit -a` / `git stash` で巻き込む、destructive git op で他人の commit / untracked を消す。→ **commit は個別 path 指定で add / destructive git op は user 明示承認なしに実行しない / 並走は `git worktree add` で物理隔離** (具体 op は下記 hook 一覧)
+10. **改名を知らずに古い名前で書き続ける / 既にある概念に 2 つ目の名前を作る** — 癖② (存在しない API の捏造) とも癖⑤ (既存パターン無視) とも別。**旧称は "存在した" ので記憶にも文脈にも残り、もっともらしく書けてしまう**。実データ: ai-reception で `Intent.typeNo` → `typeId` の改名 (#88) の **1 時間 12 分後**にマージされた別 PR が `i.typeNo` を参照し続け、型に無いので常に `undefined`、`undefined === null` は false、エラーも出ず 3 日以上 UI が壊れたまま生きた。→ **改名したら旧称を `.bootstrap/retired` に登記する** (下記「名前の乖離と重複」)。**新しい語 / 型 / フィールドを足す前に、同じ概念の既存定義を 1 回 grep する**。射程: 名前を変える・増やす作業のみ。既存名をそのまま使う編集には適用しない
 
 ## TDD は default 挙動
 
@@ -169,13 +170,40 @@ allow infra -> core
 
 `.bootstrap/arch` が無ければ fail-open (非アーキ project は影響なし)。雛形は `templates/.bootstrap/arch`。
 
-> **opt-in マーカーの所在 (ADR 0015)**: arch / protected / lint / wip / actions / lane は repo root の **`.bootstrap/` フォルダ配下**に集約 (「存在=有効・各 hook は自分のマーカーだけ読む」思想は不変。単一設定ファイル化は fail-mode SPOF ゆえ不採用)。解決は単一権威 `hooks/lib/resolve-marker.sh` が `.bootstrap/<name>` (新) > `.bootstrap-<name>` (旧 flat、repo root 直下) の順で行い後方互換を保つ。
+> **opt-in マーカーの所在 (ADR 0015)**: arch / protected / lint / wip / actions / retired / lane は repo root の **`.bootstrap/` フォルダ配下**に集約 (「存在=有効・各 hook は自分のマーカーだけ読む」思想は不変。単一設定ファイル化は fail-mode SPOF ゆえ不採用)。解決は単一権威 `hooks/lib/resolve-marker.sh` が `.bootstrap/<name>` (新) > `.bootstrap-<name>` (旧 flat、repo root 直下) の順で行い後方互換を保つ。
 
 ### 規律
 
 - **1 不可逆なアーキ判断 = 1 ADR** (`docs/decisions/`) + `.bootstrap/arch` の更新。契約変更は「意図的に」行う (hook が止めたから黙って allow 辺を足す、は症状隠蔽)
 - 内側の層の機能が要るのに依存方向が許さない → **port (interface) を内側に定義して依存を反転**。allow 辺を足して済ませない
 - 共有したい型/定数が cross-layer を誘発する → その型の置き場所 (どの layer の責務か) を問い直す
+
+## 名前の乖離と重複 (ADR 0021)
+
+依存方向 (arch) が **file 間の矢印**を守り、cross-repo 契約 gate (ADR 0011) が **repo をまたぐ形**を守るのに対し、ここが守るのは **repo の中の語**。癖⑩ の構造版で、①の分解をそのまま当てる:
+
+| | 何が問題か | 強制可能か | 機構 |
+|---|---|---|---|
+| **乖離** | 概念を改名したのに旧称が新しいコードに混入する | **できる** (旧称が登記されていれば) | `.bootstrap/retired` + commit 関所 + CI net |
+| **重複** | 同じ概念に 2 つ目の名前・定義を作る | **できない** (同一概念かの判断が既約) | 癖⑩ + CLAUDE.md のセルフチェックのみ |
+
+### 乖離 — 登記して commit で止める
+
+`.bootstrap/retired` に `<引退した名前> | <置換先> | <射程 glob> | <note>` を 1 行ずつ書く (雛形 `templates/.bootstrap/retired.example`)。`block-commit-if-retired-term.sh` が **この commit が新しく足した行だけ**を検査し、登記済みの語が混入していたら blocking する。CI net は `scripts/retired-check.sh` + `templates/ci/bootstrap-retired.yml` (ADR 0012 の二層化)。
+
+**なぜ改名者の自己申告では足りないか**: 改名を行う PR は改名後の全 file を知り得るが、改名の *後に* 書く人は**改名の存在を知らないので grep しようがない**。だから検査は改名者から独立した常時稼働の機構でなければならない。
+
+**なぜツリー全体でなく追加行か** (②の適用): ツリー全体を見ると、marker を置いた瞬間から残存を持つ file に触る全 commit が止まり、行為者の最短の逃げ道が「lane を出て一括改名」か「marker の行を消す」になる — **gate が自分の bypass を作る**。commit が答えるべきは自分が新しく持ち込んだ分だけ (ADR 0018 の「信号はツリーでなくこの commit」を名前に適用)。
+
+**なぜ edit 時 gate を作らないか**: 「その行が追加されたか」は PreToolUse では計算できない。`new_string` の旧称は無関係な書き換えに巻き込まれた既存分かもしれず、改名操作そのものは旧称を `old_string` 側に置く — edit 時 gate は**やらせたい改名を止めてしまう**。commit 関所なら sed / formatter / script 経由の書き込みも同時に捕まる (ADR 0017)。
+
+**逃げ道は行 1 本ぶんにする**: コード内のコメントと test fixture は検査対象なので、旧称を**説明するために**書く正当な行が止まる。その行に `bootstrap-retired-ok` と書けばその 1 行だけ除外できる。これを用意しないと、行為者の手段は「marker の行を消す」か「scope-glob でパスごと外す」になり、**問題より広い逃げ道が設定ファイルの中で不可視に起きる** (= 塞いだはずの「gate が自分の bypass を作る」形が別の入口から戻る)。コメント構文での除外は採らない — `//` で切ると文字列中の `"http://host/typeNo"` を無音で飲み込み、無音の検出漏れは最悪の fail-mode。
+
+**取り残される分は可視化する** (③の適用): 既に溜まっている残存は gate の射程外なので、SessionStart の doctor が語ごとの件数を advisory で出す (status は落とさない — 恒久的な nag は marker 削除の動機になる)。gate = 新しく持ち込んだ乖離 / doctor = 蓄積した乖離、の分業。
+
+### 重複 — 作らない判断を明示的に持つ
+
+同じ概念の 2 つ目の定義を機械検出する gate は**意図的に作っていない**。「この 2 つは同じ概念か」は既約な判断で、しかも**この機構が実在の問題を見つけた実例がまだ 1 件も無い**。実例のない検査を足すと「検査を回すこと」自体が目的化し、このプラグインが他所で否定している advisory bloat と同じ増殖を始める。**昇格条件**: 重複が実際に事故を起こした記録が 1 件出たら、そのとき機械化を検討する。それまでは癖⑩ と `templates/CLAUDE.md` のセルフチェック 2 行に留める。
 
 ## external memory として docs/ を整備
 
@@ -219,6 +247,7 @@ user-facing bug を fix したら**同根 cohort を必ず audit する**。問�
 5. これは根本修正か (症状対応の兆候はないか)
 6. 既存パターンに合わせているか
 7. user-facing bug なら **同根 cohort audit** を PR に含めているか
+7b. 名前を**変えた**なら旧称を `.bootstrap/retired` に登記したか / 名前を**足した**なら既存の定義を探したか
 8. 並走 session の作業を**巻き込んで**いないか (`git status --porcelain`)
 9. session を切る / `/clear` する / 並走するなら **handoff doc** を書いたか (`skills/handoff/`)
 10. ミス / 事故が起きたら **incident doc + memory 転記**したか (`skills/incident/`)

@@ -274,4 +274,112 @@ case "$DOCTOR_OUT" in
   *) echo "  ok   [$CURRENT_TEST] no legacy advisory" ;;
 esac
 
+
+# ---------------------------------------------------------------------------
+# retired-name registry (ADR 0021).
+# Three distinct jobs, and mixing them up is the failure mode:
+#   1. an armed marker counts as ADOPTION (so a repo that only uses this feature is not
+#      told it has adopted nothing)
+#   2. an EMPTY marker is partial — "declared but enforcing nothing" is the silent no-op
+#      class the doctor exists for (same shape as arch / protected)
+#   3. RESIDUE (occurrences already in the tree) is an ADVISORY and must NOT flip status.
+#      Making it partial would nag forever about debt the actor did not create, and the
+#      cheapest way to silence a permanent nag is to delete the marker — the gate would
+#      then have talked its own owner into disarming it.
+# ---------------------------------------------------------------------------
+
+# a) An armed marker alone counts as adoption.
+setup_repo
+mkdir -p "$REPO/.bootstrap"
+printf 'typeNo | typeId\n' > "$REPO/.bootstrap/retired"
+test_case "an armed retired marker counts as adoption"
+run_doctor "$REPO"
+assert_doctor_status ok
+assert_out_contains "retired=1"
+
+# b) A marker with no parseable entry is partial (declared no-op).
+setup_repo
+mkdir -p "$REPO/.bootstrap" "$REPO/docs/bootstrap/sprint"
+printf '# nothing armed yet\n\n' > "$REPO/.bootstrap/retired"
+test_case "an empty retired marker is partial"
+run_doctor "$REPO"
+assert_doctor_status partial
+assert_doctor_exit 2
+assert_out_contains ".bootstrap/retired"
+
+# c) Residue in tracked files is surfaced as an advisory, status stays ok.
+setup_repo
+mkdir -p "$REPO/.bootstrap" "$REPO/src"
+printf 'typeNo | typeId\n' > "$REPO/.bootstrap/retired"
+printf 'const a = i.typeNo\nconst b = i.typeNo\n' > "$REPO/src/legacy.ts"
+git -C "$REPO" add -A >/dev/null 2>&1; git -C "$REPO" commit -qm seed >/dev/null 2>&1
+test_case "existing residue is an advisory, not a partial"
+run_doctor "$REPO"
+assert_doctor_status ok
+assert_doctor_exit 0
+assert_out_contains "typeNo"
+assert_out_contains "残存"
+
+# d) No residue => no advisory line (the doctor must not add noise when nothing is wrong).
+setup_repo
+mkdir -p "$REPO/.bootstrap" "$REPO/src"
+printf 'typeNo | typeId\n' > "$REPO/.bootstrap/retired"
+printf 'const a = i.typeId\n' > "$REPO/src/clean.ts"
+git -C "$REPO" add -A >/dev/null 2>&1; git -C "$REPO" commit -qm seed >/dev/null 2>&1
+test_case "a clean tree gets no residue advisory"
+run_doctor "$REPO"
+assert_doctor_status ok
+TESTS_RUN=$((TESTS_RUN + 1))
+case "$DOCTOR_OUT" in
+  *"残存"*) TESTS_FAILED=$((TESTS_FAILED + 1)); echo "  FAIL [$CURRENT_TEST] residue advisory fired on a clean tree" ;;
+  *) echo "  ok   [$CURRENT_TEST] no residue advisory" ;;
+esac
+
+# e) Docs are exempt from the residue sweep too (a glossary must be free to name the term).
+setup_repo
+mkdir -p "$REPO/.bootstrap" "$REPO/docs"
+printf 'typeNo | typeId\n' > "$REPO/.bootstrap/retired"
+printf '旧称 typeNo は typeId へ改名\n' > "$REPO/docs/glossary.md"
+git -C "$REPO" add -A >/dev/null 2>&1; git -C "$REPO" commit -qm seed >/dev/null 2>&1
+test_case "the residue sweep exempts docs"
+run_doctor "$REPO"
+TESTS_RUN=$((TESTS_RUN + 1))
+case "$DOCTOR_OUT" in
+  *"残存"*) TESTS_FAILED=$((TESTS_FAILED + 1)); echo "  FAIL [$CURRENT_TEST] residue advisory counted a doc" ;;
+  *) echo "  ok   [$CURRENT_TEST] docs not counted as residue" ;;
+esac
+
+# e2) The residue sweep honors the per-line opt-out, exactly as the gate does. If it did not,
+#     the doctor would nag about lines the gate deliberately passes — and the shortest way to
+#     silence a groundless permanent nag is to delete the marker.
+setup_repo
+mkdir -p "$REPO/.bootstrap" "$REPO/src"
+printf 'typeNo | typeId\n' > "$REPO/.bootstrap/retired"
+printf '// 旧称 typeNo の説明  bootstrap-retired-ok\n' > "$REPO/src/annotated.ts"
+git -C "$REPO" add -A >/dev/null 2>&1; git -C "$REPO" commit -qm seed >/dev/null 2>&1
+test_case "a file whose only occurrence is annotated is not counted as residue"
+run_doctor "$REPO"
+assert_doctor_status ok
+TESTS_RUN=$((TESTS_RUN + 1))
+case "$DOCTOR_OUT" in
+  *"残存"*) TESTS_FAILED=$((TESTS_FAILED + 1)); echo "  FAIL [$CURRENT_TEST] counted an annotated line" ;;
+  *) echo "  ok   [$CURRENT_TEST] annotated line not counted" ;;
+esac
+printf 'const x = i.typeNo\n' > "$REPO/src/real.ts"
+git -C "$REPO" add src/real.ts >/dev/null 2>&1; git -C "$REPO" commit -qm real >/dev/null 2>&1
+test_case "but a genuine unannotated occurrence in another file still counts"
+run_doctor "$REPO"
+assert_out_contains "残存"
+assert_out_contains "src/real.ts"
+
+# f) Vendored-coverage gap: armed marker but the gate is not vendored => partial.
+setup_repo
+mkdir -p "$REPO/.bootstrap"
+printf 'typeNo | typeId\n' > "$REPO/.bootstrap/retired"
+vendor_core
+test_case "vendoring without the retired gate is partial"
+run_doctor "$REPO"
+assert_doctor_status partial
+assert_out_contains "block-commit-if-retired-term.sh"
+
 finish

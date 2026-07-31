@@ -1,0 +1,34 @@
+# .github/workflows/bootstrap-retired.yml にコピーする。
+# PR が **新しく足した行** に、引退した名前 (.bootstrap/retired、旧 flat path .bootstrap-retired も
+# 互換) が混入していないかを検査する「bypass 不可の最終 gate」。
+#
+# なぜ CI が要るか (ADR 0012 / ADR 0021): PreToolUse hook は Claude が Bash で叩く commit にしか
+# 効かない。人が端末で直接 commit する経路と、GitHub UI での PR merge はそこを通らない。改名の
+# 取り残しは「改名の後に書く人」が持ち込むもの — つまり hook を通らない人ほど踏みやすい。
+#
+# 前提 (consumer repo への vendor):
+#   - scripts/retired-check.sh          (本リポ scripts/retired-check.sh をコピー)
+#   - scripts/retired-terms-engine.sh   (本リポ hooks/lib/retired-terms.sh をこの名前でコピー)
+#   - scripts/resolve-marker.sh         (本リポ hooks/lib/resolve-marker.sh をこの名前でコピー。
+#                                        無いと `.bootstrap/retired` を読めず旧 flat path のみに退避する)
+#   - .bootstrap/retired                (引退した名前の登記。旧 flat path `.bootstrap-retired` も可)
+name: bootstrap-retired
+on:
+  pull_request:
+
+jobs:
+  retired-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: retired-name check (added lines only)
+        run: |
+          set -euo pipefail
+          BASE="${{ github.base_ref }}"
+          git fetch origin "$BASE" --depth=1
+          # 三点 (`...`) = merge-base からの差分 = この PR が足した行だけ。二点にすると base 側の
+          # 進行分まで「追加行」に混ざり、他人が持ち込んだ残存で PR が赤くなる (= CI が hook より
+          # 厳しくなる。それは修正の動機を歪めるので避ける)。
+          bash scripts/retired-check.sh "origin/$BASE...HEAD"
