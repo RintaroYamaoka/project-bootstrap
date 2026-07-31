@@ -17,6 +17,8 @@
 - **蓄積した残存は `scripts/doctor.sh` が語ごとの件数で可視化する** (status は落とさない・block しない)。gate が追加行だけを見る選択は、既存の残存を**意図的に射程外に置く**ことなので、射程外が「見えない」になってはいけない (③ 配備の可視化の自己適用)。恒久的な nag は marker 削除の動機になるので advisory に留める。gate = 新しく持ち込んだ乖離 / doctor = 蓄積した乖離、の分業。sweep は 1 session 30 語で打ち切り、**打ち切った語数を出力に明示する** (黙って切ると「監査したという記録だけが残る」失敗になる)。
 - **「重複」(同じ概念に 2 つ目の定義) の検出は作らない**。同一概念かの判断は既約で、かつ**この検査が実在の問題を見つけた実例がまだ 1 件も無い**。実例のない検査を足すと検査自体が増殖する (kanban-flow の audit skill が自分に課している規則を輸入)。代わりに AI の癖⑩ と `templates/CLAUDE.md` のセルフチェック 2 行に留め、**昇格条件 (実例が 1 件出たら機械化を検討) を ADR に固定**した。
 - **AI の癖に 10 個目**: 「改名を知らずに古い名前で書き続ける / 既にある概念に 2 つ目の名前を作る」。癖② (存在しない API の捏造) とも癖⑤ (既存パターン無視) とも別 — **旧称は "存在した" ので記憶にも文脈にも残り、もっともらしく書けてしまう**。
+- **dogfood で射程が 1 つ判明**: 除外は「文書ファイル」(`*.md` / `docs/**` / `CHANGELOG*`) であって「文書的な記述」ではない — **コード内のコメントと test fixture は検査される**。本 repo で実例の語 `typeNo` を登記したら、この gate 自身の解説コメントと test fixture がヒットした (PR #24)。旧称を説明のために書く正当なコードは止まるので、止めたくなければ射程 glob で外すか記述を `*.md` 側に移す (逆に、コメントに残った旧称も古い参照ではあるので止まるのが妥当な場合も多い)。本 repo が恒久 marker を持たない理由でもある。
+- **CI net を本 repo にも恒久配線し、実 PR で赤→緑を実測した** (PR #24)。① marker 不在 = 緑 (workflow が走り誤検知しないことの確認) → ② probe + marker で **赤** (原因行を名指し) → ③ 撤去で **緑**。さらに probe 行を marker 登記の **前** に commit することで、**ローカル関所が射程外にする「既に commit 済みの追加行」を CI net が捕まえる**ことを実証した — 改名が後から起きる実際の順序であり、CI net が飾りでないことの直接の証拠。
 - 新規: `hooks/lib/retired-terms.sh` (engine) / `hooks/block-commit-if-retired-term.sh` (gate) / `scripts/retired-check.sh` (CLI + CI net) / `templates/ci/bootstrap-retired.yml` / `templates/.bootstrap/retired.example` / `docs/decisions/0021-retired-name-gate-at-commit-chokepoint.md`。hook 数 20 → 21、suite 数 46 → 49。
 
 ### Changed
