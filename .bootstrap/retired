@@ -1,2 +1,2 @@
 # TEMPORARY — CI net 検証用。次の commit で probe と一緒に撤去する。
-typeNo | typeId | | ai-reception #88 の実例を dogfood で再現
+probeRetiredName | newProbeName | | CI net の実発火確認 (probe 専用の語)
