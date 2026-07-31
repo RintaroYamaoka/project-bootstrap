@@ -74,4 +74,18 @@ mkrepo
 test_case "empty index yields an empty set"
 assert_eq '' "$(files 'git commit -m x')"
 
+# --- commit_stages_all: the -a predicate, shared with lib/retired-terms.sh -----------------
+# retired-terms.sh needs the same answer to choose `git diff --cached` vs `git diff HEAD`
+# for the added-line scan. A second copy of the regex would drift on exactly the case it
+# exists for (`-m all` must not count) and the looser copy becomes the silent hole.
+stages() { commit_stages_all "$1" && echo yes || echo no; }
+test_case "commit_stages_all recognizes every sweeping form"
+assert_eq yes "$(stages 'git commit -a -m x')"
+assert_eq yes "$(stages 'git commit -am x')"
+assert_eq yes "$(stages 'git commit --all -m x')"
+test_case "commit_stages_all rejects the non-sweeping forms"
+assert_eq no "$(stages 'git commit -m x')"
+assert_eq no "$(stages 'git commit -m all')"
+assert_eq no "$(stages 'git commit -m "add a thing"')"
+
 finish

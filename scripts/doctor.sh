@@ -71,17 +71,18 @@ have_marker() { [ -e "$(marker "$1")" ]; }
 marker_rel() { local p; p="$(marker "$1")"; printf '%s' "${p#"$REPO"/}"; }
 
 # --- 採用 marker の検出 ---
-ARCH=0; PROT=0; LINT=0; LANE=0; SPRINT=0; MEM=0; VERIFY=0
+ARCH=0; PROT=0; LINT=0; LANE=0; SPRINT=0; MEM=0; VERIFY=0; RETIRED=0
 have_marker arch       && ARCH=1
 have_marker protected  && PROT=1
 have_marker lint       && LINT=1
 have_marker lane       && LANE=1
+have_marker retired    && RETIRED=1
 have_docs sprint       && SPRINT=1
 have_docs verification && VERIFY=1
 { [ -d "$REPO/docs/decisions" ] || have_docs handoffs || have_docs incidents; } && MEM=1
 
 ADOPTED=0
-[ $((ARCH + PROT + LINT + LANE + SPRINT + VERIFY + MEM)) -gt 0 ] && ADOPTED=1
+[ $((ARCH + PROT + LINT + LANE + SPRINT + VERIFY + MEM + RETIRED)) -gt 0 ] && ADOPTED=1
 
 # --- unadopted 分岐 ---
 if [ "$ADOPTED" = 0 ]; then
@@ -118,6 +119,17 @@ fi
 # 判定は hook と同じエンジンを source して単一権威に保つ (lib 不在の異常配置では skip = fail-open)。
 # parseability は display 文字列の一致でなく整数版 resolve_wip_limit_int の rc で見る (= 既定文言の
 # 変更に結合しない。文字列一致は ADR 0006 の既定改名で一度割れた)。
+# .bootstrap/retired: 引退した名前が 1 行も登記されていない = 宣言だけで何も検査しない。
+# 判定は gate と同じエンジン (retired_load の rc) で行い、単一権威に保つ。
+RTLIB="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd)/hooks/lib/retired-terms.sh"
+if [ "$RETIRED" = 1 ] && [ -f "$RTLIB" ]; then
+  # shellcheck source=../hooks/lib/retired-terms.sh
+  . "$RTLIB"
+  if ! retired_load "$(marker retired)"; then
+    ISSUES+=("$(marker_rel retired) は在るが引退した名前が 1 行も無い → 旧称 gate は実質 no-op")
+  fi
+fi
+
 WIPLIB="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd)/hooks/lib/resolve-wip-limit.sh"
 if have_marker wip && [ -f "$WIPLIB" ]; then
   # shellcheck source=../hooks/lib/resolve-wip-limit.sh
@@ -139,6 +151,7 @@ if [ -d "$VHOOKS" ]; then
   [ "$ARCH"   = 1 ] && REQ+=(block-cross-layer-import.sh block-arch-violations.sh)
   [ "$PROT"   = 1 ] && REQ+=(block-push-to-protected.sh)
   [ "$LINT"   = 1 ] && REQ+=(block-commit-if-lint-fails.sh)
+  [ "$RETIRED" = 1 ] && REQ+=(block-commit-if-retired-term.sh)
   MISSING=""
   for h in "${REQ[@]}"; do
     [ -f "$VHOOKS/$h" ] || MISSING="$MISSING $h"
@@ -149,7 +162,49 @@ if [ -d "$VHOOKS" ]; then
   fi
 fi
 
-SUM="arch=$ARCH protected=$PROT lint=$LINT lane=$LANE sprint=$SPRINT verify=$VERIFY memory=$MEM vendored=$VENDORED"
+SUM="arch=$ARCH protected=$PROT lint=$LINT lane=$LANE sprint=$SPRINT verify=$VERIFY memory=$MEM retired=$RETIRED vendored=$VENDORED"
+
+# --- retired-name residue sweep (ADR 0021) ---
+# Surface-only (never flips status / never exits 2). The commit gate deliberately judges ONLY
+# the lines a commit ADDS, because blocking on pre-existing residue would leave the actor two
+# escapes — an out-of-lane mass rename, or deleting the marker — i.e. the gate would
+# manufacture its own bypass. That choice leaves the ALREADY-ACCUMULATED residue uncovered on
+# purpose, and uncovered must not mean invisible. So the doctor sweeps it and reports a count.
+# This is the same division kanban-flow draws between close-card (what this change introduced)
+# and audit (what the repo has accumulated) — here it is gate vs doctor inside one plugin.
+#
+# Cost: `git grep` walks TRACKED files only, so no node_modules descent. It runs on every
+# SessionStart (bootstrap-session-doctor.sh calls this script synchronously), hence the -l
+# form (file list, stop at first hit per file) rather than counting every occurrence.
+RETIRED_LINE=""
+RETIRED_SWEEP_CAP=30
+if [ "$RETIRED" = 1 ] && [ -f "$RTLIB" ] && command -v git >/dev/null 2>&1; then
+  if retired_load "$(marker retired)"; then
+    _rt_report=""; _rt_example=""; _rt_i=0; _rt_skipped=0
+    for _t in "${RETIRED_TERM[@]}"; do
+      # Bound the sweep: this runs on every SessionStart (bootstrap-session-doctor.sh calls
+      # doctor.sh synchronously). What is dropped is REPORTED, never silently truncated —
+      # a capped audit that reads as complete is the "監査したという記録だけが残る" failure.
+      if [ "$_rt_i" -ge "$RETIRED_SWEEP_CAP" ]; then _rt_skipped=$((_rt_skipped + 1)); continue; fi
+      _rt_i=$((_rt_i + 1))
+      # -F fixed strings, -w word boundary = the engine's identifier rule. A multibyte term
+      # will not anchor with -w, so it is simply not counted here — an advisory COUNT may be
+      # loose in the under-reporting direction where a BLOCK may not.
+      # 除外は engine が持つ (retired_pathspec_args)。ここに書き下すと gate の exempt と
+      # 二重定義になり、片方だけ変わったとき「gate は見ないが doctor は数える」ズレになる。
+      _rt_ps=(); while IFS= read -r _p; do _rt_ps+=("$_p"); done < <(retired_pathspec_args)
+      _rt_hits="$(git -C "$REPO" grep -lwF -e "$_t" -- "${_rt_ps[@]}" 2>/dev/null)"
+      [ -n "$_rt_hits" ] || continue
+      _rt_n="$(printf '%s\n' "$_rt_hits" | grep -c .)"
+      _rt_report="${_rt_report}, ${_t} (${_rt_n} file)"
+      [ -z "$_rt_example" ] && _rt_example="$(printf '%s\n' "$_rt_hits" | head -1)"
+    done
+    if [ -n "$_rt_report" ]; then
+      RETIRED_LINE="retired: 引退した名前の残存${_rt_report#, } — 例 ${_rt_example}。commit gate は **追加行だけ** を見るので既存分は素通しになる = ここでしか見えない。直すなら専用の改名 commit で (ついで直しは 1 PR = 1 責務を壊す)"
+      [ "$_rt_skipped" -gt 0 ] && RETIRED_LINE="${RETIRED_LINE} [未走査 ${_rt_skipped} 語: 1 session あたり ${RETIRED_SWEEP_CAP} 語で打ち切り]"
+    fi
+  fi
+fi
 
 # --- action-memory registry audit (lane D2 / ADR 0010) ---
 # Surface-only (never flips status / never exits 2): report whether the repo arms any
@@ -201,6 +256,7 @@ if [ "${#ISSUES[@]}" -gt 0 ]; then
   echo "project-bootstrap 採用済みだが整合しない点がある ($SUM):"
   for i in "${ISSUES[@]}"; do echo "  - $i"; done
   [ -n "$ACTIONS_LINE" ] && echo "  - $ACTIONS_LINE"
+  [ -n "$RETIRED_LINE" ] && echo "  - $RETIRED_LINE"
   [ -n "$LEGACY_LINE" ] && echo "  - $LEGACY_LINE"
   if [ "$VENDORED" = no ]; then
     echo "(plugin 経由採用は plugin の install/版を repo から検証不能。team-wide に強制するなら .claude/hooks/ への vendoring か templates/ci/bootstrap-doctor.yml を CI に置く)"
@@ -211,6 +267,7 @@ fi
 echo "STATUS: ok"
 echo "project-bootstrap 採用済み・整合 ($SUM)。"
 [ -n "$ACTIONS_LINE" ] && echo "  - $ACTIONS_LINE"
+[ -n "$RETIRED_LINE" ] && echo "  - $RETIRED_LINE"
 [ -n "$LEGACY_LINE" ] && echo "  - $LEGACY_LINE"
 if [ "$VENDORED" = no ]; then
   echo "注: hook は plugin 経由 (repo に vendoring 無し)。plugin が未 install / 旧版の環境では gate が静かに効かない —"

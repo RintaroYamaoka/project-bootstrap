@@ -112,7 +112,24 @@ repo root に `.bootstrap-lint` を置いた project だけ発火する。`git c
 
 linter が解決できない (script 無し / runner 不在) 場合は warn して素通し。**全分岐に `command -v` ガード**があり、toolchain 不在マシンで誤 block しない。
 
-スクリプト: [`block-commit-if-lint-fails.sh`](./block-commit-if-lint-fails.sh) / エンジン: [`lib/lint-scope.sh`](./lib/lint-scope.sh) (tool 同定 `lint_script_tool` / scope base `lint_scoped_base` / 拡張子判定 `lint_ext_ok`) ・ [`lib/commit-files.sh`](./lib/commit-files.sh) (`commit_files_from_cmd` = 「この commit が運ぶ file」の単一権威、Hook T と共有)
+スクリプト: [`block-commit-if-lint-fails.sh`](./block-commit-if-lint-fails.sh) / エンジン: [`lib/lint-scope.sh`](./lib/lint-scope.sh) (tool 同定 `lint_script_tool` / scope base `lint_scoped_base` / 拡張子判定 `lint_ext_ok`) ・ [`lib/commit-files.sh`](./lib/commit-files.sh) (`commit_files_from_cmd` = 「この commit が運ぶ file」の単一権威、Hook T / M と共有)
+
+### B2. PreToolUse on `Bash` (`git commit`) — 引退した名前の混入を blocking (ADR 0021)
+
+`.bootstrap/retired` に登記された「引退した名前」が、**この commit が新しく足した行**に混入していたら `exit 2` で **blocking**。
+
+**なぜ独立した機構が要るか**: 改名は「改名した PR の自己申告」では原理的に漏れる。改名を行う PR は改名後の全 file を知り得るが、**改名の "後に" 書く人は、grep すべき語が在ることを知らない**。実例 = ai-reception の `Intent.typeNo` → `typeId` (#88)。改名の 1 時間 12 分後にマージされた別 PR が `i.typeNo` を参照し続け、型に無いので常に `undefined`、`undefined === null` は false、生 JS ゆえエラーも出ず、テスト UI が「#undefined」を 3 日以上表示し続けた。
+
+- **`.bootstrap/retired` が無ければ素通し** (opt-in)。有効行 0 の marker も素通しだが、その事実は `scripts/doctor.sh` が `partial` (宣言だけで no-op) として可視化する
+- **信号は追加行だけ** (Hook B と同じ ADR 0018 の適用)。ツリー全体を見ると、marker を置いた瞬間から残存を持つ file に触る全 commit が止まり、逃げ道が「lane を出て一括改名」か「marker の行を消す」しか無くなる = **gate が自分の bypass を作る**。commit が答えるべきは自分が新しく持ち込んだ分だけ
+- **edit 時 gate は作らない**。「その行が追加されたか」は PreToolUse では計算できず、改名操作そのものは旧称を `old_string` 側に置くので、素朴な edit 時検査は**やらせたい改名を止める**。commit 関所なら sed / formatter / script 経由も同時に捕まる (Hook T と同じ ADR 0017 の論法)
+- **照合はリテラルのみ** (正規表現を消費先に書かせない)。英数字と `_` だけの語は単語境界 (`typeNo` は `i.typeNo` に当たり `typeNotation` には当たらない)、それ以外を含む語 (日本語・ドット区切り) は素の部分一致に落ちる (documented limit)
+- **検査しない場所**: `*.md` / `docs/**` / `CHANGELOG*` / 登記自身。用語集の非推奨表・ADR・incident 記録は旧称を名指しするのが仕事
+- **蓄積した残存は doctor が語ごとの件数で可視化する** (block しない・status を落とさない)。gate = 新しく持ち込んだ乖離 / doctor = 蓄積した乖離
+- **fail-closed (解析不能)** / **fail-open (根拠不在)** は他の commit 関所と同一
+- **CI net**: [`../scripts/retired-check.sh`](../scripts/retired-check.sh) + [`../templates/ci/bootstrap-retired.yml`](../templates/ci/bootstrap-retired.yml)。PR は三点差分 `origin/<base>...HEAD` を渡す (二点だと base 側の改名をこの branch のせいにする)
+
+スクリプト: [`block-commit-if-retired-term.sh`](./block-commit-if-retired-term.sh) / エンジン: [`lib/retired-terms.sh`](./lib/retired-terms.sh) (gate / CI net / doctor の 3 消費者で共有)
 
 ### C. PreToolUse on `Bash` — destructive git op を blocking
 

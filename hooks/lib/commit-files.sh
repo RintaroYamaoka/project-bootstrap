@@ -10,14 +10,25 @@
 #   「lane 外の file を消した」も lane 違反なので、存在確認は呼び出し側の責務。
 #   git が無い / repo 外なら空。
 
+# commit_stages_all <git-commit-command>
+#   return 0 = this commit form ALSO sweeps unstaged tracked changes (`-a` / `-am` / `--all`).
+#   Split out as its own predicate because a second consumer needs the same answer:
+#   lib/retired-terms.sh must pick `git diff --cached` vs `git diff HEAD` to decide which
+#   ADDED lines the commit will actually carry. Two copies of this regex would drift on
+#   exactly the case it was written for (`-m all` must NOT count), and the looser copy
+#   becomes the silent hole — same single-authority reason this file exists at all.
+#   (`-m` の引数に紛れた `-a` を拾わないよう、option 位置の短縮 flag だけを見る)
+commit_stages_all() {
+  printf '%s' "$1" | grep -qE '(^|[[:space:]])-[a-zA-Z]*a[a-zA-Z]*([[:space:]]|$)|(^|[[:space:]])--all([[:space:]]|$)'
+}
+
 commit_files_from_cmd() {
   local cmd="$1" staged
 
   staged=$(git diff --cached --name-only 2>/dev/null)
 
   # `git commit -a` / `-am` / `--all` は tracked の未 stage 変更もその場で stage する → 対象。
-  # (`-m` の引数に紛れた `-a` を拾わないよう、option 位置の短縮 flag だけを見る)
-  if printf '%s' "$cmd" | grep -qE '(^|[[:space:]])-[a-zA-Z]*a[a-zA-Z]*([[:space:]]|$)|(^|[[:space:]])--all([[:space:]]|$)'; then
+  if commit_stages_all "$cmd"; then
     staged=$(printf '%s\n%s\n' "$staged" "$(git diff --name-only 2>/dev/null)")
   fi
 

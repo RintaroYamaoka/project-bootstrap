@@ -7,6 +7,24 @@
 
 ## [Unreleased]
 
+## [0.32.0] - 2026-07-31
+
+### Added
+
+- **引退した名前 (旧称) の混入を commit で止める gate (ADR 0021)**。これまでこのプラグインが守ってきた「ズレ」は依存方向 (file 間の矢印)・cross-repo 契約 (repo をまたぐ形)・lint (整形と命名規約) の 3 つで、いずれも file 単位・repo 単位だった。**repo の中の「語」のズレは無防備**で、用語集に相当する概念すら持っていなかった。実例: ai-reception で `Intent.typeNo` → `typeId` の改名 (#88) の **1 時間 12 分後**にマージされた別 PR が改名を知らずに `i.typeNo` を参照し続け、型に存在しないので常に `undefined`、`undefined === null` は false、生 JS ゆえエラーも出ず、テスト UI が「#undefined」を 3 日以上表示し続けた。核心は注意不足ではなく**情報の非対称** — 改名を行う PR は改名後の全 file を知り得るが、改名の *後に* 書く人は grep すべき語が在ることを知らない。だから改名者の自己申告では原理的に漏れ、独立した常時稼働の機構が要る。
+- **信号は「この commit が新しく足した行」**。ツリー全体を検査すると、marker を置いた瞬間から残存を持つ file に触る全 commit が止まり、行為者に残る逃げ道は (a) lane を出て一括改名 (b) marker の行を消す の 2 つになる = **gate が自分の bypass を作る** (memory `feedback_gate_signal_and_failmode`「塞ぐ と 塞がれても困らなくする は対で設計する」)。commit が答えるべきは自分が新しく持ち込んだ分だけ — ADR 0018 が lint に下した判断 (「信号はツリーでなくこの commit」) を名前に適用した同型の決定。
+- **edit 時 gate は意図的に作らない** (arch の 2 層構成を真似ない)。「その行が追加されたか」は PreToolUse では計算できず、`new_string` の旧称は無関係な書き換えに巻き込まれた既存分かもしれない。さらに**改名操作そのものは旧称を `old_string` 側に置く**ので、素朴な edit 時検査は**やらせたい改名を止める**。commit 関所なら sed / formatter / script 経由の書き込みも同時に捕まる (ADR 0017)。
+- **蓄積した残存は `scripts/doctor.sh` が語ごとの件数で可視化する** (status は落とさない・block しない)。gate が追加行だけを見る選択は、既存の残存を**意図的に射程外に置く**ことなので、射程外が「見えない」になってはいけない (③ 配備の可視化の自己適用)。恒久的な nag は marker 削除の動機になるので advisory に留める。gate = 新しく持ち込んだ乖離 / doctor = 蓄積した乖離、の分業。sweep は 1 session 30 語で打ち切り、**打ち切った語数を出力に明示する** (黙って切ると「監査したという記録だけが残る」失敗になる)。
+- **「重複」(同じ概念に 2 つ目の定義) の検出は作らない**。同一概念かの判断は既約で、かつ**この検査が実在の問題を見つけた実例がまだ 1 件も無い**。実例のない検査を足すと検査自体が増殖する (kanban-flow の audit skill が自分に課している規則を輸入)。代わりに AI の癖⑩ と `templates/CLAUDE.md` のセルフチェック 2 行に留め、**昇格条件 (実例が 1 件出たら機械化を検討) を ADR に固定**した。
+- **AI の癖に 10 個目**: 「改名を知らずに古い名前で書き続ける / 既にある概念に 2 つ目の名前を作る」。癖② (存在しない API の捏造) とも癖⑤ (既存パターン無視) とも別 — **旧称は "存在した" ので記憶にも文脈にも残り、もっともらしく書けてしまう**。
+- 新規: `hooks/lib/retired-terms.sh` (engine) / `hooks/block-commit-if-retired-term.sh` (gate) / `scripts/retired-check.sh` (CLI + CI net) / `templates/ci/bootstrap-retired.yml` / `templates/.bootstrap/retired.example` / `docs/decisions/0021-retired-name-gate-at-commit-chokepoint.md`。hook 数 20 → 21、suite 数 46 → 49。
+
+### Changed
+
+- `hooks/lib/commit-files.sh` に **`commit_stages_all`** を切り出した。`-a` / `-am` / `--all` の判定を lane gate・lint gate・retired engine の 3 者で共有する — 2 つ目のコピーは、それが書かれた理由そのもの (`-m all` を誤って sweep 扱いする形) で drift し、緩い側が無音の穴になる。
+- CI net は**三点差分** (`origin/<base>...HEAD`) を使う。二点だと base 側で行われた改名を「この branch が旧称を再導入した」と誤読し、他人の作業で PR が赤くなる (CI が hook より厳しくなると修正の動機が歪む)。この誤読は `tests/hooks/retired-check-cli.test.bash` が pin している。
+- `scripts/doctor.sh`: `retired` を採用 marker として検出 / 有効行 0 の marker を `partial` (宣言だけで no-op) / vendoring 時の必須 hook に追加 / 残存 advisory。
+
 ## [0.31.0] - 2026-07-30
 
 ### Changed
