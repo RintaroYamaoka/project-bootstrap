@@ -94,6 +94,25 @@ test_case "a longer identifier containing the term does not block"
 run_hook "$HOOK" "$(input_json 'git commit -m x')"
 assert_exit 0
 
+# 7b. The per-line opt-out lets a line that is legitimately ABOUT the retired name through.
+#     Without it, a comment explaining the rename would be blocked, and the actor's escapes
+#     would be "delete the marker line" or "exclude the whole path via scope-glob" — both
+#     wider than the problem. Found by dogfooding this plugin on itself (PR #24): the gate's
+#     own explanatory comments and test fixtures tripped it.
+fresh_repo; arm
+printf '// 旧称 typeNo は typeId へ改名した (#88)  bootstrap-retired-ok\n' > "$RUN_DIR/src/note.ts"
+git -C "$RUN_DIR" add src/note.ts
+test_case "an annotated line is allowed through"
+run_hook "$HOOK" "$(input_json 'git commit -m x')"
+assert_exit 0
+
+fresh_repo; arm
+printf '// 旧称 typeNo の説明  bootstrap-retired-ok\nconst x = i.typeNo\n' > "$RUN_DIR/src/mixed.ts"
+git -C "$RUN_DIR" add src/mixed.ts
+test_case "the opt-out is per line — a real violation on another line still blocks"
+run_hook "$HOOK" "$(input_json 'git commit -m x')"
+assert_exit 2
+
 # 8. `git commit -a` sweeps unstaged tracked changes into the scan.
 fresh_repo; arm
 printf 'const legacy = i.typeNo\nconst sneaky = i.typeNo\n' > "$RUN_DIR/src/legacy.ts"   # unstaged

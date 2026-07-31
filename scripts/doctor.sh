@@ -193,7 +193,13 @@ if [ "$RETIRED" = 1 ] && [ -f "$RTLIB" ] && command -v git >/dev/null 2>&1; then
       # 除外は engine が持つ (retired_pathspec_args)。ここに書き下すと gate の exempt と
       # 二重定義になり、片方だけ変わったとき「gate は見ないが doctor は数える」ズレになる。
       _rt_ps=(); while IFS= read -r _p; do _rt_ps+=("$_p"); done < <(retired_pathspec_args)
-      _rt_hits="$(git -C "$REPO" grep -lwF -e "$_t" -- "${_rt_ps[@]}" 2>/dev/null)"
+      # `-l` (file 名だけ) ではなく行を取り、engine の per-line opt-out を尊重してから file
+      # に畳む。`-l` のままだと「gate は通す行を doctor が数える」= 根拠なき nag になり、
+      # nag を黙らせる最短手が marker 削除なので、ここは正確さが要る。
+      _rt_hits="$(git -C "$REPO" grep -nwF -e "$_t" -- "${_rt_ps[@]}" 2>/dev/null \
+                  | while IFS= read -r _l; do
+                      retired_line_suppressed "$_l" || printf '%s\n' "${_l%%:*}"
+                    done | sort -u)"
       [ -n "$_rt_hits" ] || continue
       _rt_n="$(printf '%s\n' "$_rt_hits" | grep -c .)"
       _rt_report="${_rt_report}, ${_t} (${_rt_n} file)"

@@ -349,6 +349,29 @@ case "$DOCTOR_OUT" in
   *) echo "  ok   [$CURRENT_TEST] docs not counted as residue" ;;
 esac
 
+# e2) The residue sweep honors the per-line opt-out, exactly as the gate does. If it did not,
+#     the doctor would nag about lines the gate deliberately passes — and the shortest way to
+#     silence a groundless permanent nag is to delete the marker.
+setup_repo
+mkdir -p "$REPO/.bootstrap" "$REPO/src"
+printf 'typeNo | typeId\n' > "$REPO/.bootstrap/retired"
+printf '// 旧称 typeNo の説明  bootstrap-retired-ok\n' > "$REPO/src/annotated.ts"
+git -C "$REPO" add -A >/dev/null 2>&1; git -C "$REPO" commit -qm seed >/dev/null 2>&1
+test_case "a file whose only occurrence is annotated is not counted as residue"
+run_doctor "$REPO"
+assert_doctor_status ok
+TESTS_RUN=$((TESTS_RUN + 1))
+case "$DOCTOR_OUT" in
+  *"残存"*) TESTS_FAILED=$((TESTS_FAILED + 1)); echo "  FAIL [$CURRENT_TEST] counted an annotated line" ;;
+  *) echo "  ok   [$CURRENT_TEST] annotated line not counted" ;;
+esac
+printf 'const x = i.typeNo\n' > "$REPO/src/real.ts"
+git -C "$REPO" add src/real.ts >/dev/null 2>&1; git -C "$REPO" commit -qm real >/dev/null 2>&1
+test_case "but a genuine unannotated occurrence in another file still counts"
+run_doctor "$REPO"
+assert_out_contains "残存"
+assert_out_contains "src/real.ts"
+
 # f) Vendored-coverage gap: armed marker but the gate is not vendored => partial.
 setup_repo
 mkdir -p "$REPO/.bootstrap"

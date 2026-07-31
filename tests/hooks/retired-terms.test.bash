@@ -128,6 +128,26 @@ assert_eq 'typeNo|typeId|改名 #88' "$(retired_scan_line 'src/a.ts' 'typeNo')"
 test_case "a line with no occurrence yields nothing and returns 1"
 retired_scan_line 'src/a.ts' 'const ok = 1' >/dev/null; assert_eq 1 "$?"
 
+# --- inline suppression: the per-LINE opt-out --------------------------------------------
+# Why a per-line pragma rather than exempting comments syntactically: stripping `//` would
+# silently swallow a real occurrence inside a string (`"http://x/typeNo"`), and silent
+# under-detection is this plugin's worst fail-mode. And why a pragma at all rather than
+# "just use scope-glob": a glob excludes a whole PATH, so allowing one explanatory comment
+# in hooks/ would disarm the gate for every file in hooks/. The narrow, visible escape is
+# the one linters settled on — it stays in the diff where a reviewer sees it, unlike editing
+# the marker (a config file nobody re-reads).
+mkrepo
+marker 'typeNo | typeId'
+retired_load "$REPO/.bootstrap/retired"
+test_case "a line carrying the suppression token is skipped"
+assert_eq '' "$(retired_scan_line 'src/a.ts' '// 旧称 typeNo は typeId に改名した  bootstrap-retired-ok')"
+test_case "suppression is per LINE, not per file — a sibling line still trips"
+assert_eq 'typeNo|typeId|' "$(retired_scan_line 'src/a.ts' 'const x = i.typeNo')"
+test_case "the token is matched literally anywhere on the line"
+assert_eq '' "$(retired_scan_line 'src/a.ts' '# bootstrap-retired-ok: fixture must spell typeNo')"
+test_case "a near-miss token does NOT suppress (no accidental opt-out)"
+assert_eq 'typeNo|typeId|' "$(retired_scan_line 'src/a.ts' 'const x = i.typeNo // retired ok')"
+
 # --- retired_scan_line: scope-glob ------------------------------------------------------
 mkrepo
 marker 'legacyFlag | featureFlag | src/** | src 配下だけ禁止'

@@ -1,6 +1,6 @@
 ---
 name: project-bootstrap
-description: 上位1％の AI 駆動開発を個人の規律でなく構造として default 化する規律。純粋な強制は到達不能なので強制を4つの設計判断に作り替える = ① 分解 (precondition を fail-closed で強制・判断は逃さない) / ② 信号選び (行為を信号に・fail-mode を選ぶ) / ③ 配備の可視化 (効いていない強制を無音にしない) / ④ 計測つきの取引 (緩めるなら戻る根拠を metric で持つ)。Anthropic 公式 best practice (verification 最高レバレッジ / hooks deterministic / CLAUDE.md advisory) に整合する。verification 4 罠 / AI の癖 9 個 / TDD ループ / 根本修正 / 並列 Claude 安全運用 / subagent の mutation は隔離 worktree + 統合関所つきで可 (hook は subagent にも効く: 2026-06-11 実測検証、ADR 0004) / 環境隔離 / external memory として docs/ 整備 (handoffs / decisions / incidents)。新機能・バグ修正・リファクタ・調査など、あらゆるコーディング作業で常にロードする。
+description: 上位1％の AI 駆動開発を個人の規律でなく構造として default 化する規律。純粋な強制は到達不能なので強制を4つの設計判断に作り替える = ① 分解 (precondition を fail-closed で強制・判断は逃さない) / ② 信号選び (行為を信号に・fail-mode を選ぶ) / ③ 配備の可視化 (効いていない強制を無音にしない) / ④ 計測つきの取引 (緩めるなら戻る根拠を metric で持つ)。Anthropic 公式 best practice (verification 最高レバレッジ / hooks deterministic / CLAUDE.md advisory) に整合する。verification 4 罠 / AI の癖 10 個 (改名後も旧称で書く癖を含む) / TDD ループ / 根本修正 / 並列 Claude 安全運用 / subagent の mutation は隔離 worktree + 統合関所つきで可 (hook は subagent にも効く: 2026-06-11 実測検証、ADR 0004) / 環境隔離 / external memory として docs/ 整備 (handoffs / decisions / incidents)。新機能・バグ修正・リファクタ・調査など、あらゆるコーディング作業で常にロードする。
 ---
 
 # AI 駆動開発の規律
@@ -196,6 +196,8 @@ allow infra -> core
 **なぜツリー全体でなく追加行か** (②の適用): ツリー全体を見ると、marker を置いた瞬間から残存を持つ file に触る全 commit が止まり、行為者の最短の逃げ道が「lane を出て一括改名」か「marker の行を消す」になる — **gate が自分の bypass を作る**。commit が答えるべきは自分が新しく持ち込んだ分だけ (ADR 0018 の「信号はツリーでなくこの commit」を名前に適用)。
 
 **なぜ edit 時 gate を作らないか**: 「その行が追加されたか」は PreToolUse では計算できない。`new_string` の旧称は無関係な書き換えに巻き込まれた既存分かもしれず、改名操作そのものは旧称を `old_string` 側に置く — edit 時 gate は**やらせたい改名を止めてしまう**。commit 関所なら sed / formatter / script 経由の書き込みも同時に捕まる (ADR 0017)。
+
+**逃げ道は行 1 本ぶんにする**: コード内のコメントと test fixture は検査対象なので、旧称を**説明するために**書く正当な行が止まる。その行に `bootstrap-retired-ok` と書けばその 1 行だけ除外できる。これを用意しないと、行為者の手段は「marker の行を消す」か「scope-glob でパスごと外す」になり、**問題より広い逃げ道が設定ファイルの中で不可視に起きる** (= 塞いだはずの「gate が自分の bypass を作る」形が別の入口から戻る)。コメント構文での除外は採らない — `//` で切ると文字列中の `"http://host/typeNo"` を無音で飲み込み、無音の検出漏れは最悪の fail-mode。
 
 **取り残される分は可視化する** (③の適用): 既に溜まっている残存は gate の射程外なので、SessionStart の doctor が語ごとの件数を advisory で出す (status は落とさない — 恒久的な nag は marker 削除の動機になる)。gate = 新しく持ち込んだ乖離 / doctor = 蓄積した乖離、の分業。
 

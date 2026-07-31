@@ -79,10 +79,13 @@ VIOLATIONS="$(retired_added_lines_cmd "$CMD" | retired_scan_stream)" || exit 0
 なので、既存行に残っている同じ語は対象外 — それを直しに自分の lane を出る必要は無い
 (残存件数は SessionStart の doctor が別途可視化する)。
 
-対処:
-  - 追加行の名前を新しい名前に直す (ふつうはこれ)
+対処 (上から順に検討する):
+  - 追加行の名前を新しい名前に直す (**ふつうはこれ**)
   - その語が引退していない / 射程が広すぎるなら、${MARKER#"$TOP"/} の該当行を意図的に直す
     (3 列目に scope glob を書いて射程を絞れる)
+  - その行が旧称 **について** 書いている場合だけ (改名を説明するコメント / 旧称を綴らねば
+    ならない fixture / 旧 column を読む migration)、その行に \`${RETIRED_OK_TOKEN}\` を
+    書いて 1 行だけ除外する。**diff に残るので レビューで見える** — marker を消すより狭い
   - 例外的に一度だけ通すなら /permissions で本 hook を一時 deny
 EOF
 } >&2

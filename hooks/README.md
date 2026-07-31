@@ -2,7 +2,7 @@
 
 `project-bootstrap` の規律を **deterministic に強制する hook 集**。`plugin.json` の `hooks` フィールド経由でデフォルト発火する (= ユーザーが叩かなくても常に動く)。
 
-> **opt-in マーカーの所在**: project が置く opt-in マーカー (arch / protected / lint / wip / actions / lane) は repo root の **`.bootstrap/` フォルダ配下** (`.bootstrap/arch` 等) に集約する。解決は単一権威 [`lib/resolve-marker.sh`](./lib/resolve-marker.sh) が担い、`.bootstrap/<name>` (新) を優先し旧 flat path `.bootstrap-<name>` に後方互換で fallback する (両方在れば新が勝つ)。以下の説明で `.bootstrap-xxx` と書かれた箇所は新 `.bootstrap/xxx` と読み替え可。
+> **opt-in マーカーの所在**: project が置く opt-in マーカー (arch / protected / lint / wip / actions / retired / lane) は repo root の **`.bootstrap/` フォルダ配下** (`.bootstrap/arch` 等) に集約する。解決は単一権威 [`lib/resolve-marker.sh`](./lib/resolve-marker.sh) が担い、`.bootstrap/<name>` (新) を優先し旧 flat path `.bootstrap-<name>` に後方互換で fallback する (両方在れば新が勝つ)。以下の説明で `.bootstrap-xxx` と書かれた箇所は新 `.bootstrap/xxx` と読み替え可。
 
 > **git コマンド検出の単一権威 (ADR 0019)**: 「このコマンドは `git <subcommand>` を呼ぶか」は全 Bash gate (commit 系 5 本 / push 2 本 / merge 2 本 / add-all) が [`lib/git-invocation.sh`](./lib/git-invocation.sh) の `cmd_invokes_git_subcommand` / `git_subcommand_arglines` で判定する。旧 regex は path-prefixed git (`/usr/bin/git commit`) と **git グローバルオプション形** (`git -C /repo push` / `git -c k=v commit` / `git --git-dir=.git push` / `git -P push`) をすべて素通りさせていた (2026-07-10 監査で実測)。walker は shell separator を pad して tokenize し、グローバルオプション (値を取るものは次トークンごと) をスキップして最初の非オプショントークンを subcommand として読む。未知の `-*` オプションは検出側 (fail-closed) に倒す。同様に、hook 入力 JSON の string field 抽出 (`command` / `file_path` / `cwd` / `transcript_path`) は [`lib/parse-command.sh`](./lib/parse-command.sh) の `parse_json_string_field` が単一権威 (旧式 `grep -oE '"key"[^,}]*'` は path 中の `,` `}` / escape で途中切り → 無音 fail-open だった)。
 
@@ -125,6 +125,7 @@ linter が解決できない (script 無し / runner 不在) 場合は warn し�
 - **edit 時 gate は作らない**。「その行が追加されたか」は PreToolUse では計算できず、改名操作そのものは旧称を `old_string` 側に置くので、素朴な edit 時検査は**やらせたい改名を止める**。commit 関所なら sed / formatter / script 経由も同時に捕まる (Hook T と同じ ADR 0017 の論法)
 - **照合はリテラルのみ** (正規表現を消費先に書かせない)。英数字と `_` だけの語は単語境界 (`typeNo` は `i.typeNo` に当たり `typeNotation` には当たらない)、それ以外を含む語 (日本語・ドット区切り) は素の部分一致に落ちる (documented limit)
 - **検査しない場所**: `*.md` / `docs/**` / `CHANGELOG*` / 登記自身。用語集の非推奨表・ADR・incident 記録は旧称を名指しするのが仕事
+- **コード内のコメントと test fixture は検査される**。対の逃げ道として、その行に **`bootstrap-retired-ok`** と書くと**その 1 行だけ**除外する (eslint-disable-line と同じ形)。コメント構文で除外しない理由は、`//` で切ると文字列中の `"http://host/typeNo"` を無音で飲み込むため (無音の検出漏れが最悪の fail-mode)。scope-glob で足りない理由は、glob がパス全体を外すため (解説コメント 1 本のために `hooks/**` の gate を落とすことになる)。pragma は diff に残るので、marker への不可視な編集より厳密に良い逃げ道。doctor の残存 sweep も同じ規則に従う
 - **蓄積した残存は doctor が語ごとの件数で可視化する** (block しない・status を落とさない)。gate = 新しく持ち込んだ乖離 / doctor = 蓄積した乖離
 - **fail-closed (解析不能)** / **fail-open (根拠不在)** は他の commit 関所と同一
 - **CI net**: [`../scripts/retired-check.sh`](../scripts/retired-check.sh) + [`../templates/ci/bootstrap-retired.yml`](../templates/ci/bootstrap-retired.yml)。PR は三点差分 `origin/<base>...HEAD` を渡す (二点だと base 側の改名をこの branch のせいにする)

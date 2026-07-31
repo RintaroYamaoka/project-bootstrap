@@ -155,11 +155,37 @@ _retired_hit() {
   return 1
 }
 
+# The inline, per-LINE opt-out token. A line that is legitimately ABOUT the retired name —
+# a comment explaining the rename, a test fixture that must spell the old name, a migration
+# that reads the old column — carries this token and is skipped.
+#
+# WHY a pragma and not "exempt comments syntactically": stripping from the first `//` would
+# silently swallow a real occurrence inside a string literal (`"http://host/typeNo"`), and
+# silent under-detection is the worst fail-mode this plugin has. Comment syntax also differs
+# per language, so a parser here would be wrong in both directions.
+#
+# WHY a pragma and not "just narrow the scope-glob": a glob excludes a whole PATH, so allowing
+# one explanatory comment in hooks/ would disarm the gate for every file under hooks/. This
+# escape is one line wide.
+#
+# WHY it is acceptable that an actor can suppress a genuine violation with it: they always
+# could — by deleting the marker line. The pragma is strictly better, because it lands IN THE
+# DIFF where a reviewer sees it, whereas an edit to a config file nobody re-reads is invisible.
+# The trade is "visible narrow escape" instead of "invisible total escape".
+RETIRED_OK_TOKEN='bootstrap-retired-ok'
+
+# retired_line_suppressed <line> — return 0 when the line opts out.
+retired_line_suppressed() {
+  case "$1" in *"$RETIRED_OK_TOKEN"*) return 0 ;; esac
+  return 1
+}
+
 # retired_scan_line <repo-relative-path> <line>
 #   stdout = `<term>|<replacement>|<note>` for every loaded entry that hits, one per line.
 #   return 0 = at least one hit. Requires a prior successful retired_load.
 retired_scan_line() {
   local rel="$1" line="$2" i hit=1
+  retired_line_suppressed "$line" && return 1
   for i in "${!RETIRED_TERM[@]}"; do
     _retired_scope_ok "${RETIRED_SCOPE[$i]}" "$rel" || continue
     _retired_hit "$line" "${RETIRED_TERM[$i]}" || continue

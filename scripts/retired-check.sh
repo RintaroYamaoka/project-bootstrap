@@ -72,6 +72,8 @@ VIOLATIONS="$(retired_added_lines_range "$BASE" | retired_scan_stream)" || exit 
 検査対象は **このブランチが新しく足した行だけ**。既存行に残っている同じ語は対象外なので、
 この赤を消すために無関係な一括改名をしないこと。語そのものが引退していない / 射程が広すぎる
 なら、${MARKER#"$TOP"/} の該当行を意図的に直す (3 列目の scope glob で射程を絞れる)。
+その行が旧称 **について** 書いている場合だけ (改名を説明するコメント / 旧称を綴らねばならない
+fixture / 旧 column を読む migration)、その行に \`${RETIRED_OK_TOKEN}\` を書いて 1 行だけ除外する。
 EOF
 } >&2
 exit 1
