@@ -11,10 +11,15 @@ description: session の cold restore に必要な状態を docs/bootstrap/hando
 
 - ユーザーが `/handoff <topic>` と打ったとき
 - 以下の **AI 自身の判断** で自発的に呼ぶ:
-  - session が長くなり、ユーザーが `/clear` 等で context をリセットしそうな兆候
+  - ユーザーが `/clear` (= 意図的な context 破棄) を予告した / その兆候がある
   - 並走する別 Claude / 別ターミナルに context を渡す必要がある
   - 翌日 / 数時間後の再開を user が示唆した
   - 重要な session の終了 (= PR 出した / deploy した / 顧客対応一区切り)
+
+**session が長い、だけを理由に書かない** (ADR 0008 #5 で縮退)。session 内の長大化は
+harness の自動要約継続が引き継ぐので、handoff の領分は **context が消える境界を跨ぐとき**
+(明示 `/clear` / 別 Claude / 別 session / 区切り) だけ。機械要約は同一 session 内の継続で
+あって、別 Claude が読む人間可読の引き継ぎ正本にはならない — そこが残る領分。
 
 **advisory 経由ではなく default 挙動として書く**。書かないと cold restore コストが session ごとに膨張する。
 

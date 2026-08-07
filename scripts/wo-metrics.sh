@@ -15,11 +15,14 @@
 # 何節にあったか」の集計であり、**事前条件テンプレートのどこが薄いか**を直接指す。
 #
 # 入力: docs/bootstrap/commission/metrics.tsv (accept skill が検収のたび 1 行追記する)
-#   列 (TAB 区切り):
+#   列 (TAB 区切り、schema v2 = ADR 0024 追記):
 #     1 wo_id  2 slug  3 ordered(YYYY-MM-DD)  4 accepted(YYYY-MM-DD)  5 retries
 #     6 escalations  7 rejections  8 budget_tokens  9 actual_tokens
 #     10 escalation_sections (穴があった WO 節番号の "," 連結。無ければ "-")
-#   `#` 始まりはコメント。
+#     11 retry_limit (WO frontmatter の宣言値。retries と突合 = 停止条件が守られたか)
+#     12 human_order_min  13 human_run_min  14 human_accept_min
+#        (人間時間の自己申告 [分]: 発注まで / 実装中の対応 / 検収。未計測は "-")
+#   `#` 始まりはコメント。v1 行 (10 列) は 11 列目以降を未記録として読む。
 #
 # 使い方: scripts/wo-metrics.sh [repo ...]   (既定は cwd)
 # AI 非依存。pure bash + awk、jq 非依存。
@@ -63,6 +66,10 @@ for repo in "${repos[@]}"; do
       if ($6 + 0 > 0) with_esc++
       if ($7 + 0 > 0) with_rej++
       if ($8 + 0 > 0 && $9 + 0 > $8 + 0) over++
+      if ($11 + 0 > 0 && $5 + 0 > $11 + 0) retry_over++
+      if ($12 ~ /^[0-9]+$/) { h_order += $12; h_ordern++ }
+      if ($13 ~ /^[0-9]+$/) { h_run += $13; h_runn++ }
+      if ($14 ~ /^[0-9]+$/) { h_accept += $14; h_acceptn++ }
       o = d2n($3); a = d2n($4)
       if (o >= 0 && a >= 0) { lead += (a - o); leadn++ }
       if ($10 != "" && $10 != "-") {
@@ -80,6 +87,14 @@ for repo in "${repos[@]}"; do
       printf "  再試行                 : 計 %d 回 (WO あたり %.1f)\n", retries, retries / n
       if (budget > 0)
         printf "  トークン               : 見積 %d / 実測 %d (%.0f%%)  — 予算超過 %d 件\n", budget, actual, actual * 100 / budget, over
+      printf "  停止条件 (10 節) の突合 : 予算超過 %d 件 / 再試行上限超過 %d 件 — 発注 gate は「書いたか」までしか見ない。「守られたか」はこの 2 数\n", over, retry_over
+      if (h_ordern + h_runn + h_acceptn > 0) {
+        printf "  人間時間 (自己申告)     :"
+        if (h_ordern > 0)  printf " 発注まで avg %.0f 分 (%d件)", h_order / h_ordern, h_ordern
+        if (h_runn > 0)    printf " / 実装中 avg %.0f 分 (%d件)", h_run / h_runn, h_runn
+        if (h_acceptn > 0) printf " / 検収 avg %.0f 分 (%d件)", h_accept / h_acceptn, h_acceptn
+        printf "\n"
+      }
       if (leadn > 0)
         printf "  発注→検収のリードタイム: 平均 %.1f 日 (%d 件で計測)\n", lead / leadn, leadn
 
@@ -91,6 +106,9 @@ for repo in "${repos[@]}"; do
       print ""
       print "  読み方: 特定の節に偏るなら、その節のテンプレート文言か記入の慣行が弱い。"
       print "          偏らず全体に散るなら、粒度が大きすぎる (WO を小さく割る) 可能性が高い。"
+      print "          停止条件の超過は実装の失敗である前に停止設計の失敗 — 10 節に何が"
+      print "          書いてあれば止まったかを問い、escalation_sections に 10 を残す。"
+      print "          人間時間が特定の工程に偏るなら、そこが次の自動化投資先。"
       print "          エスカレーション 0 が続くなら、事前条件が過剰で発注コストを払いすぎている"
       print "          可能性もある — 0 は必ずしも良い値ではない。"
     }

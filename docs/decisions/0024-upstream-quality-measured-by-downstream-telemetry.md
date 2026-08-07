@@ -90,3 +90,32 @@ wo_id  slug  ordered  accepted  retries  escalations  rejections  budget_tokens 
   過去の行の番号の意味が変わる — 変更時は `metrics.tsv` に区切りコメント行
   (`# --- schema v2 since YYYY-MM-DD ---`) を入れ、集計を跨がせない
 - 十数枚たまったら `incident` skill で 1 度振り返り、得られた教訓を memory へ昇格させる
+
+---
+
+## 追記 — schema v2: 停止条件の突合と人間時間 (2026-08-07)
+
+実運用 0 行のうちに、列を 4 つ末尾に足した (移行対象の既存行は無い):
+
+```
+… escalation_sections  retry_limit  human_order_min  human_run_min  human_accept_min
+```
+
+**`retry_limit` (停止条件の突合)**: 発注 gate (`block-commit-if-wo-incomplete.sh`) が強制
+できるのは 10 節を「書いたか」までで、「守られたか」を見る仕組みが無かった。予算は
+`budget_tokens`/`actual_tokens` の対で既に突合できたが、再試行は宣言値の列が無く突合不能
+だった。WO frontmatter の `retry_limit` を検収時に転記し、`retries > retry_limit` /
+`actual_tokens > budget_tokens` を「停止条件を破って走った」の信号にする。実行中に止める
+機構は作らない — 「今のは同一失敗の再試行か、別の試行か」は既約な判断で、hook で数えれば
+proxy になる (本文の「hook でエスカレーションを自動計測する」を採らなかった理由と同じ)。
+破られた事実が検収で必ず可視化されれば、④ の取引材料としては足りる。
+
+**`human_order_min` / `human_run_min` / `human_accept_min` (人間時間)**: この開発体制の
+律速資源は人間のレビュー帯域 (全 repo 共有の単一資源) だと結論しているのに、その資源が
+どの工程 (発注まで / 実装中の対応 / 検収) に溶けているかの計測が無かった。「次にどこを
+自動化するか」はこの数字でしか決められない。5 分刻みの粗い自己申告でよい — 精度より
+偏りの検出が目的。未計測は `-` (欠測として集計から除外、0 と混同しない)。
+
+`wo-metrics.sh` は v1 行 (10 列) の 11 列目以降を未記録として読むので、区切りコメントは
+必須ではないが、新規作成時に `# schema v2 (2026-08-07): …` を 1 行目に書く (accept skill)。
+節構成の変更時の区切りコメント規約 (本文「移行後に必要な保守」) は従来どおり。

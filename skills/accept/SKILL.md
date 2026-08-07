@@ -1,6 +1,6 @@
 ---
 name: accept
-description: 実装が返ってきた作業指示書 (WO) を検収する skill。独立コンテキストの AI が実装差分と DoD を 1 行ずつ突合し [OK]/[ズレ]/[要判断] を付け、検算 (DoD 行数 = 判定行数) を通し、1 行でも [ズレ]/[要判断] があれば差し戻す。受け入れたら docs/bootstrap/commission/metrics.tsv に実績 (再試行・エスカレーション・差し戻し・トークン・穴があった節番号) を 1 行追記し、上流の品質を下流の実測で測れるようにする。統合 (merge) の後、または WO の実装が完了したときにロードする。
+description: 実装が返ってきた作業指示書 (WO) を検収する skill。独立コンテキストの AI が実装差分と DoD を 1 行ずつ突合し [OK]/[ズレ]/[要判断] を付け、検算 (DoD 行数 = 判定行数) を通し、1 行でも [ズレ]/[要判断] があれば差し戻す。受け入れたら docs/bootstrap/commission/metrics.tsv に実績 (再試行・エスカレーション・差し戻し・トークン・穴があった節番号・停止条件の突合・人間時間) を 1 行追記し、上流の品質を下流の実測で測れるようにする。統合 (merge) の後、または WO の実装が完了したときにロードする。
 ---
 
 # accept — 検収し、上流の品質を測る
@@ -70,10 +70,12 @@ DoD の突合だけでは取りこぼすものがある。
 
 ## Step 4 — 実績を 1 行残す (ここが自己改善ループの本体)
 
-`docs/bootstrap/commission/metrics.tsv` に TAB 区切りで 1 行追記する。
+`docs/bootstrap/commission/metrics.tsv` に TAB 区切りで 1 行追記する (schema v2、ADR 0024 追記)。
+file を新規作成するときは 1 行目に schema コメントを書く:
 
 ```
-<wo_id>	<slug>	<ordered>	<accepted>	<retries>	<escalations>	<rejections>	<budget_tokens>	<actual_tokens>	<escalation_sections>
+# schema v2 (2026-08-07): wo_id slug ordered accepted retries escalations rejections budget_tokens actual_tokens escalation_sections retry_limit human_order_min human_run_min human_accept_min
+<wo_id>	<slug>	<ordered>	<accepted>	<retries>	<escalations>	<rejections>	<budget_tokens>	<actual_tokens>	<escalation_sections>	<retry_limit>	<human_order_min>	<human_run_min>	<human_accept_min>
 ```
 
 `escalation_sections` が最重要の列 — **AI が止まって人間を呼んだとき、その穴は WO の
@@ -84,6 +86,18 @@ DoD の突合だけでは取りこぼすものがある。
 
 判定に迷ったら、そのエスカレーションを防ぐには**どの節に何を書いてあればよかったか**を
 考える。それが答えの節番号になる。
+
+**`retry_limit` = 停止条件の突合列**。WO frontmatter の宣言値を転記する。発注 gate が
+強制できるのは「10 節を書いたか」までで、**「守られたか」はここでしか測れない** —
+`retries > retry_limit` または `actual_tokens > budget_tokens` なら、その WO は停止条件を
+破って走った。それは実装の失敗である前に**停止設計の失敗**なので、escalation_sections の
+判定と同じ問い (「10 節に何が書いてあれば止まったか」) を立てて `10` を記録する。
+
+**`human_order_min` / `human_run_min` / `human_accept_min` = 人間時間の列**。発注まで
+(charter 更新 + order + pre-review) / 実装中 (エスカレーション対応・質問返答) / 検収
+(accept の読みと判断) に**人間**が使った分数。5 分刻みの粗い自己申告でよい — 律速資源は
+人間のレビュー帯域なので、それが**どの工程に溶けているか**が「次にどこを自動化するか」を
+決める唯一の数字になる (`velocity.sh` のレビュー濃度と対)。未計測なら `-`。
 
 ## Step 5 — 片付ける
 
