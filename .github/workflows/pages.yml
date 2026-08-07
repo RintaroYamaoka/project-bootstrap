@@ -1,0 +1,32 @@
+# GitHub Pages — docs/guide/ (プラグイン全体の解説ページ) だけを配信する。
+# build_type=workflow なので main への push (対象 path のみ) で自動デプロイ。
+# workflow_dispatch は初回配線の branch からの実測用 (env seam: merge ≠ deployed、ADR 0012 系の規律)。
+name: pages
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/guide/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/guide
+      - id: deployment
+        uses: actions/deploy-pages@v4

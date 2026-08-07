@@ -1,0 +1,399 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="project-bootstrap プラグインの全体像 — 発注から検収までの流れ・コマンド・関所・opt-in・改善ループを 1 枚で解説">
+<title>project-bootstrap 完全ガイド — 理解負債の返済</title>
+<style>
+  :root {
+    --bg: #FAF7F1;
+    --surface: #FFFFFF;
+    --ink: #23272E;
+    --muted: #6F6A5E;
+    --accent: #31548A;
+    --accent-soft: #E8EDF5;
+    --stop: #B5432E;
+    --stop-soft: #F7E9E4;
+    --go: #3D7A54;
+    --line: #E4DFD4;
+    --code-bg: #F1EDE3;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #14171D;
+      --surface: #1C2129;
+      --ink: #E7E4DC;
+      --muted: #9A958A;
+      --accent: #8FAEDD;
+      --accent-soft: #232E40;
+      --stop: #E0836A;
+      --stop-soft: #3A2822;
+      --go: #82C098;
+      --line: #2C323C;
+      --code-bg: #232936;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #14171D;
+    --surface: #1C2129;
+    --ink: #E7E4DC;
+    --muted: #9A958A;
+    --accent: #8FAEDD;
+    --accent-soft: #232E40;
+    --stop: #E0836A;
+    --stop-soft: #3A2822;
+    --go: #82C098;
+    --line: #2C323C;
+    --code-bg: #232936;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", "Yu Gothic", "Meiryo", sans-serif;
+    font-size: 16px;
+    line-height: 1.9;
+    -webkit-font-smoothing: antialiased;
+  }
+  main { max-width: 46rem; margin: 0 auto; padding: 3.5rem 1.25rem 6rem; }
+  h1, h2, h3 {
+    font-family: "Hiragino Mincho ProN", "Yu Mincho", "Noto Serif JP", serif;
+    font-weight: 600;
+    line-height: 1.4;
+    text-wrap: balance;
+  }
+  h1 { font-size: 2rem; margin: 0.5rem 0 0; letter-spacing: 0.01em; }
+  h2 { font-size: 1.45rem; margin: 0 0 1rem; }
+  h3 { font-size: 1.1rem; margin: 2rem 0 0.5rem; }
+  p { margin: 0 0 1.1rem; }
+  section { margin-top: 4rem; }
+  .eyebrow {
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    color: var(--accent);
+    text-transform: uppercase;
+  }
+  .section-no {
+    display: block;
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    color: var(--accent);
+    margin-bottom: 0.4rem;
+    font-family: "Hiragino Sans", "Noto Sans JP", sans-serif;
+  }
+  .lede { font-size: 1.05rem; color: var(--muted); margin-top: 0.9rem; }
+  code, .path {
+    font-family: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace;
+    font-size: 0.86em;
+    background: var(--code-bg);
+    border-radius: 4px;
+    padding: 0.1em 0.4em;
+  }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 1.2rem 1.4rem;
+    margin: 1.4rem 0;
+  }
+  .card.accent { border-left: 4px solid var(--accent); }
+  .card.stop { border-left: 4px solid var(--stop); background: var(--stop-soft); }
+  .card h3 { margin-top: 0; }
+  .card p:last-child, .card ul:last-child, .card ol:last-child { margin-bottom: 0; }
+  ol.remember { margin: 0; padding-left: 1.4rem; }
+  ol.remember li { margin-bottom: 0.5rem; }
+  ol.remember li:last-child { margin-bottom: 0; }
+  .table-wrap { overflow-x: auto; margin: 1.2rem 0; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; font-size: 0.9rem; line-height: 1.7; }
+  th {
+    text-align: left;
+    font-size: 0.76rem;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    font-weight: 700;
+    padding: 0.7rem 0.9rem;
+    border-bottom: 1px solid var(--line);
+    white-space: nowrap;
+    background: var(--surface);
+  }
+  td { padding: 0.65rem 0.9rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  td.group {
+    font-weight: 700;
+    color: var(--accent);
+    white-space: nowrap;
+  }
+  .pill {
+    display: inline-block;
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 0.05rem 0.55rem;
+    border-radius: 99px;
+    white-space: nowrap;
+    letter-spacing: 0.04em;
+  }
+  .pill.auto { background: var(--accent-soft); color: var(--accent); }
+  .pill.manual { background: var(--code-bg); color: var(--muted); }
+  .pill.stop { background: var(--stop-soft); color: var(--stop); }
+  figure { margin: 2rem 0; }
+  figure svg { max-width: 100%; height: auto; display: block; }
+  figcaption { font-size: 0.85rem; color: var(--muted); margin-top: 0.7rem; line-height: 1.7; }
+  .toc {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1.4rem;
+    font-size: 0.88rem;
+    margin: 2rem 0 0;
+    padding: 1rem 0;
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+  }
+  .toc a { color: var(--accent); text-decoration: none; }
+  .toc a:hover, .toc a:focus-visible { text-decoration: underline; }
+  a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  strong { font-weight: 700; }
+  .num { font-variant-numeric: tabular-nums; }
+  ul { padding-left: 1.4rem; margin: 0 0 1.1rem; }
+  li { margin-bottom: 0.35rem; }
+  .footnote { font-size: 0.85rem; color: var(--muted); border-top: 1px solid var(--line); margin-top: 4rem; padding-top: 1.2rem; }
+</style>
+
+</head>
+<body>
+<main>
+  <header>
+    <span class="eyebrow">project-bootstrap v0.34.0 — 全体解説</span>
+    <h1>普段どおり頼むだけ。<br>間違えそうな瞬間だけ、自動で止まる。</h1>
+    <p class="lede">このプラグインは「腕のいい開発者なら自然にやる規律」を、AI が忘れても・あなたが知らなくても<strong>自動で効くガードレール</strong>に変えたもの。このページは、AI 駆動で進化し続けた全体像を一度に取り戻すための地図です。</p>
+    <nav class="toc" aria-label="目次">
+      <a href="#why">1. 何のためにあるか</a>
+      <a href="#flow">2. 開発の流れ全体図</a>
+      <a href="#commands">3. コマンド 11 個</a>
+      <a href="#gates">4. 止める関所</a>
+      <a href="#optin">5. スイッチの場所</a>
+      <a href="#loop">6. 改善ループ</a>
+      <a href="#files">7. フォルダの正体</a>
+      <a href="#now">8. 今の状態と次の一手</a>
+    </nav>
+  </header>
+
+  <div class="card accent">
+    <h3>覚えることは 3 つだけ</h3>
+    <ol class="remember">
+      <li><strong>普段どおり Claude に頼む。</strong>コマンドはほぼ全部 AI が状況を見て勝手に呼ぶ。</li>
+      <li><strong>止められたら理由文を読む。</strong>理不尽に見えても、たいてい正しく止めている。対処法も理由文に書いてある。</li>
+      <li><strong>まとまった作業を丸ごと任せたいときだけ「/order で発注して」と言う。</strong>これが上流工程の入口。</li>
+    </ol>
+  </div>
+
+  <section id="why">
+    <span class="section-no">第 1 章</span>
+    <h2>何のためにあるか — 「気をつけてね」は必ず忘れられる</h2>
+    <p>AI に開発を任せると、同じ失敗が繰り返し起きます。テストを書かずに実装する。「完了しました」と言うが実物を見ていない。<code>git add -A</code> で関係ないファイルを巻き込む。長い会話の途中で、最初に言われた注意を忘れる。</p>
+    <p>普通の対策は CLAUDE.md に注意書きを増やすことですが、<strong>注意書き (advisory) は会話が長くなると必ず薄れます</strong>。人間の「今度から気をつけます」と同じです。</p>
+    <p>このプラグインの答えはひとつ: <strong>注意する代わりに、通り道に関所を置く</strong>。commit・merge・新規ファイル作成といった「どんなやり方をしても必ず通る行為」の瞬間に機械が検査し、条件を満たすまで通さない。忘れるかどうかに依存しないので、会話が何時間続いても効き方が変わりません。</p>
+    <h3>設計の 4 原則 (かみ砕き版)</h3>
+    <ul>
+      <li><strong>① 分解</strong> — 「良い判断」は強制できないが、「判断を済ませた証拠」は強制できる。だから判断の記録を前進の条件にする。</li>
+      <li><strong>② 信号選び</strong> — 「〜っぽい言葉」ではなく「行為そのもの」で検知する。言葉には無限の言い換えがあり、必ずすり抜けられるから。</li>
+      <li><strong>③ 配備の可視化</strong> — 効いていない関所ほど危ない (守られている気になる)。だからセッション開始時に点検結果を画面に出す。</li>
+      <li><strong>④ 計測つきの取引</strong> — ルールを緩めたくなったら、勘でなく数字 (後述の metrics) で決める。</li>
+    </ul>
+  </section>
+
+  <section id="flow">
+    <span class="section-no">第 2 章</span>
+    <h2>開発の流れ全体図 — 発注から検収まで</h2>
+    <p>v0.33.0 から、このプラグインは実装だけでなく<strong>上流 (発注) から検収まで</strong>を一貫して担います。外注管理と同じ構図です: あなたが発注者、AI が施工者。</p>
+    <figure>
+      <svg viewBox="0 0 940 300" role="img" aria-label="開発の流れ: 発注、実装、統合、検収、計測の5段階と、その間に置かれた関所。計測から発注へ改善が戻るループ。">
+        <defs>
+          <marker id="arw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+          </marker>
+        </defs>
+        <g fill="none" stroke="currentColor" stroke-width="1.4">
+          <rect x="20"  y="80" width="150" height="76" rx="8"/>
+          <rect x="255" y="80" width="150" height="76" rx="8"/>
+          <rect x="490" y="80" width="150" height="76" rx="8"/>
+          <rect x="725" y="80" width="150" height="76" rx="8"/>
+        </g>
+        <g font-family="'Hiragino Sans','Noto Sans JP',sans-serif" fill="currentColor" text-anchor="middle">
+          <text x="95"  y="112" font-size="15" font-weight="700">発注</text>
+          <text x="95"  y="136" font-size="11" opacity="0.75">契約書 (WO) を書く</text>
+          <text x="330" y="112" font-size="15" font-weight="700">実装</text>
+          <text x="330" y="136" font-size="11" opacity="0.75">AI が自律で走る</text>
+          <text x="565" y="112" font-size="15" font-weight="700">統合</text>
+          <text x="565" y="136" font-size="11" opacity="0.75">合流させる (merge)</text>
+          <text x="800" y="112" font-size="15" font-weight="700">検収 + 計測</text>
+          <text x="800" y="136" font-size="11" opacity="0.75">発注どおりか照合</text>
+        </g>
+        <!-- gates between stages -->
+        <g stroke="#C0533D" stroke-width="4" stroke-linecap="round">
+          <line x1="212" y1="70" x2="212" y2="166"/>
+          <line x1="447" y1="70" x2="447" y2="166"/>
+          <line x1="682" y1="70" x2="682" y2="166"/>
+        </g>
+        <g font-family="'Hiragino Sans','Noto Sans JP',sans-serif" font-size="10.5" fill="#C0533D" text-anchor="middle">
+          <text x="212" y="192">関所: 12 節が埋まり</text>
+          <text x="212" y="208">レビュー済みでないと</text>
+          <text x="212" y="224">発注 commit できない</text>
+          <text x="447" y="192">関所: テスト先行 /</text>
+          <text x="447" y="208">契約なしの新規ファイル</text>
+          <text x="447" y="224">/ 担当外の編集を block</text>
+          <text x="682" y="192">関所: AI レビュー記録と</text>
+          <text x="682" y="208">動作テスト完了が</text>
+          <text x="682" y="224">ないと merge 不可</text>
+        </g>
+        <!-- flow arrows -->
+        <g stroke="currentColor" stroke-width="1.4" fill="none" marker-end="url(#arw)">
+          <line x1="170" y1="118" x2="248" y2="118"/>
+          <line x1="405" y1="118" x2="483" y2="118"/>
+          <line x1="640" y1="118" x2="718" y2="118"/>
+        </g>
+        <!-- feedback loop -->
+        <path d="M 800 156 L 800 268 L 95 268 L 95 163" fill="none" stroke="currentColor" stroke-width="1.4" stroke-dasharray="5 4" marker-end="url(#arw)"/>
+        <text x="447" y="260" font-family="'Hiragino Sans','Noto Sans JP',sans-serif" font-size="11" fill="currentColor" opacity="0.75" text-anchor="middle">実績 (metrics.tsv) が次の発注テンプレートを改善する</text>
+        <!-- gate labels top -->
+        <g font-family="'Hiragino Sans','Noto Sans JP',sans-serif" font-size="10.5" fill="currentColor" opacity="0.65" text-anchor="middle">
+          <text x="95"  y="60">/charter /order /pre-review</text>
+          <text x="330" y="60">TDD hook + lane + 停止条件</text>
+          <text x="565" y="60">/integrate /verification</text>
+          <text x="800" y="60">/accept + wo-metrics.sh</text>
+        </g>
+      </svg>
+      <figcaption>朱色の縦線が「関所」= 条件を満たすまで先に進めない検査。左端の発注は省略可能で、日常の小さな作業 (バグ修正・小変更) は実装からそのまま始まり、その場合も実装・統合の関所だけは常に効く。</figcaption>
+    </figure>
+    <p>重要なのは、<strong>関所がなぜ commit と merge に集中しているか</strong>です。書き込む方法は無数にあります (Edit ツール、formatter、<code>sed</code>、リダイレクト…)。方法を 1 つずつ塞ぐのはモグラ叩きで必ず漏れます。しかし<strong>どんな方法で書いても、成果にするには必ず commit を通る</strong>。だから全方式が合流する一点に関所を置く — これがこのプラグインの背骨です。</p>
+  </section>
+
+  <section id="commands">
+    <span class="section-no">第 3 章</span>
+    <h2>コマンド 11 個の地図 — ほぼ全部、AI が勝手に呼ぶ</h2>
+    <p>「自分で打つ」列に注目してください。あなたが能動的に覚える価値があるのは実質 <strong>/order と /handoff の 2 つ</strong>だけです。</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>工程</th><th>コマンド</th><th>ひとことで言うと</th><th>自分で打つ?</th></tr></thead>
+        <tbody>
+          <tr><td class="group" rowspan="4">上流<br>(発注)</td>
+              <td><code>/charter</code></td><td>後戻りできない判断だけを 1 ファイルに固める (可逆な判断は書かない)</td><td><span class="pill auto">ほぼ自動</span></td></tr>
+          <tr><td><code>/order</code></td><td>作業を「契約書 (作業指示書 = WO)」にして発注する。12 の欄が全部埋まらないと発注できない</td><td><span class="pill manual">自分で言う</span></td></tr>
+          <tr><td><code>/pre-review</code></td><td>発注前に、別の AI が契約書を「壊すつもりで」レビューし、穴を先に潰す</td><td><span class="pill auto">order が呼ぶ</span></td></tr>
+          <tr><td><code>/accept</code></td><td>納品物と契約書を 1 行ずつ照合して検収。実績を数字で記録する</td><td><span class="pill auto">ほぼ自動</span></td></tr>
+          <tr><td class="group" rowspan="4">実装<br>・統合</td>
+              <td><code>/plan</code></td><td>実装前に計画書を出して止まる (発注書がある作業では二重になるので出ない)</td><td><span class="pill auto">自動</span></td></tr>
+          <tr><td><code>/sprint-plan</code></td><td>大きい機能を「触るファイルが重ならない」複数レーンに割り、並列開発の段取りを作る</td><td><span class="pill auto">自動判定</span></td></tr>
+          <tr><td><code>/integrate</code></td><td>並列レーンを依存順に合流。合流前に AI レビュー + 全体テスト</td><td><span class="pill auto">ほぼ自動</span></td></tr>
+          <tr><td><code>/verification</code></td><td>「コードが正しいか」でなく「継ぎ目 (外部連携・環境・要件) が動くか」のテスト計画を作り、閉じるまで merge させない</td><td><span class="pill auto">自動</span></td></tr>
+          <tr><td class="group" rowspan="3">記録</td>
+              <td><code>/handoff</code></td><td>別ターミナル・翌日の自分が続きから再開できるメモを残す</td><td><span class="pill manual">中断前に</span></td></tr>
+          <tr><td><code>/incident</code></td><td>事故ややり直しを記録し、教訓を memory に昇格 → 次回から AI が同じ轍を踏まない</td><td><span class="pill auto">事故後に自動</span></td></tr>
+          <tr><td><code>project-bootstrap</code></td><td>本体の規律 (常時ロード)。あなたが触ることはない</td><td><span class="pill auto">常時</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="gates">
+    <span class="section-no">第 4 章</span>
+    <h2>止める関所 — 24 本あるが、覚えるのは 6 場面でいい</h2>
+    <p>hook は 24 本ありますが、あなたの体感としては「この 6 場面で止まる」だけです。止まったら赤い理由文に対処法が書いてあります。</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>こうすると止まる</th><th>なぜ</th><th>対処</th></tr></thead>
+        <tbody>
+          <tr><td>契約 (WO) も並列判定も無いまま、新しい実装ファイルを作る</td><td>「何を作ってよいか」を決めた記録なしに実装が始まるのを防ぐ</td><td>「/order で発注」するか、AI が逐次判定を 1 行記録して続行</td></tr>
+          <tr><td>テストの無い実装を触る / テスト・lint が落ちたまま commit</td><td>テスト先行 (TDD) と「落ちたまま進む」の防止</td><td>先にテストを書く / 落ちを直す (AI が自動でやる)</td></tr>
+          <tr><td><code>git add -A</code>・<code>reset --hard</code>・<code>push -f</code> など巻き込み・破壊系</td><td>関係ないファイルの混入と、履歴・作業の破壊を防ぐ</td><td>個別 path 指定 / <code>--force-with-lease</code> に矯正される</td></tr>
+          <tr><td>並列開発中に、自分の担当 (lane) 外のファイルを触る・commit する</td><td>複数 Claude の同時作業が無音で衝突するのを防ぐ</td><td>担当レーンに任せる。正当なら lane に 1 行追記</td></tr>
+          <tr><td>AI レビュー記録なし・動作テスト未完了のまま merge</td><td>「各自は緑でも合体したら壊れる」を合流の一点で検査</td><td>レビューと verification を閉じてから merge</td></tr>
+          <tr><td>保護ブランチへ直 push / 古い checkout から push</td><td>main を PR 経由に限定し、古い状態からの上書きを防ぐ</td><td>PR を作る / pull して最新化</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>止め<strong>ない</strong>ものも 3 種類あります: セッション開始時の点検表示 (古い checkout・残った worktree などを見せるだけ)、本番デプロイ・データ修復の瞬間に過去の教訓メモを目の前に出す表示、並列判定の促し。これらは「判断はあなたと AI に残し、忘れることだけを防ぐ」役です。</p>
+    <div class="card">
+      <h3>ローカルで止めても、GitHub の Merge ボタンは素通りする問題</h3>
+      <p>hook はあなたの手元でしか効かないので、同じ検査を <strong>GitHub Actions (CI) にも二重化</strong>してあります (テスト・動作テスト完了・配備点検・引退名チェックの 4 本)。今日のリリース PR #26 もこの 4 本を通ってから merge されています。</p>
+    </div>
+  </section>
+
+  <section id="optin">
+    <span class="section-no">第 5 章</span>
+    <h2>スイッチの場所 — 「フォルダを置く」が採用宣言</h2>
+    <p>強い関所は全部 <strong>opt-in</strong> です。特定のフォルダやファイルが repo にあるときだけ発火し、無ければ何も起きません。つまり「この repo で何が効いているか」は、この表と repo を見比べれば分かります。</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>repo に置く物</th><th>効き始めるもの</th></tr></thead>
+        <tbody>
+          <tr><td><code>docs/bootstrap/commission/</code></td><td>上流工程まるごと (契約なしの実装 block・発注 commit の完全性検査)</td></tr>
+          <tr><td><code>docs/bootstrap/sprint/</code></td><td>並列判定の関所 (新規ファイル作成前に sprint 判定を要求)</td></tr>
+          <tr><td><code>docs/bootstrap/verification/</code></td><td>動作テスト未完了の merge を block</td></tr>
+          <tr><td><code>.bootstrap/lint</code></td><td>commit 時の lint 検査 (この commit が運ぶファイルだけ)</td></tr>
+          <tr><td><code>.bootstrap/arch</code></td><td>依存方向・層違反の block</td></tr>
+          <tr><td><code>.bootstrap/protected</code></td><td>指定ブランチへの直 push 禁止</td></tr>
+          <tr><td><code>.bootstrap/retired</code></td><td>改名で引退した古い名前の混入 block</td></tr>
+          <tr><td><code>.bootstrap/wip</code></td><td>同時並列レーン数の上限</td></tr>
+          <tr><td><code>.bootstrap/lane</code> (worktree ごと)</td><td>担当外ファイルの編集 block (sprint-plan が自動生成、手で作らない)</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>常時効くもの (置き物不要): TDD、危険 git 操作の矯正、レビュー無し merge の block、本番操作時の教訓表示。</p>
+    <p><strong>注意: plugin の更新 ≠ 各 repo で効いている</strong>。今日のようにプラグインを更新したら、各 repo のセッション開始時の点検 (doctor) が古さを教えてくれます。「merge したのに効いてない」の大半はこれです。</p>
+  </section>
+
+  <section id="loop">
+    <span class="section-no">第 6 章</span>
+    <h2>数字で回す改善ループ — 今日 v0.34.0 で強化された部分</h2>
+    <p>検収 (<code>/accept</code>) のたびに <code>metrics.tsv</code> へ実績が 1 行残り、<code>scripts/wo-metrics.sh</code> で集計できます。これは「ルールを増やすか・緩めるか」を勘でなく数字で決めるための装置です。読み方だけ覚えれば十分:</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>数字がこう出たら</th><th>意味</th><th>打ち手</th></tr></thead>
+        <tbody>
+          <tr><td>エスカレーション (AI が止まって人間を呼んだ回数) が<strong>特定の節に偏る</strong></td><td>契約書テンプレートのその欄が弱い</td><td>その節の書き方を強化</td></tr>
+          <tr><td>エスカレーションが<strong>全体に散る</strong></td><td>1 枚の契約が大きすぎる</td><td>WO を小さく割る</td></tr>
+          <tr><td><strong>停止条件の超過</strong> (再試行上限・予算を破って走った) <span class="pill stop">v0.34 新設</span></td><td>実装の失敗である前に「止まり方の設計」の失敗</td><td>停止条件 (10 節) の書き方を直す</td></tr>
+          <tr><td><strong>人間時間</strong>が特定工程に偏る <span class="pill stop">v0.34 新設</span></td><td>あなたの時間 = 唯一の律速資源の溶け先</td><td>そこが次の自動化投資先</td></tr>
+          <tr><td>エスカレーションが <strong>0 のまま続く</strong></td><td>良い値とは限らない。事前準備が過剰か、AI が勝手に解釈して進んだか</td><td>検収の [ズレ] 件数と並べて読む</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>v0.34.0 ではもう 1 つ、<strong>「人間の手動確認を使い捨てにしない」仕組み</strong>が入りました。動作テストであなたが手で確認した項目を閉じるとき、AI が「これ、次回からテストか監視で自動化できませんか」と一度聞いてきます。OK すれば恒久化され、<strong>同じ確認は二度と手動で来ません</strong>。開発が大きくなるほど効く変更です。</p>
+  </section>
+
+  <section id="files">
+    <span class="section-no">第 7 章</span>
+    <h2>フォルダの正体 — <code>docs/bootstrap/</code> に増えていくファイルは何なのか</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>場所</th><th>正体</th><th>寿命</th><th>あなたが読む?</th></tr></thead>
+        <tbody>
+          <tr><td><code>handoffs/</code></td><td>セッションの引き継ぎメモ</td><td>1–2 週間で捨ててよい</td><td>再開時に AI が読む。基本読まなくてよい</td></tr>
+          <tr><td><code>incidents/</code></td><td>事故の記録と再発防止</td><td>永続</td><td>たまに眺めると面白い</td></tr>
+          <tr><td><code>docs/decisions/</code></td><td>不可逆な設計判断 (ADR)</td><td>永続</td><td>「なぜこうなってる?」と思ったとき</td></tr>
+          <tr><td><code>verification/</code></td><td>ブランチごとの動作テスト台帳</td><td>merge 後に archive</td><td>HUMAN 行 (あなたの確認担当分) だけ</td></tr>
+          <tr><td><code>sprint/</code></td><td>並列開発の作業板 (board)</td><td>sprint 終了で archive</td><td>読まなくてよい</td></tr>
+          <tr><td><code>commission/</code></td><td>契約書 (WO)・不可逆判断 (charter)・実績 (metrics.tsv)</td><td>WO は検収後に消してよい。charter と metrics は永続</td><td>charter と metrics の集計だけ</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="now">
+    <span class="section-no">第 8 章</span>
+    <h2>今の状態と、次の一手</h2>
+    <p><strong>設計は完成度が高い一方、上流工程 (発注→検収) はまだ実運用 0 件</strong>です。過去に 2 回作られた上流の仕組みは、どちらも設計段階では筋が通っていたのに「重くて使われず」死にました。今の設計がそれを超えているかは、実プロダクトで契約書を 1 枚通して初めて分かります。</p>
+    <div class="card accent">
+      <h3>次の一手 (これだけ)</h3>
+      <p>あなたのプロダクト repo の次のまとまった作業で <strong>「commission を採用して、/order で発注して」</strong> と言う。それだけで charter 作成 → 契約書 12 節 → 敵対レビュー → 発注 → 実装 → 検収 → 実績 1 行目、まで AI が回します。検収時に「何分使った?」と聞かれたらざっくり答えてください。</p>
+    </div>
+  </section>
+
+  <p class="footnote">project-bootstrap v0.34.0 (2026-08-07) 時点の内容。正本はプラグイン repo の README・各 SKILL.md・docs/decisions/ (ADR 0001–0024)。このページは理解のための地図であり、詳細が食い違ったら正本が勝ちます。</p>
+</main>
+</body>
+</html>
