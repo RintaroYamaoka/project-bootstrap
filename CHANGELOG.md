@@ -7,6 +7,16 @@
 
 ## [Unreleased]
 
+## [0.35.0] - 2026-08-08
+
+### Fixed
+
+- **heredoc 本文をコマンドと誤読する誤検知を全 gate で塞いだ (ADR 0025)**。commit メッセージの heredoc に「一括 stage は `git add -A` を使わない」という**規約の説明**を書いた commit が block された (ai-reception の体制移行中に発覚、最小再現つきで起票)。`cat <<'EOF' … EOF` のように git と無関係なコマンドでも起きる。**heredoc 本文は実行されるコマンドではなく stdin に渡されるデータ**なのに、その区別が実装に無かった — token walker (`lib/git-invocation.sh`、11 hook が使用) は改行を単なる空白として word-split するので本文のトークンがコマンド列に流れ込み、raw regex 経路 (`block-dangerous-git-ops.sh`) も本文の字面を拾っていた。**誤検知が 2 つの検出経路にまたがっていた**ので、全 gate が通る単一の入口 `parse_command` で本文を落とす。**検出を緩める向きなので fail-closed の例外を置いた**: `bash <<EOF … EOF` のようにシェル/eval に食わせる heredoc は本文が実際に実行されるため、gate の視界に残す。`<<-`・quote 付きラベル・未終端・1 行複数 heredoc・herestring (`<<<`) を扱う。
+- **これは「安全側の誤検知」ではない**。止めていたのは**規律そのものを文章で説明する行為**で、規律を運用している repo ほど禁止コマンドの字面を書く機会 (CLAUDE.md・PR 本文・commit メッセージ・incident・hook の doc) が多い。発見時に実際に `/permissions` で hook を deny にする案が出た = 繰り返し警告してきた**「gate が自分の bypass を作る」**の実例であり、原則②「gate は proxy でなく行為そのものを信号にする」の違反 (**テキストの字面**という proxy を行為と誤読していた)。
+- **既知の残余を明示的に残した**: quoted 引数の中の字面 (`-m "… git add -A …"`) は依然 over-detect する。quote 剥がしは引数の**値**を消し、pathspec を引数から取る消費者 (`lib/commit-files.sh`) が「空白を含む path」を無音で取りこぼす — lint / test / retired の各 gate が「この commit が運ぶ file」を誤るのは誤検知より重い**無音の fail-open** なので採らない。回避は heredoc か `-F <file>` で、どちらも本版から通る。
+- **mutation testing が本物のテストギャップを 1 件出した**。`<<-` のタブ除去を消す変異が**生存**した — 元のテストは終端の後ろにコマンドが無く、タブ除去を消しても「終端不一致 → 未終端として末尾まで落ちる」で**出力が同じ**になっていた。しかもその差は「終端の後ろの実 `git add -A` を飲み込む」= **検出漏れ (fail-open)** の向き。差が出る入力を追加して kill を確認した。herestring ガードの変異も生存したが、これはラベル走査が既に `<` を弾く**等価変異**なのでコードにその旨を明記して残した。
+- 記録: ADR 0025 / `docs/bootstrap/incidents/2026-08-08-heredoc-body-read-as-command/` / memory `feedback_false_positive_kills_the_discipline`。suite 53 本は不変、assertion は parse-command で 18 → 31。
+
 ### Added
 
 - **完全ガイド (docs/guide/) を GitHub Pages で公開**。プラグインが AI 駆動で進化し続けると使用者側に理解負債がたまる — 全体像 (発注→検収の流れ / コマンド 11 個 / 止まる 6 場面 / opt-in マーカー表 / metrics の読み方 / フォルダの正体) を 1 枚に固定した解説ページ。配信は `.github/workflows/pages.yml` (build_type=workflow、`docs/guide/**` のみ)。正本は README / SKILL.md / ADR で、食い違ったら正本が勝つと明記。
