@@ -4,6 +4,8 @@
 
 純粋な強制はほとんどの実規律で到達不能 (判断・配備・throughput は hook で縛りきれない) なので、強制を4つの設計判断の連なりに作り替える: **① 分解** (強制可能な precondition と既約な判断に割り、precondition を fail-closed で課す) / **② 信号選び** (proxy でなく行為を信号に、fail-mode を意図的に選ぶ) / **③ 配備の可視化** (効いていない強制を無音にしない) / **④ 計測つきの取引** (throughput と引き換えに緩めるなら戻る根拠を metric で持つ)。明示コマンドで発動する advisory 形式は採用しない (= 忘れられるため)。Anthropic 公式 best practice ([code.claude.com/docs/en/best-practices](https://code.claude.com/docs/en/best-practices)) と整合: verification 最高レバレッジ / hooks deterministic / CLAUDE.md は prune して短く保つ。
 
+> **全体像を 1 枚で**: [完全ガイド (GitHub Pages)](https://rintaroyamaoka.github.io/project-bootstrap/) — 発注から検収までの流れ・コマンド・関所・opt-in・改善ループの解説。正本は本 README と各 SKILL.md / ADR。
+
 ## これをどう使うか — 開発者向け運用ガイド
 
 **ひとことで言うと**: あなたは普段どおり Claude Code に頼むだけ。このプラグインは「上手い開発者なら自然にやる規律」(テスト先行・本番前の確認・並列作業の安全・事故の記録) を、AI が忘れても**自動で効くガードレール**にして背後で回す。あなたが覚えることはほとんど無い。下の表は「何が勝手に効くか」と「あなたが手で触れる所」の地図。

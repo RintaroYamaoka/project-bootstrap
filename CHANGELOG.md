@@ -7,6 +7,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- **完全ガイド (docs/guide/) を GitHub Pages で公開**。プラグインが AI 駆動で進化し続けると使用者側に理解負債がたまる — 全体像 (発注→検収の流れ / コマンド 11 個 / 止まる 6 場面 / opt-in マーカー表 / metrics の読み方 / フォルダの正体) を 1 枚に固定した解説ページ。配信は `.github/workflows/pages.yml` (build_type=workflow、`docs/guide/**` のみ)。正本は README / SKILL.md / ADR で、食い違ったら正本が勝つと明記。
+
 ## [0.34.0] - 2026-08-07
 
 ### Added
