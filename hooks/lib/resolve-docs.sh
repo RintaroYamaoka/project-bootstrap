@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
 # Shared resolver for the bootstrap-owned docs directories.
 #
-# Four directories are this plugin's own working surfaces: `sprint` (board.json /
-# .gate / reviews), `verification` (per-branch plans + contracts), `handoffs` and
-# `incidents`. They used to sit flat at `docs/<name>`, interleaved with whatever
-# else the adopting project keeps in docs/ (requirements, design, glossary — in a
-# repo that also runs kanban-flow they are literally siblings). They now live
-# consolidated under a single `docs/bootstrap/` parent (`docs/bootstrap/<name>`).
+# Five directories are this plugin's own working surfaces: `sprint` (board.json /
+# .gate / reviews), `verification` (per-branch plans + contracts), `commission`
+# (charter + work orders + metrics, ADR 0022), `handoffs` and `incidents`. They used
+# to sit flat at `docs/<name>`, interleaved with whatever else the adopting project
+# keeps in docs/ (requirements, design, glossary). They now live consolidated under a
+# single `docs/bootstrap/` parent (`docs/bootstrap/<name>`).
 #
 # This is the docs-side twin of resolve-marker.sh (ADR 0015 did the same for the
 # six root markers). The design is unchanged: a directory's PRESENCE is still the
 # opt-in switch, each gate still reads only its own directory, and there is no
 # shared parser and so no single point of failure.
 #
-# `docs/decisions/` is deliberately NOT in this set. ADRs are a general
-# engineering convention, not a bootstrap artifact — kanban-flow writes there too,
+# `docs/decisions/` is deliberately NOT in this set. ADRs are a general engineering
+# convention, not a bootstrap artifact — other tooling and humans write there too,
 # and splitting the destination would fork one repo's decision record in two.
 #
 # Backward compatibility (ADR 0020): repos that already adopted the flat layout

@@ -7,6 +7,30 @@
 
 ## [Unreleased]
 
+## [0.33.0] - 2026-08-07
+
+### Added
+
+- **上流工程 (発注 → 検収) を 1 サブシステム `commission` として統合した (ADR 0022)**。上流を独立プラグインとして作る試みは 2 回あり、2 回とも定着しなかった。`upstream-process` は README で独立性を設計目標に掲げ (「2 プラグインは片方だけでも成立する疎結合」)、その 2 行上で「判断を検出する gate は dead code になる。だから上流は hook にしない」と宣言していた。**この 2 つは因果関係にある** — bootstrap から独立していたいので強制層に届かず、届かないので advisory になり、advisory は忘れられた。本プラグインが他所で一貫して否定している失敗モードそのものである。`kanban-flow` は hook を 3 つ持ったが 3 つとも「文書 PR を誰が承認したか」を守るもので、**引き渡し内容の完全性を見るものは 1 つも無かった**。さらに外部ボード (GitHub Projects) が強制層から読めないため同期アダプタを書く必要が生じ、これは疎結合でなく内部スキーマへの無契約の依存だった。
+- **「重い」の実体は成果物の量でなく記憶の負担だった**。利用者が保持すべき概念は bootstrap がほぼ 0 (「普段どおり頼むだけ」) なのに対し、upstream-process 約 25 (🔴🟡🟢 / born-追認 / 幹 / ベット / appetite / 出所タグ 4 種 / 署名等級 3 種 …)、kanban-flow 約 30 (カード型 2 / Status 6 列 / スコープ絵文字 / 12 種の書き分け …)。**bootstrap は複雑性を hook の中に隠し、上流 2 つは利用者の頭に預けていた**。今回は永続する成果物を **WO 1 種 + charter.md 1 ファイル**に畳んだ (13 種 → 2 種)。
+- **自律稼働の事前条件を発注 commit の precondition にした (ADR 0023)**。前身 2 実装の作業指示テンプレートを実物で確認すると、**変更禁止範囲・優先順位・例外時の判断方法・再試行上限・エスカレーション条件を 1 つも持っていなかった** (前者 4 節 / 後者 6 節)。「仕様の穴が埋まらない」は規律の緩みではなく、埋める欄が物理的に無かったこと。WO を 12 節固定にし、`status: ordered` での commit (= AI に仕事を渡す行為そのもの) を信号に、記入・**DoD⇔検証方法の 1 対 1 検算**・事前レビューの全件決着・停止条件の数値・**OPEN な未決への非依存**を fail-closed 検査する。**`draft` は止めない** — 起草は思考の場で、そこを止めると checkpoint を保存するために節をノイズで埋める誘因が生まれ、gate が自分の bypass を作る。射程は ADR 0018 と同じく「この commit が運ぶ WO」だけ。
+- **実装 *前* の敵対的レビューを工程にした (`pre-review` skill)**。従来のウォーターフォールが成立していた一因は、下流の熟練者が質疑票で仕様の穴を潰していたこと。AI に長時間自律稼働させるほどその経路が失われるので、**独立コンテキストの AI を「仮想下流リーダー」として実装前に使う**。観点は 5 つ固定 (曖昧さ / 既存設計との矛盾 / 未定義の異常系 / DoD をテストだけ通す抜け道 / 停止条件の過不足)。kanban-flow も敵対的レビューを持っていたが**統合サインオフ = 実装後**にしか置いておらず、そこで見つかる穴は既にトークンを払って作られたものの穴だった。指摘の終わり方は `closed` か `deferred:<未決ID>` の 2 つだけで、**表が空 = 未実施も発注を止める** (未実施と「指摘ゼロ」は別物)。
+- **上流の品質を下流のテレメトリで測る (ADR 0024)**。kanban-flow は自身の設計文書 14 節で「kanban-flow の失敗は判断ミスであり、機械的には検出できない」と結論して自己改善ループを断念していた。**これは誤り** — 上流の曖昧さは消えず下流へ移動し、エスカレーション・再試行・差し戻し・トークンとして観測される。`accept` が WO ごとに実績を `metrics.tsv` に残し、`scripts/wo-metrics.sh` が**「AI が止まったとき穴は WO の何節にあったか」**を集計する。**エスカレーション 0 は良い値として扱わない** (事前条件が過剰な可能性と区別がつかないので `[ズレ]` 件数と並べて読む)。self-report の限界は `velocity.sh` と同じく出力に明記した (③ の自己適用)。
+- **上流の決定は新しい強制機構でなく既存 gate に翻訳して効かせる**。WO 2 節 (作業範囲) → `.bootstrap/lane` / 3 節 (変更禁止範囲) → `.bootstrap/arch`・`retired` / 8+9 節 (DoD と検証方法) → `docs/bootstrap/verification/<branch>.md`。この設計により、上流を統合しても**新規 hook は 3 つ (完全性 1 + 被覆の二層 2) で済んだ**。
+- **被覆の判定を編集時と commit 時の二層にした (`hooks/block-commit-if-impl-uncovered.sh`)**。編集時 gate は `Edit | Write | MultiEdit` にしか載らないので、`cat > src/x.ts` / redirect / codemod / scaffolder / `cp` で作られた新規 source 面は被覆の関所を一度も通らなかった (ADR 0017 が lane で通った道と同じ)。**lane gate では代替できない** — `order` は WO の 2 節から `.bootstrap/lane` を作るので、**1 枚も発注していない状態では lane marker 自体が無く lane 関所は fail-open** する。つまり「発注しないまま実装を始めた」という commission が止めたい当の状態だけが素通りしていた。判定対象は `--diff-filter=A` = **この commit が追加する file** だけなので bug fix / refactor は trip しない。統合操作中 (merge/rebase/cherry-pick/revert) は fail-open。
+- **未決台帳との突合を「形」から「実在」へ**。`wo_prereview_unresolved` は状態セルの *形* しか見ていなかったので、`deferred:U99` のような **台帳に無い ID への先送り**が決着として通っていた (= 名前をつけずに先送りする、という両前身が共通して禁じていた手そのもの)。4 節の参照先と 12 節の `deferred:` の先が台帳に実在することを検査に足し、charter.md が無いまま未決 ID を参照した場合も落とす (判断材料ごと消えた検査を無音でスキップすると、他の節は効いたままなので「gate は効いている」ようにしか見えない)。
+- **発注 gate が読む中身を index の版に修正** (`lib/commit-files.sh` の `commit_file_content`)。「この commit が運ぶ file」を index から取りながら中身を worktree から読んでいたため、部分 stage (`git add -p`) や stage 後の編集で **検査した中身 ≠ commit される中身**になり、完全性検査が fail-open していた。`-a` / `--all` のときだけ worktree が正 (それが `-a` の stage するものだから)。
+- **commission を `scripts/doctor.sh` の配備検出に登録**。3 本の gate が vendoring 先で 1 本でも欠ければ `partial`、`charter.md` 不在も `partial` (未決台帳の検査が無音でスキップされる)。commission は CI twin をまだ持たない (ADR 0023) ので、配備漏れを後追いで拾う net が doctor しか無い。`MAINTENANCE.md` の「同期が要る対」に **hook を足したら REQ と hooks/README の発火順も直す** を追加 — 今回の穴自体が「hook を足して REQ を直し忘れた」形だった。
+- 新規: `skills/charter` `skills/order` `skills/pre-review` `skills/accept` / `hooks/lib/wo.sh` (WO パーサの単一権威) / `hooks/block-commit-if-wo-incomplete.sh` / `hooks/block-impl-without-wo.sh` / `hooks/block-commit-if-impl-uncovered.sh` / `scripts/wo-metrics.sh` / `templates/docs/bootstrap/commission/` (README + charter.md + wo/TEMPLATE.md) / ADR 0022・0023・0024。hook 数 21 → 24、suite 数 49 → 53。
+- opt-in マーカーは `docs/bootstrap/commission/` ディレクトリの存在。**置かなければ何も発火しない**ので既存採用 repo への影響はゼロ。
+
+### Changed
+
+- **README と本体 SKILL の位置づけを「実装専用エンジン」から「発注 → 実装・統合 → 検収の一貫規律」へ改めた**。これが今回の唯一の実質的な代償で、旧 upstream-process が持っていた「管轄 = 詳細設計〜実装〜統合」という分界表は成立しなくなる。記事的に言えば、技術判断と原価判断 (どう分けて渡すか・どこで打ち切るか) が切り離せなくなったことに構造を合わせた。
+- `skills/plan/SKILL.md`: **発注済み WO がある場合は `/plan` を発火させない**例外を追加。WO の 1 節 = Step 1、2/3 節 = Step 2、7 節 = Step 3/5 (探索と前提検証は発注側で完了済み)、8/9 節 = 成功条件、12 節 = レビュー済みで、Step 7 の承認も発注 commit の完全性 gate 通過で済んでいる。ここでフル再実行すると探索と承認待ちが二重になり速度だけを削る。`/plan` は「発注者がいない場合のセルフサービス版」として残る。
+- `skills/project-bootstrap/SKILL.md`: 「上流 — 自律稼働の事前条件を渡す (commission)」を 1 セクション追加 (常時ロードなので約 35 行に抑えた。実務 skill 4 つはオンデマンド)。docs 表に `docs/bootstrap/commission/` を追加、「迷ったとき」に第 0 項 (停止条件とエスカレーション条件を書いたか) を追加。
+- 旧 `upstream-process` / `kanban-flow` はアーカイブ表記にし、後継をこのサブシステムと明記した。git 履歴は残す — 特に kanban-flow の `DESIGN.md` (756 行) は「なぜそうしないか」の一次資料として価値がある。
+
 ## [0.32.0] - 2026-07-31
 
 ### Added

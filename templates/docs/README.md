@@ -15,11 +15,15 @@ docs/
    ├─ handoffs/           並走 / 再開のための時系列スナップショット
    ├─ incidents/          事故・調査記録 (= 再発防止教材、永続)
    ├─ sprint/             opt-in: sprint / 並列 lane 系 gate の on-switch
-   └─ verification/       opt-in: 統合前の動作テスト計画 (ADR 0007)
+   ├─ verification/       opt-in: 統合前の動作テスト計画 (ADR 0007)
+   └─ commission/         opt-in: 上流工程 = 発注 → 検収 (ADR 0022)
+      ├─ charter.md         不可逆な判断だけ (目的/不変のコア/制約/決定ログ/未決台帳)
+      ├─ wo/<id>-<slug>.md  作業指示書。検収したら消してよい (git 履歴が正本)
+      └─ metrics.tsv        検収の実績。scripts/wo-metrics.sh が読む (永続)
 ```
 
 `decisions/` だけ `docs/` 直下に残す — ADR は一般的な工学慣習であって、このプラグインの
-成果物ではない。他のツール (kanban-flow 等) も同じ場所に書くので、行き先を分けると 1 つの
+成果物ではない。他のツールや人間も同じ場所に書くので、行き先を分けると 1 つの
 repo の決定記録が 2 系統に割れる。
 
 > **旧レイアウトからの移行**: 以前は 4 つとも `docs/` 直下に flat に置いていた。gate は
