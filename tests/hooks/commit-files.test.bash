@@ -88,4 +88,47 @@ assert_eq no "$(stages 'git commit -m x')"
 assert_eq no "$(stages 'git commit -m all')"
 assert_eq no "$(stages 'git commit -m "add a thing"')"
 
+# --- commit_added_files: only what this commit ADDS ---------------------------------------
+# The commission coverage gate asks "is this NEW source face covered by an ordered WO?",
+# so a modification or a deletion must not be mistaken for a creation (bug fixes and
+# refactors would trip the gate on every commit).
+mkrepo
+mkdir -p "$REPO/src"
+echo old > "$REPO/src/old.ts"; git -C "$REPO" add src/old.ts
+git -C "$REPO" commit -qm base
+echo changed > "$REPO/src/old.ts"
+echo new > "$REPO/src/new.ts"
+git -C "$REPO" add -A
+added() { ( cd "$REPO" && commit_added_files ) | paste -sd, -; }
+test_case "commit_added_files lists creations only, not modifications"
+assert_eq 'src/new.ts' "$(added)"
+
+git -C "$REPO" commit -qm second
+git -C "$REPO" rm -q src/old.ts
+test_case "a deletion is not an addition"
+assert_eq '' "$(added)"
+
+# --- commit_file_content: the version this commit CARRIES ---------------------------------
+# Reading the worktree while listing files from the index makes a completeness check
+# inspect content that is not what gets committed — a fail-OPEN hole for `git add -p`.
+mkrepo
+mkdir -p "$REPO/docs"
+printf 'staged\n' > "$REPO/docs/wo.md"
+git -C "$REPO" add docs/wo.md
+printf 'worktree\n' > "$REPO/docs/wo.md"        # staged and worktree now differ
+content() { commit_file_content "$REPO" docs/wo.md "$1"; }
+
+test_case "a plain commit reads the INDEX version, not the working tree"
+assert_eq 'staged' "$(content 'git commit -m x')"
+
+test_case "commit -a reads the working tree (that is what -a will stage)"
+assert_eq 'worktree' "$(content 'git commit -am x')"
+
+test_case "an untracked file falls back to the working tree"
+printf 'fresh\n' > "$REPO/docs/other.md"
+assert_eq 'fresh' "$(commit_file_content "$REPO" docs/other.md 'git commit -m x')"
+
+test_case "a path in neither index nor worktree yields nothing"
+assert_eq '' "$(commit_file_content "$REPO" docs/gone.md 'git commit -m x')"
+
 finish

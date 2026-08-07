@@ -14,7 +14,7 @@
 #
 # verdict (STATUS 行 = 1 行目、machine-readable):
 #   skip      — 非 git。adoption は git repo 単位なので判断基盤なし → 何もしない (fail-open)。
-#   unadopted — .bootstrap-* / docs/{sprint,decisions,...} いずれも無い。導入を提案する余地。
+#   unadopted — .bootstrap-* / docs/{sprint,commission,decisions,...} いずれも無い。導入を提案する余地。
 #   declined  — unadopted だが .bootstrap-declined が在る → 提案を抑止 (nag しない)。
 #   partial   — 採用済みだが整合しない。中核は vendored-coverage gap (= .claude/hooks/ で
 #               vendoring しているのに採用機能に必要な hook が物理的に欠落 = propagate-ai 型の穴)。
@@ -71,7 +71,7 @@ have_marker() { [ -e "$(marker "$1")" ]; }
 marker_rel() { local p; p="$(marker "$1")"; printf '%s' "${p#"$REPO"/}"; }
 
 # --- 採用 marker の検出 ---
-ARCH=0; PROT=0; LINT=0; LANE=0; SPRINT=0; MEM=0; VERIFY=0; RETIRED=0
+ARCH=0; PROT=0; LINT=0; LANE=0; SPRINT=0; MEM=0; VERIFY=0; RETIRED=0; COMMISSION=0
 have_marker arch       && ARCH=1
 have_marker protected  && PROT=1
 have_marker lint       && LINT=1
@@ -79,10 +79,11 @@ have_marker lane       && LANE=1
 have_marker retired    && RETIRED=1
 have_docs sprint       && SPRINT=1
 have_docs verification && VERIFY=1
+have_docs commission   && COMMISSION=1
 { [ -d "$REPO/docs/decisions" ] || have_docs handoffs || have_docs incidents; } && MEM=1
 
 ADOPTED=0
-[ $((ARCH + PROT + LINT + LANE + SPRINT + VERIFY + MEM + RETIRED)) -gt 0 ] && ADOPTED=1
+[ $((ARCH + PROT + LINT + LANE + SPRINT + VERIFY + MEM + RETIRED + COMMISSION)) -gt 0 ] && ADOPTED=1
 
 # --- unadopted 分岐 ---
 if [ "$ADOPTED" = 0 ]; then
@@ -130,6 +131,13 @@ if [ "$RETIRED" = 1 ] && [ -f "$RTLIB" ]; then
   fi
 fi
 
+# commission: charter.md が無いと、発注 gate の未決台帳検査 (4 節が参照する未決 / 12 節の
+# deferred 先が OPEN でないか・台帳に実在するか) が **判断材料ごと消えて無音でスキップ**される。
+# 他の節の検査は効いたまま落ちるので、宣言者には「gate は効いている」ようにしか見えない。
+if [ "$COMMISSION" = 1 ] && [ ! -f "$(docs_dir commission)/charter.md" ]; then
+  ISSUES+=("$(docs_rel commission)/ は在るが charter.md が無い → 未決台帳の検査 (OPEN な未決への依存・存在しない未決 ID への先送り) が無音でスキップされる (charter skill で起こす)")
+fi
+
 WIPLIB="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd)/hooks/lib/resolve-wip-limit.sh"
 if have_marker wip && [ -f "$WIPLIB" ]; then
   # shellcheck source=../hooks/lib/resolve-wip-limit.sh
@@ -152,6 +160,10 @@ if [ -d "$VHOOKS" ]; then
   [ "$PROT"   = 1 ] && REQ+=(block-push-to-protected.sh)
   [ "$LINT"   = 1 ] && REQ+=(block-commit-if-lint-fails.sh)
   [ "$RETIRED" = 1 ] && REQ+=(block-commit-if-retired-term.sh)
+  # commission (上流) は CI twin をまだ持たない (ADR 0023) = 配備漏れを後追いで拾う net が
+  # 無い。3 本セットで初めて「完全性 (発注 commit) + 被覆 (編集時 / commit 時)」が閉じるので、
+  # 1 本でも欠ければ partial として鳴らす。
+  [ "$COMMISSION" = 1 ] && REQ+=(block-commit-if-wo-incomplete.sh block-impl-without-wo.sh block-commit-if-impl-uncovered.sh)
   MISSING=""
   for h in "${REQ[@]}"; do
     [ -f "$VHOOKS/$h" ] || MISSING="$MISSING $h"
@@ -162,7 +174,7 @@ if [ -d "$VHOOKS" ]; then
   fi
 fi
 
-SUM="arch=$ARCH protected=$PROT lint=$LINT lane=$LANE sprint=$SPRINT verify=$VERIFY memory=$MEM retired=$RETIRED vendored=$VENDORED"
+SUM="arch=$ARCH protected=$PROT lint=$LINT lane=$LANE sprint=$SPRINT verify=$VERIFY commission=$COMMISSION memory=$MEM retired=$RETIRED vendored=$VENDORED"
 
 # --- retired-name residue sweep (ADR 0021) ---
 # Surface-only (never flips status / never exits 2). The commit gate deliberately judges ONLY
@@ -249,7 +261,7 @@ fi
 # 効いている (= 整合しないわけではない)。だが旧読みは撤去条件つきの移行補助なので、
 # 残っていること自体は見えていないといけない (無音で移行漏れを溜めない)。
 LEGACY_DOCS=""
-for _n in sprint verification handoffs incidents; do
+for _n in sprint verification commission handoffs incidents; do
   [ -d "$REPO/docs/$_n" ] && LEGACY_DOCS="$LEGACY_DOCS docs/$_n"
 done
 LEGACY_LINE=""

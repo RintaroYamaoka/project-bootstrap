@@ -1,6 +1,6 @@
 ---
 name: project-bootstrap
-description: 上位1％の AI 駆動開発を個人の規律でなく構造として default 化する規律。純粋な強制は到達不能なので強制を4つの設計判断に作り替える = ① 分解 (precondition を fail-closed で強制・判断は逃さない) / ② 信号選び (行為を信号に・fail-mode を選ぶ) / ③ 配備の可視化 (効いていない強制を無音にしない) / ④ 計測つきの取引 (緩めるなら戻る根拠を metric で持つ)。Anthropic 公式 best practice (verification 最高レバレッジ / hooks deterministic / CLAUDE.md advisory) に整合する。verification 4 罠 / AI の癖 10 個 (改名後も旧称で書く癖を含む) / TDD ループ / 根本修正 / 並列 Claude 安全運用 / subagent の mutation は隔離 worktree + 統合関所つきで可 (hook は subagent にも効く: 2026-06-11 実測検証、ADR 0004) / 環境隔離 / external memory として docs/ 整備 (handoffs / decisions / incidents)。新機能・バグ修正・リファクタ・調査など、あらゆるコーディング作業で常にロードする。
+description: 上位1％の AI 駆動開発を個人の規律でなく構造として default 化する規律。発注 (上流) から実装・統合を経て検収まで一貫して担う。純粋な強制は到達不能なので強制を4つの設計判断に作り替える = ① 分解 (precondition を fail-closed で強制・判断は逃さない) / ② 信号選び (行為を信号に・fail-mode を選ぶ) / ③ 配備の可視化 (効いていない強制を無音にしない) / ④ 計測つきの取引 (緩めるなら戻る根拠を metric で持つ)。Anthropic 公式 best practice (verification 最高レバレッジ / hooks deterministic / CLAUDE.md advisory) に整合する。上流 = 自律稼働の事前条件を作業指示書 (WO) として渡し完全性を発注 commit で fail-closed 検査 (commission: charter / order / pre-review / accept、ADR 0022-0024)。下流 = verification 4 罠 / AI の癖 10 個 (改名後も旧称で書く癖を含む) / TDD ループ / 根本修正 / 並列 Claude 安全運用 / subagent の mutation は隔離 worktree + 統合関所つきで可 (hook は subagent にも効く: 2026-06-11 実測検証、ADR 0004) / 環境隔離 / external memory として docs/ 整備 (handoffs / decisions / incidents / commission)。新機能・バグ修正・リファクタ・調査など、あらゆるコーディング作業で常にロードする。
 ---
 
 # AI 駆動開発の規律
@@ -28,6 +28,51 @@ gate は **proxy でなく行為そのもの** を信号にする (sprint gate �
 ### ④ 計測つきの取引 — 緩めるなら戻る根拠を持つ
 
 強制を **throughput と引き換えに意図的に緩める** 層がある。人間の全 diff 直列レビューは帯域律速なので、一次レビューを read-only AI に移し人間は verdict + サンプルだけ読む (trust ladder Stage 2、`hooks/block-unreviewed-merge.sh`)。これは advisory への退行でなく、**客観 metric (`scripts/velocity.sh` の defect rate) で「いつ1段戻すか」を持つ管理された取引**。計測なき緩和は盲信。ただし**採点者が 1 人 (単一 orchestrator) の間は限界を正直に名指しする**: 測る人と律速が同一人物なので **self-report に近い**。2 人目の独立採点者が出るまで「速くした」を過信しない (`velocity.sh` 冒頭にも明記。限界を無音にしない = ③ の自己適用)。
+
+## 上流 — 自律稼働の事前条件を渡す (commission)
+
+AI が実装・試験・修正を自律的に繰り返すほど、**人間が途中で判断する回数の割合は下がる**。
+質疑応答を減らすほど AI は途中で新しい情報を受け取れず、仕様に穴があれば質問せず
+**もっともらしい解釈を選ぶか停止する**。だから自律稼働時間を延ばす唯一の方法は、
+開始前に与える情報を増やすことになる — 目的 / 作業範囲 / 変更禁止範囲 / 守るべき既存条件 /
+優先順位 / 例外時の判断方法 / 継ぎ目 / 完了条件 / 検証方法 / **停止条件 (再試行上限・予算・
+エスカレーション条件)** / 決めてよいこと・いけないこと。
+
+この層は上流を別プラグインに置いた過去 2 実装 (upstream-process / kanban-flow) の後継で、
+**両者が死んだ原因を①の分解で潰したもの**である。前者は「判断を検出する gate は dead code に
+なる。だから上流は hook にしない」と宣言して全体が advisory になり忘れられた。だが強制できないのは
+「この仕様は正しいか」であって、**「事前条件が記入済みである」という precondition は強制できる**
+(TDD hook が test の質でなく存在を強制するのと同型)。
+
+| skill | 何をするか |
+|---|---|
+| `charter` | 不可逆な判断だけを `docs/bootstrap/commission/charter.md` 1 ファイルに固める |
+| `order` | 作業指示書 (WO) を 12 節で確定させ発注する。WO から lane / verification plan を生成 |
+| `pre-review` | **実装前に**独立コンテキストの AI を仮想下流リーダーとして使い、仕様を壊させる |
+| `accept` | 検収 (DoD 突合・越境検査・定義ドリフト) + 実績を metrics.tsv に記録 |
+
+強制 (opt-in = `docs/bootstrap/commission/` が在る project のみ):
+
+- **`block-commit-if-wo-incomplete.sh`** — `status: ordered` の WO を commit する行為 (= 発注)
+  を信号に、12 節の記入・**DoD 行数 = 検証方法 行数の検算**・事前レビューの全件決着・
+  `retry_limit`/`budget_tokens` の数値・**未決台帳との突合** (OPEN な未決に依存していないか /
+  参照先と `deferred:` の先が台帳に実在するか) を fail-closed 検査。
+  `draft` は対象外 (起草を止めると節をノイズで埋める誘因になり、gate が自分の bypass を作る)
+- **`block-impl-without-wo.sh`** — 新規 source 面の作成を信号に、それをカバーする発注済み WO を要求
+- **`block-commit-if-impl-uncovered.sh`** — 同じ問いの commit 側の網。編集時 gate は Edit ツール
+  経由しか見ないので、redirect / codemod / scaffolder で作った source 面は素通りする (ADR 0017 と
+  同型の二層化)。lane gate では代替できない — lane は WO から生成されるので、**1 枚も発注して
+  いない状態では lane marker 自体が無く fail-open する**
+
+**上流の決定は新しい機構でなく既存 gate に翻訳して効かせる**: WO の 2 節 → `.bootstrap/lane`、
+3 節 → `.bootstrap/arch` / `retired`、8+9 節 → `docs/bootstrap/verification/<branch>.md`。
+これで発注時の決定が実装中ずっと fail-closed で効く。
+
+④の適用: 上流の曖昧さは消えず **下流のエスカレーション・再試行・差し戻し・トークン**として
+観測される。`accept` が WO ごとに実績を残し、`scripts/wo-metrics.sh` が
+**「AI が止まったとき穴は WO の何節にあったか」**を集計する — 事前条件テンプレートのどこが
+薄いかを勘でなくデータで指す。kanban-flow が「判断ミスは機械的に検出できない」と諦めた
+自己改善ループは、下流のテレメトリを信号にすれば成立する。
 
 ## 最高レバレッジ — verification を必ず与える
 
@@ -214,6 +259,7 @@ CLAUDE.md / SKILL.md / memory で代替できないものだけを `docs/` に�
 | `docs/bootstrap/handoffs/` | 並走 Claude / 翌日の自分が cold restore する状態スナップショット | 1-2 週間 |
 | `docs/decisions/` | ADR (不可逆判断の Context / Decision / Consequences) | 永続 |
 | `docs/bootstrap/incidents/` | 事故と再発防止策。memory `feedback_*` の昇格元 | 永続 |
+| `docs/bootstrap/commission/` | charter (不可逆判断 1 ファイル) / WO (検収したら消してよい) / metrics.tsv (永続) | 混在・上記参照 |
 
 雛形は `templates/docs/`。`current/` / `exploring/` / `reference/` / `ops/` / `archive/` は**採用しない** (CLAUDE.md / コード / memory で代替できるか graveyard 化する)。並列開発時のみ `docs/bootstrap/sprint/board.json` を使う (sprint runtime state = sprint 終了で archive する ephemeral な真実。`sprint-plan` が生成・`integrate` が消費)。handoff を書く規律 = `skills/handoff/SKILL.md`、incident + memory 昇格 = `skills/incident/SKILL.md`。
 
@@ -240,6 +286,7 @@ user-facing bug を fix したら**同根 cohort を必ず audit する**。問�
 
 ## 迷ったとき
 
+0. これを AI に自律で渡すなら、**停止条件とエスカレーション条件**を書いたか (`order` skill)
 1. タスクを 1 文で述べられるか
 2. 責務は 1 つに絞れるか
 3. failing test を書けるか

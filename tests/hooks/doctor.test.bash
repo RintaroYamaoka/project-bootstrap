@@ -382,4 +382,53 @@ run_doctor "$REPO"
 assert_doctor_status partial
 assert_out_contains "block-commit-if-retired-term.sh"
 
+# ---------------------------------------------------------------------------
+# commission (上流工程、ADR 0022-0024).
+# This subsystem has no CI twin yet, so a deployment gap here has no second net —
+# the doctor is the only thing that can break the silence.
+# ---------------------------------------------------------------------------
+
+# a) The directory alone counts as adoption (a repo using only the upstream layer must
+#    not be told it has adopted nothing).
+setup_repo
+mkdir -p "$REPO/docs/bootstrap/commission/wo"
+: > "$REPO/docs/bootstrap/commission/charter.md"
+test_case "a commission dir counts as adoption"
+run_doctor "$REPO"
+assert_doctor_status ok
+assert_out_contains "commission=1"
+
+# b) No charter.md => the unknown-ledger half of the ordering gate silently has no
+#    material to judge, while every other check keeps firing. That reads as "armed".
+setup_repo
+mkdir -p "$REPO/docs/bootstrap/commission/wo"
+test_case "commission without charter.md is partial (the ledger check goes silent)"
+run_doctor "$REPO"
+assert_doctor_status partial
+assert_out_contains "charter.md"
+
+# c) Vendored-coverage gap: adopted, vendoring, but the three commission gates are absent.
+setup_repo
+mkdir -p "$REPO/docs/bootstrap/commission/wo"
+: > "$REPO/docs/bootstrap/commission/charter.md"
+vendor_core
+test_case "vendoring without the commission gates is partial"
+run_doctor "$REPO"
+assert_doctor_status partial
+assert_out_contains "block-commit-if-wo-incomplete.sh"
+assert_out_contains "block-impl-without-wo.sh"
+assert_out_contains "block-commit-if-impl-uncovered.sh"
+
+# d) …and with all three vendored it is ok again (the check is coverage, not nagging).
+setup_repo
+mkdir -p "$REPO/docs/bootstrap/commission/wo"
+: > "$REPO/docs/bootstrap/commission/charter.md"
+vendor_core
+for h in block-commit-if-wo-incomplete.sh block-impl-without-wo.sh block-commit-if-impl-uncovered.sh; do
+  : > "$REPO/.claude/hooks/$h"
+done
+test_case "all three commission gates vendored is ok"
+run_doctor "$REPO"
+assert_doctor_status ok
+
 finish

@@ -1,6 +1,6 @@
 # project-bootstrap
 
-**上位1％の AI 駆動開発を、個人の規律でなく構造として default 化する** Claude Code プラグイン。AI の速度を壊さずに引き出しきるための「強制の技芸」を hook で deterministic に効かせる。
+**上位1％の AI 駆動開発を、個人の規律でなく構造として default 化する** Claude Code プラグイン。AI の速度を壊さずに引き出しきるための「強制の技芸」を hook で deterministic に効かせる。**担当範囲は発注 (上流) から実装・統合を経て検収まで** — AI が実装・試験・修正を自律的に繰り返すループでは、渡す前に目的・作業範囲・変更禁止範囲・検証方法・完了条件・停止条件を確定させておく必要があり、その事前条件を作る工程と、返ってきた物を意図と突合する工程まで含めて 1 つの規律にしている (ADR 0022)。
 
 純粋な強制はほとんどの実規律で到達不能 (判断・配備・throughput は hook で縛りきれない) なので、強制を4つの設計判断の連なりに作り替える: **① 分解** (強制可能な precondition と既約な判断に割り、precondition を fail-closed で課す) / **② 信号選び** (proxy でなく行為を信号に、fail-mode を意図的に選ぶ) / **③ 配備の可視化** (効いていない強制を無音にしない) / **④ 計測つきの取引** (throughput と引き換えに緩めるなら戻る根拠を metric で持つ)。明示コマンドで発動する advisory 形式は採用しない (= 忘れられるため)。Anthropic 公式 best practice ([code.claude.com/docs/en/best-practices](https://code.claude.com/docs/en/best-practices)) と整合: verification 最高レバレッジ / hooks deterministic / CLAUDE.md は prune して短く保つ。
 
@@ -14,7 +14,11 @@
 
 | コマンド | 何をしてくれる | いつ自分で打つか |
 |---|---|---|
-| `/plan <タスク>` | 実装の前に「何を・どこを・どうテストするか」の計画書を出して**止まる**。承認するまでコードを書かない | 大きめ/曖昧な作業の前。スコープを固めたいとき |
+| `/charter` | プロジェクトの**不可逆な判断だけ**を 1 ファイルに固める (目的 / 不変のコア / 制約 / 決定ログ / 未決台帳) | 立ち上げ時。方針が変わったとき |
+| `/order` | AI に渡す作業を**引き渡し契約 (作業指示書)** として確定させ発注する。停止条件・エスカレーション条件まで書き切る | まとまった作業を AI に自律で任せる前 |
+| `/pre-review` | 独立コンテキストの AI を**仮想下流リーダー**として使い、実装前に仕様を壊しにかからせる | 発注の直前 (`/order` が自動で呼ぶ) |
+| `/accept` | 実装差分と完了条件を 1 行ずつ突合して**検収**し、実績 (エスカレーション・再試行・差し戻し) を記録する | 統合の後 |
+| `/plan <タスク>` | 実装の前に「何を・どこを・どうテストするか」の計画書を出して**止まる**。承認するまでコードを書かない | 大きめ/曖昧な作業の前。スコープを固めたいとき (※ 発注済み作業指示書がある場合は不要) |
 | `/sprint-plan` | 1 つの機能を**重ならない複数レーン**に割り、並列で進める段取り (worktree + 起動文) を作る | 大きい機能を複数ターミナル/並列で一気に進めたいとき |
 | `/integrate` | 並列レーンを依存順に統合し、AI レビュー + 全体テストを通してから合流させる | 並列作業を合流させるとき |
 | `/verification` | 「コードの正しさ」でなく**継ぎ目** (他システム連携・要件・本番の実体・環境) の動作テストを設計し、人間が確認する行を切り出す | 抽象的な指示で作った直後・統合前 |
@@ -30,6 +34,7 @@
 | **セッション開始時** | 採用状態の点検 + 「checkout が古い」「使い終わった worktree が残ってる」「テスト要否が未判断の変更がある」を**画面に出す** (止めはしない、見せるだけ) |
 | **機能っぽい依頼** | AI が「並列に割れるか」を判定し、割れるなら自分で `/sprint-plan` に入る |
 | **抽象的な依頼で実装した後** | AI が `/verification` を呼んで「何を人間が確かめるべきか」の骨子を作る |
+| **作業指示書を発注しようとしたとき** | AI が `/pre-review` を呼び、**別コンテキストで自分の書いた仕様を壊しにかかる**。出た指摘は「直す」か「未決として名前をつける」のどちらかにしないと発注できない |
 | **やり直し/叱責の後** | AI が `/incident` を呼んで教訓を memory に残す |
 | **本番デプロイ・データ修復・本番 DB migration を打つ瞬間** | 過去の教訓メモが**目の前に出る** (例: 「本番前に各指示文言と実装を逐語照合したか」「この欠落はバグか仕様か」) |
 
@@ -37,6 +42,8 @@
 
 危ない操作は **AI もあなたも** 一旦止まる。理不尽に見えたら理由文を読めば、たいてい正しく止めている。
 
+- **未完成の作業指示書を「発注済み」にして commit しようとした** → 空欄の節・完了条件と検証方法の数の不一致・未決着の事前レビュー指摘・OPEN な未決への依存を指摘して止める (下書きのままなら止めない)
+- **発注された作業指示書が無いまま新しい実装ファイルを作ろうとした** → 先に `/order` で契約を作る (既存ファイルの修正・バグ修正は止めない)
 - **テストの無い実装ファイルを触ろうとした** → 対応するテストを先に書く (TDD 強制)
 - **テストや lint が落ちたまま commit** → 直してから commit
 - **`git add -A` / `git commit -a` / `git reset --hard` / `git push -f`** など巻き込み・破壊系 → 個別 path 指定や `--force-with-lease` に矯正 (※このセッションでも実際にこの 2 つが私を止めて、安全な手順に直しました)
@@ -51,6 +58,7 @@
 ```bash
 scripts/doctor.sh                 # この repo に bootstrap がちゃんと効いてるか点検 (CI でも使える)
 scripts/velocity.sh [repo ...]    # 週次の commit数・defect率を複数repo横断で集計 (レビューを薄くした後の"壊れてない"判定)
+scripts/wo-metrics.sh [repo ...]  # 作業指示書ごとの実績を集計。「AIが止まったとき穴は指示書の何節にあったか」を出す
 scripts/arch-check.sh [file ...]  # 依存方向(レイヤ)違反を検査。Claude非依存なので pre-commit/CI で全員に効かせられる
 scripts/retired-check.sh <base>   # 引退した名前が追加行に混入していないか検査 (PR は origin/main...HEAD を渡す)
 scripts/setup-server-enforcement.sh --check   # GitHub側の保護設定を監査 (admin素通りの穴を検出)
@@ -71,11 +79,13 @@ scripts/setup-server-enforcement.sh           # 保護設定を適用 (下記「
 | `.bootstrap/retired` | 改名で引退した名前の混入を commit で blocking | `typeNo \| typeId \| <射程 glob> \| <note>` |
 | `docs/bootstrap/sprint/` (ディレクトリ) | 並列開発フロー一式の有効化 | 採用マーカー |
 | `docs/bootstrap/verification/` (ディレクトリ) | 動作テスト計画の merge gate | 採用マーカー |
+| `docs/bootstrap/commission/` (ディレクトリ) | 上流工程 (発注 → 検収) 一式の有効化 | 採用マーカー。`templates/docs/bootstrap/commission/` を丸ごとコピー |
 
 > **後方互換 (本 README で唯一の注記)**: マーカーの解決は単一権威 `hooks/lib/resolve-marker.sh` が担い、`.bootstrap/<name>` (新フォルダ) を優先し旧 flat path `.bootstrap-<name>` (repo root 直下) に fallback する。両方在れば新が勝つ。既存採用 repo は移行不要。本 README / skills 内の表記は新フォルダ形に統一してある。
 
 ### 知っておくと得する仕組み (見落としがちな機能)
 
+- **上流の質を下流の実測で測る** (ADR 0024): 「この作業指示は良かったか」を勘で振り返らない。`/accept` が指示書ごとに**エスカレーション・再試行・差し戻し・トークン**を記録し、`scripts/wo-metrics.sh` が「AI が止まったとき穴は指示書の何節にあったか」を集計する。テンプレートのどこが薄いかがデータで分かる。**エスカレーション 0 は良い値とは限らない** (事前条件が過剰な可能性と区別がつかないので `[ズレ]` 件数と並べて読む)
 - **レビューを薄くする trust ladder**: 全 diff を人間が目視するのが本当の律速。AI が一次レビューして `approve/reject` を記録 → 人間は**verdict とサンプルだけ**読む。安全網は `scripts/velocity.sh` の defect率 — 跳ねたらレビューを 1 段濃く戻す、という客観データで運用する。
 - **本番操作メモの自動表示** (ADR 0010/0013/0014): 過去にハマった操作 (本番デプロイ・データ修復) を**打つ瞬間**に教訓が出る。「メモはあったのに事故った」を構造的に潰す。`prod-deploy` と `data-backfill` は arm 不要で普遍メモが出る。
 - **複数 repo にまたがる契約の保護** (ADR 0011): フロントとバックなど別 repo の共有スキーマを `docs/bootstrap/verification/contracts` に登記しておくと、片側を変えたとき相手側のテストを通すまで合流できない (無音で割れる事故を防ぐ)。
@@ -104,6 +114,7 @@ scripts/setup-server-enforcement.sh --merge-queue   # (任意) 古いレーン�
 
 ## 何を強制するか
 
+- **自律稼働の事前条件 (上流・commission, ADR 0022-0024)**: AI に仕事を渡す行為 (= 作業指示書を `status: ordered` にして commit する) を信号に、12 節 (目的 / 作業範囲 / **変更禁止範囲** / 守るべき既存条件 / **優先順位** / **例外時の判断方法** / 継ぎ目 / 完了条件 / 検証方法 / **停止条件** / 決めてよい・いけない / 事前レビュー) の記入・**完了条件と検証方法の 1 対 1 検算**・事前レビューの全件決着・`retry_limit`/`budget_tokens` の数値・**OPEN な未決への依存**を fail-closed 検査 (`block-commit-if-wo-incomplete.sh`)。新規 source 面の作成には、それをカバーする発注済み指示書を要求 — 編集時 (`block-impl-without-wo.sh`) と、Edit ツールを通らない書き込みを拾う commit 側 (`block-commit-if-impl-uncovered.sh`) の二層 (ADR 0017 と同型)。下書き段階は止めない。上流の決定は新しい機構でなく既存 gate に翻訳して効かせる (2 節 → `.bootstrap/lane` / 3 節 → `arch`・`retired` / 8+9 節 → verification plan)
 - **テスト先行**: 実装ファイルを編集する瞬間、対応する test ファイルが無ければ blocking (Red phase 強制)
 - **failing test での commit 禁止**: `git commit` 前に test 実行、fail なら blocking
 - **依存方向の強制 (architecture)**: project-local の `.bootstrap/arch` で宣言した layer 依存方向に反する import を blocking。edit 時に早期 block (`block-cross-layer-import.sh`)、commit 時に全 file を権威検証 (`block-arch-violations.sh`)。cross-layer は default-deny。SOLID を散文で recite するのではなく、依存辺を deterministic に強制する
@@ -128,8 +139,12 @@ scripts/setup-server-enforcement.sh --merge-queue   # (任意) 古いレーン�
 
 | 提供物 | 要約 |
 |---|---|
-| `skills/project-bootstrap/SKILL.md` | 規律本体 — 強制の技芸 4 判断 / verification 4 罠 / AI 癖 9 / TDD / 並列 3 形態と統合関所 / 依存方向強制 / docs 整備 / cohort audit。常時ロード |
-| `skills/plan/SKILL.md` | `/plan` — 探索 → 計画 → 提示。実装前に計画書を出して停止 |
+| `skills/project-bootstrap/SKILL.md` | 規律本体 — 強制の技芸 4 判断 / 上流 (commission) / verification 4 罠 / AI 癖 10 / TDD / 並列 3 形態と統合関所 / 依存方向強制 / docs 整備 / cohort audit。常時ロード |
+| `skills/charter/SKILL.md` | `/charter` — 不可逆な判断だけを `docs/bootstrap/commission/charter.md` 1 ファイルに固める。成果物カタログは作らない |
+| `skills/order/SKILL.md` | `/order` — 作業指示書 (WO) を 12 節で確定させ発注。lane / verification plan / sprint 判定を WO から生成する |
+| `skills/pre-review/SKILL.md` | `/pre-review` — 実装**前**に独立コンテキストの AI を仮想下流リーダーとして使い、5 観点 (曖昧さ / 矛盾 / 未定義の異常系 / DoD の抜け道 / 停止条件の過不足) で仕様を壊させる |
+| `skills/accept/SKILL.md` | `/accept` — 検収 (DoD 突合・検算・越境検査・定義ドリフト) と実績記録。`[ズレ]`/`[要判断]` が 1 行でもあれば差し戻し |
+| `skills/plan/SKILL.md` | `/plan` — 探索 → 計画 → 提示。実装前に計画書を出して停止 (発注済み WO がある場合は発火しない — WO が計画書そのもの) |
 | `skills/handoff/SKILL.md` | `/handoff` — cold restore 用スナップショットを `docs/bootstrap/handoffs/` に残す |
 | `skills/incident/SKILL.md` | `/incident` — 事故を `docs/bootstrap/incidents/` に記録し memory `feedback_*`/`reference_*` へ昇格 |
 | `skills/sprint-plan/SKILL.md` | `/sprint-plan` — feature を scope 非重複 task に分解し worktree + lane を用意。発火条件 (disjoint leaf ≥ 2 等) を満たすと明示呼び出しを待たず自動起動。並列判定・wip_limit の権威 |
@@ -154,12 +169,17 @@ scripts/setup-server-enforcement.sh --merge-queue   # (任意) 古いレーン�
 | `0014-surface-completion-verification-at-prod-deploy.md` | 本番デプロイの瞬間に完了照合 (逐語照合 / 再解釈はモック確認) を表面化 (`prod-deploy` floor) |
 | `0016-hardcode-two-classes-and-held-out-oracle.md` | ハードコード 2 クラス (能力限界 / テストゲーミング) と held-out oracle — 7 番目の seam。secrets は gitleaks を lint+CI へ |
 | `0021-retired-name-gate-at-commit-chokepoint.md` | 引退した名前の混入を「commit が足した行」で blocking し、蓄積した残存は doctor で可視化。重複検出は実例が出るまで作らない |
+| `0022-upstream-merged-into-bootstrap.md` | 上流工程を別プラグインでなく bootstrap のサブシステムに統合 — 独立を保つと強制層に届かず advisory に戻る (前身 2 実装の敗因) |
+| `0023-autonomy-preconditions-as-ordering-gate.md` | 自律稼働の事前条件 12 節を「発注 commit」の precondition に。draft は止めない・tree でなくこの commit が運ぶ WO だけ見る |
+| `0024-upstream-quality-measured-by-downstream-telemetry.md` | 上流の品質はエスカレーション / 再試行 / 差し戻し / トークンで測る — 「判断ミスは機械検出できない」は誤りで、曖昧さは下流へ移動して観測される |
 
 ### hooks / lib (強制の実体)
 
 | 提供物 | 要約 |
 |---|---|
-| `hooks/hooks.json` | 21 hook を `plugin.json` 経由でデフォルト発火 — SessionStart doctor / test 先行 / commit 前 lint+test / destructive git op・bulk-stage・cross-session WIP / 保護 branch 直 push・stale push (ADR 0009) / lane 外の編集と commit (ADR 0017) / 未隔離 main tree 編集 (guard 2)・wip 超過 worktree (guard 3) / 依存方向 edit+commit / sprint 発火 gate + reminder / merge 関所 (review + verification) / 引退名の混入 (ADR 0021) / inject-action-memory |
+| `hooks/block-commit-if-wo-incomplete.sh` + `hooks/lib/wo.sh` | 発注 (作業指示書を `status: ordered` で commit) に 12 節の記入・DoD⇔検証方法の 1 対 1 検算・事前レビューの全件決着・停止条件の数値・OPEN 未決への非依存を fail-closed 要求 (ADR 0023)。様式の権威は `templates/.../wo/TEMPLATE.md`、判定は lib に集約 |
+| `hooks/block-impl-without-wo.sh` | 新規 source 面の作成に、その path をカバーする発注済み作業指示書を要求。sprint gate と信号は同じだが問いが違う (「並列に割れるか判定したか」vs「作ってよいと発注したか」) |
+| `hooks/hooks.json` | 24 hook を `plugin.json` 経由でデフォルト発火 — SessionStart doctor / test 先行 / commit 前 lint+test / destructive git op・bulk-stage・cross-session WIP / 保護 branch 直 push・stale push (ADR 0009) / lane 外の編集と commit (ADR 0017) / 未隔離 main tree 編集 (guard 2)・wip 超過 worktree (guard 3) / 依存方向 edit+commit / sprint 発火 gate + reminder / merge 関所 (review + verification) / 引退名の混入 (ADR 0021) / inject-action-memory |
 | `hooks/block-merge-if-verification-unclosed.sh` + `hooks/lib/verification-plan.sh` | lane merge に plan の存在・OPEN 行ゼロ・理由なき DROP ゼロを fail-closed 要求 (ADR 0007)。format 権威は lib に集約。ローカルは速い feedback 層 — 恒久は CI twin (ADR 0012) |
 | `hooks/lib/verification-ci-check.sh` | 上記のサーバ側 (CI) twin。required status check `verification-closed` として全マージ経路 (Merge ボタン含む) を覆う |
 | `hooks/bootstrap-session-doctor.sh` + `scripts/doctor.sh` + `hooks/lib/repo-drift.sh` + `hooks/lib/verification-drift.sh` | SessionStart で 3 軸を可視化 — 採用状態 audit (ADR 0003) / repo drift (stale checkout・merge 済み残置 worktree) / 未判断 trunk 変更 (逐次経路、ADR 0007 委任。source 面判定は `lib/source-face.sh` を再利用)。強制でなく可視化 |
@@ -185,12 +205,14 @@ scripts/setup-server-enforcement.sh --merge-queue   # (任意) 古いレーン�
 | 提供物 | 要約 |
 |---|---|
 | `scripts/velocity.sh` | 週次 throughput / defect rate の複数 repo 横断計測 — trust ladder の安全網 |
+| `scripts/wo-metrics.sh` | 作業指示書ごとの実績集計 (ADR 0024)。節別エスカレーションが「事前条件テンプレートのどこが薄いか」を名指しする。self-report の限界も出力に明記 |
 | `scripts/arch-check.sh` | 依存方向検査 CLI (pre-commit / CI 用) |
 | `scripts/retired-check.sh` | 引退名検査 CLI (CI 用)。PR は三点差分 `origin/<base>...HEAD` を渡す — 二点だと base 側の改名をこの branch のせいにする |
 | `scripts/setup-server-enforcement.sh` | branch protection (required checks / `enforce_admins=true` / PR 必須・人間承認 0) の冪等設定 + `--check` 監査 + `--merge-queue` (ADR 0012) |
 | `templates/CLAUDE.md` | 新規プロジェクト用 CLAUDE.md 雛形 (prune 済) |
 | `templates/.bootstrap/` | opt-in マーカー雛形一式 (arch / protected / lint / wip / actions.example / retired.example)。フォルダごとコピーして不要分を消す |
-| `templates/docs/` | 採用 dir (handoffs / decisions / incidents / sprint) の README + TEMPLATE 一式 |
+| `templates/docs/` | 採用 dir (handoffs / decisions / incidents / sprint / commission) の README + TEMPLATE 一式 |
+| `templates/docs/bootstrap/commission/` | 上流工程の雛形 — `charter.md` (不可逆判断 1 ファイル) + `wo/TEMPLATE.md` (作業指示書 12 節) + README (採用マーカー兼運用ガイド) |
 | `templates/docs/bootstrap/verification/contracts.example` | cross-repo 契約宣言の雛形 (ADR 0011)。1 行 = `id \| local_face_glob \| peer_repo \| peer_face \| note` |
 | `templates/github/workflows/verification-gate.yml` | サーバ側 verification gate の配布雛形 (ADR 0012)。plugin を pin ref で checkout し `verification-ci-check.sh` を実行 |
 | `templates/github/workflows/secret-scan.yml` | gitleaks secret-scan の配布雛形 (ADR 0016 Class A の静的半分。独自 matcher は持たない) |
@@ -221,7 +243,7 @@ cp /path/to/project-bootstrap/templates/CLAUDE.md /path/to/your-project/CLAUDE.m
 cp -r /path/to/project-bootstrap/templates/docs /path/to/your-project/docs
 ```
 
-`docs/` は 3 dir 構成 (handoffs / decisions / incidents)。`current/` `exploring/` `reference/` `ops/` `archive/` 等は **採用しない** (= CLAUDE.md / コード / memory で代替できるか graveyard 化する)。必要になったら個別に作る。
+`docs/` は 3 dir 構成 (handoffs / decisions / incidents)。上流工程を使うなら `docs/bootstrap/commission/` を足す (`cp -r templates/docs/bootstrap/commission docs/bootstrap/`)。`current/` `exploring/` `reference/` `ops/` `archive/` 等は **採用しない** (= CLAUDE.md / コード / memory で代替できるか graveyard 化する)。必要になったら個別に作る。
 
 ### 3. Claude Code でそのプロジェクトを開く
 

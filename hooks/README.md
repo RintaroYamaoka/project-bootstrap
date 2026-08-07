@@ -60,6 +60,40 @@ lane 強制は長らく `Edit | Write | MultiEdit` matcher の Hook G にしか�
 
 スクリプト: [`block-unplanned-feature-build.sh`](./block-unplanned-feature-build.sh)
 
+### U. PreToolUse on `Edit | Write | MultiEdit` — 発注済みの契約に覆われた作業か (commission、ADR 0022-0023)
+
+**新規 source file を作ろうとした瞬間**、その path をカバーする **発注済み (`status: ordered`) の作業指示書 (WO)** が無ければ `exit 2`。WO そのものの完全性は発注 commit の関所 (Hook V) が既に証明しているので、ここが問うのは**被覆**だけ。
+
+- **信号は Hook K と同じ「新規 source file を作る行為そのもの」**。ただし問いが違う (K =「並列レーンに割れるか判定したか」/ U =「これを作ってよいと発注した契約は在るか」)。別の判断なので別の関所にする — 1 つの記録が 2 つの判断の証拠を兼ねると、安い方だけ済ませて両方を名乗れる
+- **opt-in**: `docs/bootstrap/commission/` が在る project でのみ発火
+- **fail-open (根拠不在)**: file_path 不在 / 非 git / 未採用 / 既存 file の編集・上書き / test・config・doc / 非 source 拡張子 / worktree 外の絶対 path。**bug fix / refactor は一切 trip しない**
+- **自分の state 面 (`docs/bootstrap/commission/**`) は常に素通し** — gate を解除する書き込み (= 最初の WO を書くこと) を gate 自身が止めてはならない
+- 「source 面とは何か」は共有エンジン [`lib/source-face.sh`](./lib/source-face.sh)、WO の解釈は [`lib/wo.sh`](./lib/wo.sh) (単一権威)。2 節の glob 照合は [`lib/lane-match.sh`](./lib/lane-match.sh) に委ねる (= `order` が 2 節を `.bootstrap/lane` に写すので、ここで in-scope と言った path は lane gate も通す)
+
+スクリプト: [`block-impl-without-wo.sh`](./block-impl-without-wo.sh)
+
+### V. PreToolUse on `Bash` for `git commit` — 発注 (= AI に仕事を渡す行為) の完全性 (ADR 0023)
+
+`status: ordered` の WO が載った commit を信号に、**自律稼働の事前条件が記入済みであること**を fail-closed で検査。「この仕様は正しいか」は既約な判断で強制できないが、「事前条件が埋まっている」は precondition なので強制できる (TDD hook が test の質でなく存在を強制するのと同型)。
+
+- 検査: ① 12 節すべて記入済み (placeholder `<...>` が 1 つでも残る節は未記入 / 節ごと欠けているのも未記入 = 構造に fail-closed) ② **検算**: DoD (8 節) と検証方法 (9 節) が 1 対 1 ③ 事前レビュー (12 節) が全行 `closed` か `deferred:<未決ID>`、**表が空 = 未実施も落とす** ④ `retry_limit` / `budget_tokens` が正の整数 ⑤ 未決台帳との突合 — 4 節が参照する未決が OPEN でない・**参照先と `deferred:` の先が台帳に実在する** (実在しない ID への先送りは「名前のつかない先送り」で、両前身プラグインが共通して禁じていた手)
+- **`draft` は止めない**。起草は思考の場で、そこを止めると checkpoint を保存するために節をノイズで埋める誘因が生まれ、gate が自分の bypass を作る
+- 射程は **この commit が運ぶ WO** だけ (ADR 0018)。tree 全体を見ると未完成の draft 1 枚が無関係な commit を全部止め、最短の逃げ道が「その WO を消す」になる
+- **読む中身は index の版** (`-a` のときだけ worktree)。file 名を index から取りながら中身を disk から読むと、`git add -p` の部分 stage で「検査した中身 ≠ commit される中身」になり無音で fail-open する。解決は [`lib/commit-files.sh`](./lib/commit-files.sh) の `commit_file_content` (単一権威)
+- **fail-open**: 非 git / 未採用 / 非 commit / draft のまま / この commit が WO を運ばない。**fail-closed**: コマンド解析不能
+
+スクリプト: [`block-commit-if-wo-incomplete.sh`](./block-commit-if-wo-incomplete.sh) / エンジン: [`lib/wo.sh`](./lib/wo.sh)
+
+### W. PreToolUse on `Bash` for `git commit` — 被覆の commit 側関所 (取りこぼしの網)
+
+Hook U は `Edit | Write | MultiEdit` にしか載っていないので、**Bash 経由で作られた新規 source file は被覆の判定を一度も通らない** (`cat > src/x.ts` / redirect / codemod / scaffolder / `cp`)。書き込み方式の列挙は whack-a-mole (ADR 0017) なので、全方式が必ず通る `git commit` に二層目を置く。lane 強制の Hook G / Hook T と同じ構成。
+
+- **lane gate では代替できない**: `order` は WO の 2 節から `.bootstrap/lane` を作るので、**WO を 1 枚も発注していない状態では lane marker 自体が無く**、lane 関所は fail-open する。「発注しないまま実装を始めた」という commission が止めたい当の状態が、そこだけ素通りしていた
+- **判定対象**: `git diff --cached --diff-filter=A --name-only` = **この commit が追加する file** だけ (`-a`/`--all` は untracked を stage しないので、追加は index 経由に限られる)。変更・削除は見ないので bug fix / refactor は trip しない
+- **fail-open**: 未採用 / 非 commit / 非 git / 追加 file 無し / 統合操作中 (`MERGE_HEAD`・`CHERRY_PICK_HEAD`・`REVERT_HEAD`・rebase — merge commit は定義上 1 枚の契約を跨ぐ) / test・config・doc / commission 自身の成果物。**fail-closed**: コマンド解析不能
+
+スクリプト: [`block-commit-if-impl-uncovered.sh`](./block-commit-if-impl-uncovered.sh) / エンジン: [`lib/wo.sh`](./lib/wo.sh) ・ [`lib/commit-files.sh`](./lib/commit-files.sh) (`commit_added_files`)
+
 ### I. PreToolUse on `Edit | Write | MultiEdit` — 依存方向の早期強制
 
 編集が `.bootstrap-arch` の依存方向に反する import を導入しようとした瞬間に `exit 2` で blocking (= 書いた瞬間に止め手戻りを防ぐ)。PreToolUse なので新内容はまだ disk に無く、hook input JSON を最小 unescape して新内容中の import specifier を抽出・検査する。
@@ -306,7 +340,9 @@ Bash command が plugin 所有の **action-key enum** ([`lib/action-gate.sh`](./
 
 ## 発火順
 
-全 20 hook を `hooks.json` の結線順に列挙する (= 実際の発火順、可視化のための正本)。
+全 24 hook を `hooks.json` の結線順に列挙する (= 実際の発火順、可視化のための正本)。
+
+> hook を足したら **この表と `scripts/doctor.sh` の `REQ` の両方**を直す (`MAINTENANCE.md`「同期が要る対」)。REQ に足し忘れると、その gate だけ vendoring 先での配備漏れが無音になる。
 
 **SessionStart**:
 
@@ -321,8 +357,9 @@ Bash command が plugin 所有の **action-key enum** ([`lib/action-gate.sh`](./
 1. `block-out-of-lane-edit.sh`         — 並列 lane 外編集を block (別 worktree の file は fail-closed、repo 外は fail-open)
 2. `block-uniso-main-edit.sh`          — active lane 中の main tree 未隔離 source 編集を block (ADR 0005 guard 2)
 3. `block-unplanned-feature-build.sh`  — 新規 source 面を sprint 判定なしで作るのを block (opt-in)
-4. `block-cross-layer-import.sh`       — 依存方向違反 import を早期 block
-5. `require-test-companion.sh`         — 対応 test なき実装編集を block
+4. `block-impl-without-wo.sh`          — 発注済み WO に覆われない新規 source 面の作成を block (opt-in、ADR 0023)
+5. `block-cross-layer-import.sh`       — 依存方向違反 import を早期 block
+6. `require-test-companion.sh`         — 対応 test なき実装編集を block
 
 **PreToolUse on `Bash`**:
 
@@ -336,9 +373,12 @@ Bash command が plugin 所有の **action-key enum** ([`lib/action-gate.sh`](./
 8. `block-merge-if-verification-unclosed.sh` — verification plan が閉じていない lane branch の merge を block (opt-in)
 9. `block-arch-violations.sh`       — commit 時に依存方向を権威検証
 10. `block-out-of-lane-commit.sh`   — 並列 lane 外の file が載る commit を block (Bash 経由の書き込みを塞ぐ取りこぼしの網、opt-in)
-11. `block-commit-if-lint-fails.sh`  — commit が運ぶ file に絞って lint を回す (path 対応 tool のみ scope、go/cargo は whole-tree、ADR 0018)
-12. `block-commit-if-tests-fail.sh` — 最後に test を回す
-13. `inject-action-memory.sh`       — 再発しやすい action 直前に記録済み memory を additionalContext 注入 (block しない、opt-in、ADR 0010)
+11. `block-commit-if-retired-term.sh` — 引退した名前がこの commit の追加行に混入したら block (opt-in、ADR 0021)
+12. `block-commit-if-wo-incomplete.sh` — 未完成の作業指示書を `status: ordered` で commit するのを block (opt-in、ADR 0023)
+13. `block-commit-if-impl-uncovered.sh` — 発注済み WO に覆われない新規 source file が載る commit を block (被覆の取りこぼしの網、opt-in)
+14. `block-commit-if-lint-fails.sh`  — commit が運ぶ file に絞って lint を回す (path 対応 tool のみ scope、go/cargo は whole-tree、ADR 0018)
+15. `block-commit-if-tests-fail.sh` — 最後に test を回す
+16. `inject-action-memory.sh`       — 再発しやすい action 直前に記録済み memory を additionalContext 注入 (block しない、opt-in、ADR 0010)
 
 block 系を test 実行より前に置くのは、test 実行が成功しても巻き込んだ commit / 契約違反は事故源だから。
 
@@ -353,7 +393,7 @@ bypass は **規律を壊す**。bypass する前に「なぜそれが必要な�
 
 ## opt-in pilot: cohort-audit (確率 gate、ADR 0008 #2)
 
-**default の 20 hook には含まれない実験的 opt-in。** これは本プラグイン初の**非決定論 (確率) gate** で、現状 advisory のままの「完遂責任 — bug fix と同 PR で同根 cohort audit」(SKILL.md) を gate 化する試み。
+**default の 24 hook には含まれない実験的 opt-in。** これは本プラグイン初の**非決定論 (確率) gate** で、現状 advisory のままの「完遂責任 — bug fix と同 PR で同根 cohort audit」(SKILL.md) を gate 化する試み。
 
 - **形態**: `Stop` イベントの **prompt hook** (`type: "prompt"`)。各ターン終了時に Haiku が `$ARGUMENTS` を評価し `{"ok": bool, "reason": str}` を返す。
 - **warn-only (block しない)**: `Stop` で `ok:false` のとき reason が **Claude に戻り作業を継続**する (= deny でなく nudge)。「cohort audit を忘れたかも」を促すだけで止めない。
