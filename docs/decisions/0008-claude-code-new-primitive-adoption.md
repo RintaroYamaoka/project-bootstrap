@@ -1,6 +1,6 @@
 # 0008 — Claude Code 新 primitive の採用方針 (prompt/agent hook / exec-form / saved workflow)
 
-- **Status**: Accepted (#1 実装済み / #2 受諾 → opt-in pilot 実装済み / #3 却下 / #4 却下 — plugin は workflow を配布不可と確認)
+- **Status**: Accepted (#1 実装済み / #2 受諾 → opt-in pilot 実装済み / #3 却下 / #4 却下 — plugin は workflow を配布不可と確認 / #5 縮退適用 2026-08-07)
 - **Date**: 2026-06-21
 - **Deciders**: Rintaro Yamaoka
 - **References**: 本 repo の評価 workflow (2026-06-21、local audit + web research + 3-vote adversarial verify)。`docs/decisions/0004-*` / `0005-*` / `0006-*` (並列 governance の系譜)。Claude Code docs: [hooks](https://code.claude.com/docs/en/hooks) (handler 5 型) / [workflows](https://code.claude.com/docs/en/workflows) (bundled `/deep-research`, saved workflows) / [goal](https://code.claude.com/docs/en/goal)。`skills/project-bootstrap/SKILL.md` の AI 癖 (3 scope-creep / 4 症状隠蔽 / 7 不在断定) と「完遂責任」cohort audit。
@@ -46,6 +46,19 @@ hook の起動文字列 `bash "${CLAUDE_PLUGIN_ROOT}"/hooks/X.sh` には **untru
 ### 4. saved workflow (`.claude/workflows/`) を同梱 — **却下 (2026-06-22 確認済み)**
 
 並列 adversarial レビューを `/bootstrap-review` として再利用可能な saved workflow にする案。**plugin は workflow を配布できないと確認した** — 公式 plugin structure の package 可能 component は skills / commands / agents / hooks / MCP / LSP / monitors / bin / settings のみで、**`workflows/` ディレクトリは存在しない** ([plugins docs](https://code.claude.com/docs/en/plugins) の plugin structure overview)。consumer の `.claude/workflows/` へは手動 save しか経路が無く「同梱」は成立しない。よって却下。レビューの再利用は `integrate` skill のレビュー Step が breadth fanout (ADR 0005、隔離不要・`wip_limit` 非対象・gate 摩擦ゼロ) を直に使えば足り、別 saved workflow を要しない。(手動 save 用テンプレを `templates/` に置く余地は残るが「同梱」ではなく、breadth fanout で足りる以上 rent を払わないので現時点では作らない。)
+
+### 5. 会話の自動要約継続 (auto-compact) — handoff の「長い session」trigger を縮退 (2026-08-07 追記)
+
+harness が長い会話を自動要約し、同一 session の作業をそのまま継続する primitive を持った。
+`handoff` skill の自発 trigger のうち「session が長くなり `/clear` しそうな兆候」は、この
+primitive と役割が重複する — #1 (deep-research) と同じ立場で**二重化しない**。trigger を
+「明示的な `/clear` の予告」に縮退し、handoff の領分を **context が消える境界を跨ぐとき**
+(明示 `/clear` / 別ターミナル・並走 Claude / 別 session 再開 / 重要な区切り) に限定した。
+
+**置換ではない**: 自動要約は同一 session 内の継続であり、(a) 別 Claude / 翌日の cold restore、
+(b) 人間可読の引き継ぎ正本 (機械要約は人間が読む正本にならない)、は依然 handoff の領分。
+`skills/handoff/SKILL.md` にミラー (ADR→SKILL、ADR 0003)。harness がこの挙動を変えたら
+再検証する (「外部前提は閉じたら再検証」)。
 
 ## Consequences (結果)
 

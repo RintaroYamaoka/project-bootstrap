@@ -110,6 +110,7 @@ cross-repo 契約を CLOSED にする行は、note か behaviour に**必ずア�
 - **自動行 (by=ai)** を実行し、結果を `PASS`/`FAIL` に。エビデンス (PR/コマンド/出力) を最終列に。
 - **`HUMAN` 行**を人間に手渡す: 具体的な手順 + 期待。人間が実施して `PASS`/`FAIL` と実施者を記録 (= 誰の判断かが残り、再 litigate しない)。
 - 各 `PASS` の前に kill-question を一度問う。
+- **`HUMAN`/`manual` 行を `PASS` で閉じるとき、資産化をもう一問問う**: 「この行が守った継ぎ目は、次の変更でも壊れうるか? 壊れうるなら、人間の代わりに恒久オラクル (テスト / `monitor` 行の本番計器 / contracts 登記) で守れないか?」— 守れるなら昇格先を note に書いてから閉じる (実昇格は integrate の archive 責務)。真に人間しか採点できない行 (意図・整合) だけが使い捨てを許される。**同じ継ぎ目の `HUMAN` 行を別の plan で 2 回目に書いたら、それは自動化の信号** (incident の「同じ問題に 2 回」と同型)。人間の確認は毎回消えるコストで、恒久オラクルは資産 — 開発が大規模化して線形に増えてよいのは後者だけ。
 - テストしないと判断したものは**理由つき `DROP`** で明示する (理由なき DROP は gate が弾く)。
 
 ### Step 6: 統合時の地図を人間へ渡す
@@ -131,4 +132,4 @@ cross-repo 契約を CLOSED にする行は、note か behaviour に**必ずア�
 
 ## ライフサイクル
 
-verification plan は **per-branch の ephemeral 記録**。統合が終わったら `integrate` skill が終端を所有する: 自動行の設計は永続テスト/CI に昇格、本番に逃げた行は incident→memory へ、閉じた plan は archive する (board/worktree 撤去と同じ責務)。
+verification plan は **per-branch の ephemeral 記録**。統合が終わったら `integrate` skill が終端を所有する: 自動行の設計は永続テスト/CI に昇格、**`HUMAN`/`manual` の PASS 行は Step 5 の資産化質問を通してから終端する** (恒久オラクルで守れる行は昇格してから archive — 人間の確認を使い捨てにしない)、本番に逃げた行は incident→memory へ、閉じた plan は archive する (board/worktree 撤去と同じ責務)。

@@ -7,6 +7,18 @@
 
 ## [Unreleased]
 
+## [0.34.0] - 2026-08-07
+
+### Added
+
+- **metrics.tsv schema v2 — 停止条件の突合と人間時間 (ADR 0024 追記)**。停止条件 (WO 10 節) は発注 gate が「書いたか」までしか強制できず、「守られたか」を見る仕組みが無かった。検収時に WO frontmatter の `retry_limit` を転記し、`retries > retry_limit` / `actual_tokens > budget_tokens` を「停止条件を破って走った」の信号として `wo-metrics.sh` が集計する。実行中に止める機構は作らない (「同一失敗の再試行か」は既約な判断で hook で数えれば proxy になる) — 破られた事実が検収で必ず可視化されれば取引材料としては足りる。加えて **人間時間 3 列** (`human_order_min` / `human_run_min` / `human_accept_min`、5 分刻みの自己申告): 律速資源 = 人間のレビュー帯域がどの工程 (発注まで / 実装中の対応 / 検収) に溶けているかを測り、「次にどこを自動化するか」をデータで決める。実運用 0 行のうちの schema 変更なので移行なし。v1 行 (10 列) とも共存する。
+- **HUMAN 行の資産化質問 — 人間の確認を使い捨てにしない (`verification` / `integrate`)**。verification plan は per-branch ephemeral で、`HUMAN`/`manual` 行は人間が確認して閉じたら消えていた — 大規模化すると同じ継ぎ目を機能追加のたびに人間が確かめ直すコストが線形に増える。`PASS` で閉じるとき・integrate の archive 終端時に一問足した: 「この継ぎ目は次の変更でも壊れうるか? 恒久オラクル (テスト / monitor / contracts 登記) で守れないか?」— 守れる行は昇格してから archive、真に人間しか採点できない行 (意図・整合) だけが使い捨てを許される。**同じ継ぎ目の HUMAN 行が別 plan で 2 度目に出たら自動化必須の信号** (incident の「同じ問題に 2 回」と同型)。新しい成果物・gate は増やしていない (既存の close/archive 責務への 1 ステップ追加)。
+
+### Changed
+
+- **handoff の「長い session」trigger を縮退 (ADR 0008 #5)**。harness が長い会話の自動要約継続を持ったため、「session が長くなり `/clear` しそう」を理由とする handoff は harness と二重化する — trigger を「明示的な `/clear` の予告」に縮退し、handoff の領分を **context が消える境界を跨ぐとき** (明示 `/clear` / 別ターミナル・並走 Claude / 別 session 再開 / 重要な区切り) に限定した。置換ではない: 別 Claude / 翌日の cold restore と人間可読の引き継ぎ正本は依然 handoff の領分。
+- **問い直して「変更なし」と確定したもの (記録)**: (a) Edit 時点の lane gate (`block-out-of-lane-edit.sh`) は commit 関所 (ADR 0017) と重複して見えるが、別 worktree への絶対 path 書き込み (incident M5) は commit 関所では捕まえられず、早期 feedback も実装まるごとの無駄を防ぐ — 二層は意図された設計 (`block-out-of-lane-commit.sh` ヘッダに明文)。(b) 新規 source file を信号にする 2 gate (sprint 判定 / WO 被覆) の統合は「1 つの記録が 2 つの判断の証拠を兼ねると、安い方だけ済ませて両方を名乗れる」ため不採用 (`block-impl-without-wo.sh` ヘッダに明文)。どちらも既存の設計判断が問いに答えており、hook 数は減らさない。
+
 ## [0.33.0] - 2026-08-07
 
 ### Added
