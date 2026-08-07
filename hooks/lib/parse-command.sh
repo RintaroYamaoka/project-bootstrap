@@ -87,8 +87,116 @@ parse_json_string_field() {
   return 1
 }
 
+# ── heredoc 本文の除去 (ADR 0025 — ai-reception 2026-08-08 の誤検知 incident)
+#
+# 問題: gate は「コマンド文字列」を走査するが、heredoc 本文は**実行されるコマンドでは
+# なく stdin に渡されるデータ**である。walker (lib/git-invocation.sh) は改行を単なる
+# 空白として word-split するので本文のトークンがコマンド列に流れ込み、raw regex 経路
+# (block-dangerous-git-ops) も同様に本文の字面を拾う。結果、
+#   git commit -F - <<'MSG' … 一括 stage は `git add -A` を使わない … MSG
+# のような **規約の説明を書いた commit 自身が block された**。
+# これは ② 信号選び (gate は proxy でなく行為そのものを信号にする) の違反で、
+# 「テキストの字面」という proxy を行為と誤読していた。false positive は安全側に
+# 見えるが、**規律を回避する動機を作る** (実際 hook を deny にする案が出た) ため、
+# 「塞ぐ」と「塞がれても困らなくする」を対で設計する原則に従い除去する。
+#
+# fail-direction: 本文を落とすのは検出を**緩める**向きなので、**本文が実際に実行される
+# 形は落とさない** — `bash <<EOF … EOF` は本文がシェルに食われて実行されるので、
+# その行の heredoc は本文ごと gate の視界に残す (fail-closed を維持)。
+#
+# 射程外 (既知・無音にしない): quoted 引数の中の字面 (`-m "… git add -A …"`) は
+# 依然 over-detect する。quote 剥がしは引数の値を消すので、pathspec を引数から取る
+# 消費者 (lib/commit-files.sh 等) を無音で壊す危険があり、別途扱う (ADR 0025)。
+
+# _heredoc_exec_line <line> — この行が heredoc を「実行する側」に食わせているなら 0。
+# シェル / eval に渡る本文はコマンドそのものなので、除去の対象にしない。
+_heredoc_exec_line() {
+  local line="$1" tok rc=1 noglob=0
+  case $- in *f*) ;; *) noglob=1; set -f ;; esac
+  # shellcheck disable=SC2086
+  set -- $line
+  while [ $# -gt 0 ]; do
+    tok="$1"; shift
+    case "$tok" in
+      sh|bash|zsh|dash|ksh|eval|source|.|*/sh|*/bash|*/zsh|*/dash|*/ksh) rc=0; break ;;
+    esac
+  done
+  [ "$noglob" = 1 ] && set +f
+  return $rc
+}
+
+# _heredoc_labels <line> — この行が開く heredoc を、開いた順に `<dash>\t<label>` で出力。
+# `<<-` は終端ラベルの行頭タブ除去を許す形なので dash=1 として区別する。
+# `<<<` (herestring) は本文を持たないので heredoc として数えない。
+_heredoc_labels() {
+  local rest="$1" tail c dash lbl
+  while :; do
+    case "$rest" in *'<<'*) ;; *) return 0 ;; esac
+    tail="${rest#*<<}"
+    rest="$tail"
+    # `<<<` (herestring) は本文を持たない。なお下のラベル走査も `<` を語頭に許さないので
+    # この行を消しても現挙動は変わらない (mutation で生存を確認済み = 二重の防御であり
+    # 単独では load-bearing でない)。ラベル走査を将来変えたときの保険として残す。
+    case "$tail" in '<'*) continue ;; esac
+    dash=0
+    case "$tail" in '-'*) dash=1; tail="${tail#-}" ;; esac
+    tail="${tail#"${tail%%[![:space:]]*}"}"
+    # ラベルは quote / backslash で囲めるが、展開の有無だけの違いで名前は同じ
+    case "$tail" in
+      "'"*) tail="${tail#\'}" ;;
+      '"'*) tail="${tail#\"}" ;;
+      '\'*) tail="${tail#\\}" ;;
+    esac
+    lbl=""
+    while [ -n "$tail" ]; do
+      c="${tail:0:1}"
+      case "$c" in
+        [A-Za-z0-9_]) lbl="$lbl$c"; tail="${tail:1}" ;;
+        *) break ;;
+      esac
+    done
+    [ -n "$lbl" ] && printf '%s\t%s\n' "$dash" "$lbl"
+  done
+}
+
+# strip_heredoc_bodies <cmd> — heredoc の本文と終端ラベル行を落とし、演算子行 (= 実際の
+# コマンド) と本文の外にある行は保持する。終端ラベルが来ないまま入力が尽きたら、そこまで
+# 全部が本文 (シェルもそう解釈する)。pending は「まだ閉じていない heredoc」の待ち行列で、
+# 配列を使わず改行区切り文字列で持つ (空配列 + set -u の bash 版依存を避ける)。
+strip_heredoc_bodies() {
+  local cmd="$1"
+  case "$cmd" in *'<<'*) ;; *) printf '%s' "$cmd"; return 0 ;; esac
+
+  local out="" first=1 line t labels pending="" head rest
+  while IFS= read -r line || [ -n "$line" ]; do
+    if [ -n "$pending" ]; then
+      head="${pending%%$'\n'*}"
+      t="$line"
+      if [ "${head%%$'\t'*}" = 1 ]; then
+        while [ "${t:0:1}" = $'\t' ]; do t="${t:1}"; done
+      fi
+      if [ "$t" = "${head#*$'\t'}" ]; then
+        rest="${pending#*$'\n'}"
+        [ "$rest" = "$pending" ] && rest=""   # 1 件だけだった
+        pending="$rest"
+      fi
+      continue                                 # 本文行も終端行も落とす
+    fi
+    if [ "$first" = 1 ]; then out="$line"; first=0; else out="$out"$'\n'"$line"; fi
+    _heredoc_exec_line "$line" && continue     # 実行される本文は残す
+    labels="$(_heredoc_labels "$line")"
+    if [ -n "$labels" ]; then
+      if [ -z "$pending" ]; then pending="$labels"; else pending="$pending"$'\n'"$labels"; fi
+    fi
+  done <<< "$cmd"
+  printf '%s' "$out"
+}
+
 # parse_command — the `command` alias (kept as the blocking gates' entry point so the
-# fail-closed contract reads at the call site).
+# fail-closed contract reads at the call site). heredoc 本文はここで落とすので、
+# 全 gate が経路 (token walker / raw regex) を問わず同じ「実行されるコマンド」を見る。
 parse_command() {
-  parse_json_string_field command
+  local cmd
+  cmd="$(parse_json_string_field command)" || return 1
+  strip_heredoc_bodies "$cmd"
 }
