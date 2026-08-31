@@ -19,6 +19,10 @@
 # npm script の先頭トークンから tool を取る。`npx foo` / `pnpm exec foo` / `yarn foo` / `bunx foo`
 # のような runner 前置きは剥がす。安全側: 既知の tool だけを path 対応と認める (`next lint` の
 # ように file 引数で挙動が変わるものを誤って scope すると、存在しない lint fail を作る)。
+# Include guard — dispatcher が 1 プロセスに複数 gate を source するときの再読込抑止。
+[ -n "${_BOOTSTRAP_LIB_LINT_SCOPE:-}" ] && return 0
+_BOOTSTRAP_LIB_LINT_SCOPE=1
+
 lint_script_tool() {
   local script="$1" tok
   # runner 前置きを剥がす (複数回)

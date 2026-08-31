@@ -18,6 +18,10 @@
 # Supported languages for import extraction: ts/tsx/js/jsx/mjs/cjs, py.
 # Other extensions extract nothing (file is not checked) until their extractor lands.
 
+# Include guard — dispatcher が 1 プロセスに複数 gate を source するときの再読込抑止。
+[ -n "${_BOOTSTRAP_LIB_ARCH_CHECK:-}" ] && return 0
+_BOOTSTRAP_LIB_ARCH_CHECK=1
+
 declare -gA ARCH_LAYER_GLOBS=()   # layer name -> newline-separated globs
 declare -gA ARCH_ALIAS=()         # alias prefix -> replacement path (repo-relative)
 declare -gA ARCH_ALLOW=()         # "FROM>TO" -> 1

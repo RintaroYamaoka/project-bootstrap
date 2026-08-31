@@ -104,4 +104,30 @@ assert_eq '<empty>/<empty>' "$(arglines 'git stash;git stash' stash)"
 test_case "no matching segment emits nothing at all"
 assert_eq '' "$(arglines 'git status && npm test' push)"
 
+# --- fork ゼロ化 (Windows 高速化) の等価性ピン ---------------------------------------
+# 正規化を sed から純 bash に、存在判定を `| grep -q ''` からカウンタに変える。
+# 出力契約は不変 — ここは「壊すと差が出る入力」で新旧の等価性を固定する。
+
+test_case "&&& は && と & に割れる (sed の leftmost-longest と同じ)"
+assert_eq yes "$(invokes 'git add -A&&&git commit -a' add)"
+
+test_case "||| は || と | に割れる"
+assert_eq yes "$(invokes 'true|||git push origin main' push)"
+
+test_case "separator 密着 (a&&git commit) でも検出する"
+assert_eq yes "$(invokes 'echo x&&git commit -m y' commit)"
+
+test_case "backtick 密着でも検出する"
+assert_eq yes "$(invokes 'echo `git push origin main`' push)"
+
+test_case "制御文字 \\x01 が混ざっても検出は壊れない (sentinel fallback)"
+assert_eq yes "$(invokes "echo $(printf '\001') && git push origin main" push)"
+
+test_case "cmd_invokes_git_subcommand は stdout に何も出さない (dispatcher 1 プロセス化の前提)"
+out="$(cmd_invokes_git_subcommand 'git push origin main' push)"
+assert_eq '' "$out"
+
+test_case "git を含まない command は即 no (純 builtin 事前ガード — 検出集合は不変)"
+assert_eq no "$(invokes 'npm test && ls -la' push)"
+
 finish

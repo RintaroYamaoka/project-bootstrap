@@ -30,6 +30,10 @@
 # Pure bash, jq-free (matches the hooks' no-dependency policy). The output is
 # JSON-string-safe only insofar as the repo path is — callers that embed it in
 # additionalContext should escape as they already do for any filesystem path.
+# Include guard — dispatcher が 1 プロセスに複数 gate を source するときの再読込抑止。
+[ -n "${_BOOTSTRAP_LIB_RESOLVE_MARKER:-}" ] && return 0
+_BOOTSTRAP_LIB_RESOLVE_MARKER=1
+
 resolve_marker() {
   local top="${1%/}" name="$2" new old
   [ -n "$top" ] || return 0

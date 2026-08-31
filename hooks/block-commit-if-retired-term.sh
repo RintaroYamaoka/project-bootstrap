@@ -23,41 +23,39 @@
 
 set -u
 
-INPUT=$(cat)
-
-DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=lib/parse-command.sh
-. "$DIR/lib/parse-command.sh"
-if ! CMD="$(printf '%s' "$INPUT" | parse_command)"; then
-  echo "project-bootstrap: could not parse the tool command from hook input — blocking to fail safe (fail-closed). If this is a false positive, disable this hook via /permissions." >&2
-  exit 2
-fi
+. "${BASH_SOURCE[0]%/*}/lib/parse-command.sh"
+# shellcheck source=lib/git-invocation.sh
+. "${BASH_SOURCE[0]%/*}/lib/git-invocation.sh"
+# shellcheck source=lib/resolve-marker.sh
+. "${BASH_SOURCE[0]%/*}/lib/resolve-marker.sh"
+# shellcheck source=lib/commit-files.sh
+. "${BASH_SOURCE[0]%/*}/lib/commit-files.sh"
+# shellcheck source=lib/retired-terms.sh
+. "${BASH_SOURCE[0]%/*}/lib/retired-terms.sh"
+# shellcheck source=lib/repo-top.sh
+. "${BASH_SOURCE[0]%/*}/lib/repo-top.sh"
+
+# gate 本体 — 契約は lib/standalone.sh ヘッダ参照 (global CMD を読む / return 0=pass, 2=block)。
+gate_block_commit_if_retired_term() {
+  local TOP MARKER VIOLATIONS
 
 # git commit でなければ素通し (検出は単一権威 lib/git-invocation.sh、ADR 0019)。
-# shellcheck source=lib/git-invocation.sh
-. "$DIR/lib/git-invocation.sh"
-cmd_invokes_git_subcommand "$CMD" commit || exit 0
+cmd_invokes_git_subcommand "$CMD" commit || return 0
 
-command -v git >/dev/null 2>&1 || exit 0
-TOP=$(git rev-parse --show-toplevel 2>/dev/null)
-[ -z "$TOP" ] && exit 0   # repo 外 = 根拠不在 → fail-open
+repo_top_var
+TOP="$REPO_TOP"
+[ -z "$TOP" ] && return 0   # repo 外 = 根拠不在 → fail-open
 
-# shellcheck source=lib/resolve-marker.sh
-. "$DIR/lib/resolve-marker.sh"
 MARKER="$(resolve_marker "$TOP" retired)"
-[ -f "$MARKER" ] || exit 0   # 未採用 → 無音で素通し
-
-# shellcheck source=lib/commit-files.sh
-. "$DIR/lib/commit-files.sh"
-# shellcheck source=lib/retired-terms.sh
-. "$DIR/lib/retired-terms.sh"
+[ -f "$MARKER" ] || return 0   # 未採用 → 無音で素通し
 
 # 有効行 0 の marker は「宣言だけの no-op」→ ここでは素通し。その事実は scripts/doctor.sh が
 # partial として可視化する (= 効いていない強制を無音にしない、③ の適用)。
-retired_load "$MARKER" || exit 0
+retired_load "$MARKER" || return 0
 
-VIOLATIONS="$(retired_added_lines_cmd "$CMD" | retired_scan_stream)" || exit 0
-[ -n "$VIOLATIONS" ] || exit 0
+VIOLATIONS="$(retired_added_lines_cmd "$CMD" | retired_scan_stream)" || return 0
+[ -n "$VIOLATIONS" ] || return 0
 
 {
   echo "project-bootstrap: blocking commit — this commit ADDS lines that use a RETIRED name."
@@ -89,4 +87,12 @@ VIOLATIONS="$(retired_added_lines_cmd "$CMD" | retired_scan_stream)" || exit 0
   - 例外的に一度だけ通すなら /permissions で本 hook を一時 deny
 EOF
 } >&2
-exit 2
+return 2
+}
+
+# 単体起動 (tests / vendoring 消費者) — dispatcher からは source されるので走らない。
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  # shellcheck source=lib/standalone.sh
+  . "${BASH_SOURCE[0]%/*}/lib/standalone.sh"
+  bootstrap_standalone_bash_gate gate_block_commit_if_retired_term
+fi

@@ -18,6 +18,10 @@
 #   exactly the case it was written for (`-m all` must NOT count), and the looser copy
 #   becomes the silent hole — same single-authority reason this file exists at all.
 #   (`-m` の引数に紛れた `-a` を拾わないよう、option 位置の短縮 flag だけを見る)
+# Include guard — dispatcher が 1 プロセスに複数 gate を source するときの再読込抑止。
+[ -n "${_BOOTSTRAP_LIB_COMMIT_FILES:-}" ] && return 0
+_BOOTSTRAP_LIB_COMMIT_FILES=1
+
 commit_stages_all() {
   printf '%s' "$1" | grep -qE '(^|[[:space:]])-[a-zA-Z]*a[a-zA-Z]*([[:space:]]|$)|(^|[[:space:]])--all([[:space:]]|$)'
 }

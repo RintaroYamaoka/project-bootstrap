@@ -17,26 +17,24 @@
 
 set -u
 
-INPUT=$(cat)
 # shellcheck source=lib/parse-command.sh
-. "$(dirname "$0")/lib/parse-command.sh"
-if ! CMD="$(printf '%s' "$INPUT" | parse_command)"; then
-  echo "project-bootstrap: could not parse the tool command from hook input — blocking to fail safe (fail-closed). If this is a false positive, disable this hook via /permissions." >&2
-  exit 2
-fi
-
-[ -z "$CMD" ] && exit 0
-
-# git で始まる command でなければ素通し
-# printf '%s' で渡す (echo は先頭 '-' / backslash を解釈しうる — 全 hook で統一)
-printf '%s' "$CMD" | grep -qE '(^|[[:space:]&|;()`]+)git[[:space:]]' || exit 0
+. "${BASH_SOURCE[0]%/*}/lib/parse-command.sh"
 
 # 危険 pattern check 関数
+# printf '%s' で渡す (echo は先頭 '-' / backslash を解釈しうる — 全 hook で統一)
 match() {
   printf '%s' "$CMD" | grep -qE "$1"
 }
 
-REASON=""
+# gate 本体 — 契約は lib/standalone.sh ヘッダ参照 (global CMD を読む / return 0=pass, 2=block)。
+gate_block_dangerous_git_ops() {
+  local REASON=""
+
+  # 高速素通し (fork ゼロ): "git" が無ければ下の grep 群を払うまでもない。
+  case "$CMD" in *git*) ;; *) return 0 ;; esac
+
+  # git で始まる command でなければ素通し (grep の意味論は従来のまま)
+  printf '%s' "$CMD" | grep -qE '(^|[[:space:]&|;()`]+)git[[:space:]]' || return 0
 
 # git reset --hard (= 全 uncommitted 消去)
 if match '(^|[[:space:]&|;()`]+)git[[:space:]]+reset[[:space:]]+(-[A-Za-z]*[hH]|--hard)([[:space:]]|$)'; then
@@ -66,7 +64,7 @@ elif match '(^|[[:space:]&|;()`]+)git[[:space:]]+branch[[:space:]]+(-D|--delete[
   REASON="git branch -D (未 merge branch 強制削除)"
 fi
 
-[ -z "$REASON" ] && exit 0
+[ -z "$REASON" ] && return 0
 
 cat >&2 <<EOF
 project-bootstrap: blocking destructive git op — "$REASON"
@@ -84,4 +82,12 @@ project-bootstrap: blocking destructive git op — "$REASON"
 
 それでも実行が必要なら、user に「destructive な X を実行して良いか」と明示確認してから /permissions で本 hook を一時 deny にする。
 EOF
-exit 2
+return 2
+}
+
+# 単体起動 (tests / vendoring 消費者) — dispatcher からは source されるので走らない。
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  # shellcheck source=lib/standalone.sh
+  . "${BASH_SOURCE[0]%/*}/lib/standalone.sh"
+  bootstrap_standalone_bash_gate gate_block_dangerous_git_ops
+fi

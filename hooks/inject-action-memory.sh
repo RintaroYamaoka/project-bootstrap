@@ -25,33 +25,32 @@
 
 set -u
 
-DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=lib/parse-command.sh
-. "$DIR/lib/parse-command.sh"
+. "${BASH_SOURCE[0]%/*}/lib/parse-command.sh"
 # shellcheck source=lib/action-gate.sh
-. "$DIR/lib/action-gate.sh"
+. "${BASH_SOURCE[0]%/*}/lib/action-gate.sh"
 
-INPUT=$(cat)
+# gate 本体 — 契約は lib/standalone.sh ヘッダ参照 (global INPUT / CMD を読む)。
+# この hook は決して block しない (常に return 0)。stdout に additionalContext JSON を出す
+# 唯一の Bash gate なので、dispatcher は本 gate を発火順の末尾に置く。
+gate_inject_action_memory() {
+  local KEY CWD REPO GITTOP DEFAULT_MEMO REG_MEMO MEMO BODY ESC
 
-# Only Bash tool calls carry a command to inspect. Anything else: silent exit 0.
+# Only Bash tool calls carry a command to inspect. Anything else: silent pass.
 case "$INPUT" in
   *'"tool_name"'*'"Bash"'*|*'"Bash"'*'"tool_name"'*) ;;
-  *) exit 0 ;;
+  *) return 0 ;;
 esac
 
-# Extract the command (fail-OPEN: a hook that never blocks has nothing to fail-closed —
-# on parse failure just exit 0 silent).
-CMD="$(printf '%s' "$INPUT" | parse_command)" || exit 0
-[ -n "$CMD" ] || exit 0
-
-# Tokenize -> match an enum key. No match => silent exit 0.
+# Tokenize -> match an enum key. No match => silent pass.
 KEY="$(action_key_for_command "$CMD")"
-[ -n "$KEY" ] || exit 0
+[ -n "$KEY" ] || return 0
 
 # Resolve cwd to read the per-repo registry (opt-in). Single-authority decoder — the
 # old grep extraction truncated at ',' '}' inside the path (2026-07-10 audit; harmless
 # here beyond a possibly-missed memo, but one authority beats eight copies).
-CWD=$(printf '%s' "$INPUT" | parse_json_string_field cwd)
+json_field_var cwd "$INPUT" || JSON_FIELD=""
+CWD="$JSON_FIELD"
 [ -z "$CWD" ] && CWD="$PWD"
 
 # Resolve to the git root so the registry is found regardless of subdir cwd (fall back to
@@ -77,7 +76,7 @@ if [ -n "$DEFAULT_MEMO" ] && [ -n "$REG_MEMO" ]; then
 else
   MEMO="${DEFAULT_MEMO}${REG_MEMO}"
 fi
-[ -n "$MEMO" ] || exit 0
+[ -n "$MEMO" ] || return 0
 
 # Build the injected body. We name the action-key explicitly so the actor knows WHICH
 # repeat-prone action tripped this, then hand the recorded guidance/reminder.
@@ -94,4 +93,12 @@ ESC="${ESC//\"/\\\"}"
 ESC="${ESC//$'\n'/\\n}"
 
 printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","additionalContext":"%s"}}\n' "$ESC"
-exit 0
+return 0
+}
+
+# 単体起動 (tests / vendoring 消費者) — dispatcher からは source されるので走らない。
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  # shellcheck source=lib/standalone.sh
+  . "${BASH_SOURCE[0]%/*}/lib/standalone.sh"
+  bootstrap_standalone_bash_gate_open gate_inject_action_memory
+fi

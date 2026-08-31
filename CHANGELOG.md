@@ -7,6 +7,16 @@
 
 ## [Unreleased]
 
+## [0.36.0] - 2026-08-31
+
+### Changed
+
+- **PreToolUse gate 群を単一プロセス dispatcher に統合 — Windows (Git Bash) の速度税を撤廃 (ADR 0026)**。旧配線は Bash tool call ごとに 16 個、Edit ごとに 6 個の `bash <gate>.sh` を別プロセスで起動し、各 script が早期 exit の前に一律 ~7 fork (`$(cat)` / `$(dirname)` / `printf | parse_command`) を払っていた。Linux では 1 call ~76ms で無害だが、**MSYS/Git Bash は fork が 10-30 倍遅く 1 tool call 数秒** — 「遅い gate は deny される動機を作る」= 誤検知が規律を殺すのと同型の逆効果だった。新配線は `dispatch.sh <edit|bash>` の 1 プロセスが stdin を builtin `read` で 1 回読み、payload を 1 回 parse し (fork ゼロの変数 API)、gate 関数を旧結線順に呼ぶ。実測 (WSL2 Linux): Bash call 76ms→24ms / Edit 38ms→19ms — Windows では fork 数が 100+→数個に落ちるため差はさらに大きい (`scripts/bench-hooks.sh` で実測可能)。
+- **hot path の fork ゼロ化**: `parse-command.sh` に変数 API (`json_field_var`/`parse_command_var`/`edit_file_var`/`norm_path_var`)、`git-invocation.sh` の walker を sed→純 bash + カウンタ化 + 純 builtin `*git*` 事前ガード (検出集合は不変 — walker が捕まえられる git 起動は必ず部分文字列 `git` を含む)、`action-gate.sh` のトークナイザ純 bash 化、`tr '\\' '/' | tr -s '/'` ~10 箇所を `norm_path_var` に、`git rev-parse --show-toplevel` をプロセス内 memo (`lib/repo-top.sh`) に、全 lib に include guard。bash 5.2 の `patsub_replacement` (置換中の `&`) を踏まない形で bash 3.2 互換を維持。
+- **gate script は「関数 + 単体起動 footer」の二面構成に** (`lib/standalone.sh`)。tests (28 file) と vendoring 消費者の `bash <gate>.sh` + stdin JSON 単体起動は不変。cd する gate (tests-fail) は subshell 封じ込め、EXIT trap (wo-incomplete) は明示 rm に置換。
+- **同期が要る対が 1 つ増えた**: gate の増減は `dispatch.sh` の `BASH_GATES`/`EDIT_GATES` にも反映する (MAINTENANCE.md)。net は新規 `tests/hooks/dispatch.test.bash` (19 assertions — block/pass parity・fail-closed 契約・injector stdout passthrough・未知 mode の fail-closed)。suite 53 → 54 本、全 green。
+- **挙動の非互換は 1 点だけ**: 複数 gate が同時に block する入力では最初の 1 本の banner だけ出る (block の判定集合は不変)。
+
 ## [0.35.0] - 2026-08-08
 
 ### Fixed

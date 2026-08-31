@@ -17,6 +17,10 @@
 #   no stdout. Pure bash + grep, jq-free.
 
 # board_has_active_tasks — see header.
+# Include guard — dispatcher が 1 プロセスに複数 gate を source するときの再読込抑止。
+[ -n "${_BOOTSTRAP_LIB_BOARD_LIVENESS:-}" ] && return 0
+_BOOTSTRAP_LIB_BOARD_LIVENESS=1
+
 board_has_active_tasks() {
   local board="$1"
   [ -s "$board" ] || return 1

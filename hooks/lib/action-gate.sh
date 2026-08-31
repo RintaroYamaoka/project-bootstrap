@@ -36,6 +36,10 @@
 # registry line may only ARM a key listed here; an armed key NOT in this list is an orphan
 # (doctor reports it — see registry_orphan_keys). Extending the vocabulary is a reviewed
 # edit to THIS array (and the matcher arm below), never a consumer-side regex.
+# Include guard — dispatcher が 1 プロセスに複数 gate を source するときの再読込抑止。
+[ -n "${_BOOTSTRAP_LIB_ACTION_GATE:-}" ] && return 0
+_BOOTSTRAP_LIB_ACTION_GATE=1
+
 ACTION_KEY_ENUM="prod-deploy prod-db-migrate data-backfill"
 
 # action_key_is_known <key> — return 0 if <key> is a member of the CLOSED enum.
@@ -56,10 +60,37 @@ action_key_is_known() {
 # reached. Like merge-targets.sh, a separator INSIDE a quoted argument is indistinguishable
 # from a real one without a full shell parser (documented limit; this hook never blocks, so
 # a mis-split only means a possibly-missed memo = fail-open, never a wrong block).
+# _action_emit <tok> — ACTION_TOKENS に 1 行追記する (fork ゼロ)。
+_action_emit() {
+  if [ -z "$ACTION_TOKENS" ]; then ACTION_TOKENS="$1"; else ACTION_TOKENS="$ACTION_TOKENS
+$1"; fi
+}
+
 _action_tokenize() {
-  local cmd="$1" norm noglob=0 tok seg_start=1
+  _action_tokenize_var "$1"
+  [ -n "$ACTION_TOKENS" ] && printf '%s\n' "$ACTION_TOKENS"
+}
+
+# _action_tokenize_var <command> — fork ゼロ版の本体 (単一権威)。結果を改行区切りで
+# ACTION_TOKENS に set する。padding は sed でなく純 bash (${var//}) — MSYS/Git Bash の
+# fork 遅延を全 Bash tool call で払わないため (ADR 0026)。sentinel \001 は「command 自身が
+# 制御文字を含む」稀ケースだけ sed 経路に fallback (git-invocation.sh と同慣行)。
+_action_tokenize_var() {
+  local cmd="$1" norm noglob=0 tok seg_start=1 a=$'\001'
+  ACTION_TOKENS=""
   # Pad shell separators so they tokenize as standalone words (vercel deploy;prisma migrate).
-  norm="$(printf '%s' "$cmd" | sed -E 's/(\&\&|\|\||;|\||\&)/ \&\& /g')"
+  case "$cmd" in
+    *"$a"*)
+      norm="$(printf '%s' "$cmd" | sed -E 's/(\&\&|\|\||;|\||\&)/ \&\& /g')" ;;
+    *)
+      norm="$cmd"
+      norm="${norm//&&/ $a }"
+      norm="${norm//||/ $a }"
+      norm="${norm//;/ $a }"
+      norm="${norm//|/ $a }"
+      norm="${norm//&/ $a }"
+      ;;
+  esac
   case $- in *f*) ;; *) noglob=1; set -f ;; esac
   # shellcheck disable=SC2086
   set -- $norm
@@ -67,8 +98,8 @@ _action_tokenize() {
   while [ $# -gt 0 ]; do
     tok="$1"; shift
     case "$tok" in
-      '&&'|'||'|';'|'|'|'&')
-        printf '%s\n' ';SEP;'; seg_start=1; continue ;;
+      '&&'|'||'|';'|'|'|'&'|"$a")
+        _action_emit ';SEP;'; seg_start=1; continue ;;
     esac
     # Strip surrounding quote chars from every token. Word-splitting an unquoted `$norm`
     # does NOT honor quotes, so a `bash -c "vercel deploy"` arrives as `bash -c "vercel
@@ -109,7 +140,7 @@ _action_tokenize() {
       esac
       seg_start=0
     fi
-    printf '%s\n' "$tok"
+    _action_emit "$tok"
   done
 }
 
@@ -152,6 +183,7 @@ action_key_for_command() {
     if [ "$has_backfill_name" = 1 ]; then printf 'data-backfill'; return 0; fi
     return 1
   }
+  _action_tokenize_var "$1"
   while IFS= read -r t; do
     if [ "$t" = ';SEP;' ]; then
       _decide && return 0
@@ -188,7 +220,9 @@ action_key_for_command() {
       UPDATE|update|DELETE|delete|TRUNCATE|truncate|UPSERT|upsert) has_sql_write=1 ;;
       migrate|migrate:*|migration:*|db:migrate|db:migrate:*|upgrade) has_migrate_kw=1 ;;
     esac
-  done < <(_action_tokenize "$1")
+  done <<EOF
+$ACTION_TOKENS
+EOF
   _decide && return 0
   return 0
 }
@@ -226,7 +260,7 @@ action_default_memo() {
 # Resolve via the shared marker resolver so the .bootstrap/ vs legacy-flat fallback stays
 # single-authority (never drifts from the other gates).
 # shellcheck source=resolve-marker.sh
-. "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/resolve-marker.sh"
+. "${BASH_SOURCE[0]%/*}/resolve-marker.sh"
 _registry_path() { resolve_marker "${1%/}" actions; }
 
 # registry_memo_for_key <repo-root> <action-key> — print the memo to inject for <action-key>

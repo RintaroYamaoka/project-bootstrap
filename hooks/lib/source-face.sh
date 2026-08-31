@@ -11,6 +11,10 @@
 #   return 1 = test file / config / docs / throwaway scripts / non-source extension
 #   Callers fail OPEN (pass) on return 1 — these are never feature faces, so they are
 #   not the act either gate is designed to catch. Pure bash, jq-free.
+# Include guard — dispatcher が 1 プロセスに複数 gate を source するときの再読込抑止。
+[ -n "${_BOOTSTRAP_LIB_SOURCE_FACE:-}" ] && return 0
+_BOOTSTRAP_LIB_SOURCE_FACE=1
+
 is_source_path() {
   local rel="$1"
   case "$rel" in

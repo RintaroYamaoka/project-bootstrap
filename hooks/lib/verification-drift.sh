@@ -68,6 +68,10 @@
 
 # Source the sibling libs this judge composes (idempotent — re-sourcing these pure-function
 # libs is harmless; the doctor may also source repo-drift.sh directly).
+# Include guard — dispatcher が 1 プロセスに複数 gate を source するときの再読込抑止。
+[ -n "${_BOOTSTRAP_LIB_VERIFICATION_DRIFT:-}" ] && return 0
+_BOOTSTRAP_LIB_VERIFICATION_DRIFT=1
+
 _vd_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=source-face.sh
 . "$_vd_dir/source-face.sh"

@@ -94,46 +94,50 @@ d6_divergence_count() {
 # unset, so this short-circuits and the body below executes as before.
 [ -n "${BUM_SOURCE_ONLY:-}" ] && return 0
 
-INPUT=$(cat)
 # shellcheck source=lib/parse-command.sh
-. "$(dirname "$0")/lib/parse-command.sh"
-if ! CMD="$(printf '%s' "$INPUT" | parse_command)"; then
-  echo "project-bootstrap: could not parse the tool command from hook input — blocking to fail safe (fail-closed). If this is a false positive, disable this hook via /permissions." >&2
-  exit 2
-fi
+. "${BASH_SOURCE[0]%/*}/lib/parse-command.sh"
+# shellcheck source=lib/merge-targets.sh
+. "${BASH_SOURCE[0]%/*}/lib/merge-targets.sh"
+# shellcheck source=lib/resolve-docs.sh
+. "${BASH_SOURCE[0]%/*}/lib/resolve-docs.sh"
+# shellcheck source=lib/lane-set.sh
+. "${BASH_SOURCE[0]%/*}/lib/lane-set.sh"
+# 共有判定 lib/repo-drift.sh は READ-ONLY で source (drift_main_ref / merged_worktree_lines)。
+# shellcheck source=lib/repo-drift.sh
+. "${BASH_SOURCE[0]%/*}/lib/repo-drift.sh"
+# shellcheck source=lib/detect-test-suite.sh
+. "${BASH_SOURCE[0]%/*}/lib/detect-test-suite.sh"
+# shellcheck source=lib/repo-top.sh
+. "${BASH_SOURCE[0]%/*}/lib/repo-top.sh"
 
-[ -z "$CMD" ] && exit 0
+is_lane_branch() { lane_set_contains "$1" "$LANE_BRANCHES"; }
+
+# gate 本体 — 契約は lib/standalone.sh ヘッダ参照 (global CMD を読む / return 0=pass, 2=block)。
+gate_block_unreviewed_merge() {
+  local TOP SPRINT_DIR LANE_BRANCHES DEST_REF CUR_BRANCH MAIN_REF MAIN_BRANCH D5_LEFTOVERS
+  local HAS_LANE NEEDS_SUITE BRANCH DIV REVIEW SUITE
 
 # git merge でなければ素通し (path-prefixed git も含め共有エンジンで判定)。
-# shellcheck source=lib/merge-targets.sh
-. "$(dirname "$0")/lib/merge-targets.sh"
-cmd_has_git_merge "$CMD" || exit 0
+cmd_has_git_merge "$CMD" || return 0
 
 # repo root を解決。非 git は根拠不在 → fail-open。
-command -v git >/dev/null 2>&1 || exit 0
-TOP=$(git rev-parse --show-toplevel 2>/dev/null | tr '\\' '/' | tr -s '/')
-[ -z "$TOP" ] && exit 0
+repo_top_var
+TOP="$REPO_TOP"
+[ -z "$TOP" ] && return 0
 
 # opt-in: sprint flow を採用した project (= sprint ディレクトリが在る) でのみ発火。
 # `docs/bootstrap/sprint` (新) / `docs/sprint` (旧) どちらでも可 (ADR 0020)。
-# shellcheck source=lib/resolve-docs.sh
-. "$(dirname "$0")/lib/resolve-docs.sh"
 SPRINT_DIR="$(resolve_docs_dir "$TOP" sprint)"
-[ -d "$SPRINT_DIR" ] || exit 0
+[ -d "$SPRINT_DIR" ] || return 0
 
 # 並列 lane の branch 集合 (活性 board の task branch ∪ linked worktree の branch、ADR 0004)
 # は単一権威 lib/lane-set.sh で組み立てる (= verification gate と drift しない)。
-# shellcheck source=lib/lane-set.sh
-. "$(dirname "$0")/lib/lane-set.sh"
 LANE_BRANCHES=$(lane_branches "$TOP")
 
 # lane が 1 つも無ければ判定根拠なし → fail-open (通常の merge を一切妨げない)。
-[ -z "$(printf '%s' "$LANE_BRANCHES" | tr -d '[:space:]')" ] && exit 0
+[ -z "$(printf '%s' "$LANE_BRANCHES" | tr -d '[:space:]')" ] && return 0
 
 # ここから先は「並列 lane の git merge」= 統合の入口。D6/D5 の比較基準を組み立てる。
-# 共有判定 lib/repo-drift.sh を READ-ONLY で source (drift_main_ref / merged_worktree_lines)。
-# shellcheck source=lib/repo-drift.sh
-. "$(dirname "$0")/lib/repo-drift.sh"
 
 # DEST_REF — D6 が「lane が含んでいるべき統合先」。merge は HEAD に INTO するので実際の
 # 統合先は HEAD。ただし HEAD が detached / trunk でない時だけ drift_main_ref を補助に使う
@@ -164,8 +168,6 @@ EOF
   fi
 fi
 
-is_lane_branch() { lane_set_contains "$1" "$LANE_BRANCHES"; }
-
 # merge 対象 branch を全 segment から enumerate する (複合コマンド対応)。共有エンジン
 # lib/merge-targets.sh が貪欲 sed バグ + path-prefixed git を吸収する (単一権威で drift 防止)。
 # 各 lane branch を分類: 1 つでも reject / 未レビューがあれば即 block (その branch の理由を出す)。
@@ -195,7 +197,7 @@ revert**しえます (git diff/status は HEAD 相手なので不可視 — inci
   git -C <lane worktree> rebase $DEST_REF      # lane を統合先/main の上に載せ直す
   その後 re-review し直して (diff が変わる) から統合する
 EOF
-    exit 2
+    return 2
   fi
 
   REVIEW="$SPRINT_DIR/reviews/$(printf '%s' "$BRANCH" | tr '/' '_').md"
@@ -213,7 +215,7 @@ project-bootstrap: blocking merge of "$BRANCH" — review verdict is REJECT.
   1. 指摘を worker lane で修正し、re-review を回して verdict: approve に更新する
   2. 指摘が誤りなら、レビュー記録に反証を追記した上で verdict を更新する (記録を消さない)
 EOF
-    exit 2
+    return 2
   fi
 
   cat >&2 <<EOF
@@ -227,11 +229,11 @@ project-bootstrap: blocking merge of "$BRANCH" — no completed review record.
 
 レビューそのものを skip したい例外時は /permissions で本 hook を一時 deny にする。
 EOF
-  exit 2
+  return 2
 done < <(merge_target_branches "$CMD")
 
 # merge 対象に並列 lane の branch が無い → 根拠不在 → fail-open (通常の merge を一切妨げない)。
-[ "$HAS_LANE" = 0 ] && exit 0
+[ "$HAS_LANE" = 0 ] && return 0
 
 # 全 lane branch が approve だった。ADR 0005 guard 1: agent 判定の approve は実検証を代替しない。
 # approve はレビューが起きた証明であって「テストが通った」証明ではない。関所が自分で検出スイートを
@@ -239,8 +241,6 @@ done < <(merge_target_branches "$CMD")
 # PreToolUse なので統合"後"の結合状態は測れない (タイミングの限界) が、統合先が緑であることは保証する。
 # runner 未検出は fail-open。検出は commit gate と共有エンジン (lib/detect-test-suite.sh) で drift 防止。
 if [ "$NEEDS_SUITE" = 1 ]; then
-  # shellcheck source=lib/detect-test-suite.sh
-  . "$(dirname "$0")/lib/detect-test-suite.sh"
   if SUITE="$(cd "$TOP" && detect_test_command)"; then
     echo "project-bootstrap: running $SUITE to verify before merge (ADR 0005 guard 1)..." >&2
     if ! ( cd "$TOP" && $SUITE ) >&2; then
@@ -253,8 +253,16 @@ agent の approve で踏み越えて統合することは許可しない。対�
   1. lane でテストを緑にしてから re-review し、verdict を更新する
   2. 統合境界 (共有 interface の前提ずれ) が原因なら、その根本を直す (症状を隠さない)
 EOF
-      exit 2
+      return 2
     fi
   fi
 fi
-exit 0
+return 0
+}
+
+# 単体起動 (tests / vendoring 消費者) — dispatcher からは source されるので走らない。
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  # shellcheck source=lib/standalone.sh
+  . "${BASH_SOURCE[0]%/*}/lib/standalone.sh"
+  bootstrap_standalone_bash_gate gate_block_unreviewed_merge
+fi

@@ -15,49 +15,45 @@
 
 set -u
 
-INPUT=$(cat)
 # field 抽出は単一権威 lib/parse-command.sh の decoder に委ねる。旧 grep 抽出は path 中の
 # `,` `}` / escape で途中切りし、この gate を無音 fail-open にした (2026-07-10 監査)。
 # shellcheck source=lib/parse-command.sh
-. "$(dirname "$0")/lib/parse-command.sh"
-FILE=$(printf '%s' "$INPUT" | parse_json_string_field file_path)
+. "${BASH_SOURCE[0]%/*}/lib/parse-command.sh"
 
-# file_path が無ければ path フィールドを試す
-if [ -z "$FILE" ]; then
-  FILE=$(printf '%s' "$INPUT" | parse_json_string_field path)
-fi
-
-[ -z "$FILE" ] && exit 0
+# gate 本体 — 契約は lib/standalone.sh ヘッダ参照 (global FILE を読む / return 0=pass, 2=block)。
+gate_require_test_companion() {
+  local FILE_NORM EXT BASE NAME DIR ROOT CANDIDATES found C
 
 # Windows path 正規化 (= `\` を `/` に置換、case パターン match のため)。
 # Claude Code は Windows 環境で JSON escape 済の backslash 区切り絶対 path を渡してくるが
 # (= hook 内では literal 2 文字 `\\` が保持される)、case `*/scripts/_*` 等のパターンは
-# forward slash 想定なので、正規化しないと素通し判定が効かない。
-# 注意: `sed -e 's|\\|/|g'` は Git Bash の GNU sed で「unterminated `s' command」を吐いて
-# FILE_NORM を空にし全 skip 経路を殺す。`tr` で character-class 単位の確実な置換 +
-# `tr -s '/'` で連続 `/` を 1 つに縮約 (= 重複 `//` 対策) の組み合わせを使う。
-FILE_NORM=$(printf '%s' "$FILE" | tr '\\\\' '/' | tr -s '/')
+# forward slash 想定なので、正規化しないと素通し判定が効かない。正規化は fork ゼロの
+# 単一権威 norm_path_var (lib/parse-command.sh) — 旧実装の `tr '\\' '/' | tr -s '/'` と
+# 同じ規則 (backslash → slash、連続 slash の縮約)。sed が使えない理由は同 lib 参照。
+norm_path_var "$FILE"
+FILE_NORM="$NORM_PATH"
 
 # test ファイル自身 / config / docs は素通し
 case "$FILE_NORM" in
-  *.test.*|*.spec.*|*_test.*|test_*.py|*/tests/*|*/test/*|*/__tests__/*|*/_test/*) exit 0 ;;
-  *.md|*.json|*.yaml|*.yml|*.toml|*.ini|*.cfg|*.lock|*.txt|*.env|*.sh|*.bash|*.zsh|*.fish|*.gitignore|*.dockerignore) exit 0 ;;
-  *Dockerfile*|*Makefile*|*.sql) exit 0 ;;
+  *.test.*|*.spec.*|*_test.*|test_*.py|*/tests/*|*/test/*|*/__tests__/*|*/_test/*) return 0 ;;
+  *.md|*.json|*.yaml|*.yml|*.toml|*.ini|*.cfg|*.lock|*.txt|*.env|*.sh|*.bash|*.zsh|*.fish|*.gitignore|*.dockerignore) return 0 ;;
+  *Dockerfile*|*Makefile*|*.sql) return 0 ;;
   # scripts/_* は ephemeral debug namespace (= 一回限りの調査 / recovery script)、test 不要で素通し。
   # 慣行: `scripts/_foo.mjs` のような prefix `_` で「使い捨て」を示す。
-  */scripts/_*|scripts/_*) exit 0 ;;
+  */scripts/_*|scripts/_*) return 0 ;;
 esac
 
 # 実装ファイル拡張子か
 EXT="${FILE##*.}"
 case "$EXT" in
   ts|tsx|js|jsx|mjs|cjs|py|go|rs|rb|php|java|cs|cpp|cc|c|h|hpp|swift|kt|scala|ex|exs|clj|hs|ml) ;;
-  *) exit 0 ;;
+  *) return 0 ;;
 esac
 
 BASE="${FILE%.*}"
-NAME=$(basename "$BASE")
-DIR=$(dirname "$FILE")
+NAME="${BASE##*/}"
+DIR="${FILE%/*}"
+[ "$DIR" = "$FILE" ] && DIR="."
 
 # file が属する project root（marker を上方向に探索）。見つからなければ cwd（従来挙動）。
 # session cwd と別 tree（worktree / 別 repo）のファイル編集でも、その tree の tests/ を
@@ -69,7 +65,10 @@ while [ -n "$ROOT" ] && [ "$ROOT" != "/" ] && [ "$ROOT" != "." ]; do
      [ -e "$ROOT/Cargo.toml" ] || [ -e "$ROOT/Gemfile" ] || [ -e "$ROOT/.git" ]; then
     break
   fi
-  ROOT=$(dirname "$ROOT")
+  case "$ROOT" in
+    */*) ROOT="${ROOT%/*}"; [ -z "$ROOT" ] && ROOT="/" ;;
+    *)   ROOT="." ;;
+  esac
 done
 if [ -z "$ROOT" ] || [ "$ROOT" = "/" ] || [ "$ROOT" = "." ]; then
   ROOT="$PWD"
@@ -127,7 +126,7 @@ fi
 
 for C in "${CANDIDATES[@]}"; do
   if [ -f "$C" ]; then
-    exit 0
+    return 0
   fi
 done
 
@@ -139,4 +138,12 @@ $(printf '  - %s\n' "${CANDIDATES[@]}")
 
 If this is genuinely a non-tested file (e.g. type-only declarations, generated code), bypass this hook with /permissions or add the file to an exception list.
 EOF
-exit 2
+return 2
+}
+
+# 単体起動 (tests / vendoring 消費者) — dispatcher からは source されるので走らない。
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  # shellcheck source=lib/standalone.sh
+  . "${BASH_SOURCE[0]%/*}/lib/standalone.sh"
+  bootstrap_standalone_edit_gate gate_require_test_companion
+fi

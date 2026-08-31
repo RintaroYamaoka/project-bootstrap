@@ -34,55 +34,14 @@
 
 set -u
 
-INPUT=$(cat)
-
 # shellcheck source=lib/parse-command.sh
-. "$(dirname "$0")/lib/parse-command.sh"
-if ! CMD="$(printf '%s' "$INPUT" | parse_command)"; then
-  echo "project-bootstrap: could not parse the tool command from hook input — blocking to fail safe (fail-closed). If this is a false positive, disable this hook via /permissions." >&2
-  exit 2
-fi
-
-[ -z "$CMD" ] && exit 0
-
-# git commit でなければ素通し (= add / status / log 等は対象外)。検出は単一権威
-# lib/git-invocation.sh (path-prefixed git / git グローバルオプション形も捕まえる — 旧 regex は
-# どちらも素通りさせた。ADR 0019)。
+. "${BASH_SOURCE[0]%/*}/lib/parse-command.sh"
+# git commit 検出は単一権威 lib/git-invocation.sh (path-prefixed git / git グローバル
+# オプション形も捕まえる — 旧 regex はどちらも素通りさせた。ADR 0019)。
 # shellcheck source=lib/git-invocation.sh
-. "$(dirname "$0")/lib/git-invocation.sh"
-cmd_invokes_git_subcommand "$CMD" commit || exit 0
-
-# --amend も対象に含める。共有 index 構成では `git commit --amend` こそが他 session の
-# staged file を最も巻き込む経路 (実事故: 別 Terminal の 14 staged file が amend で commit に
-# 混入し origin/main へ push された)。message-only amend (index が clean) は下の
-# `[ -z "$STAGED" ] && exit 0` で素通しになるので、除外しなくても over-block しない。
-
-# transcript_path を input から抽出 (単一権威 decoder。旧 grep 抽出は path 中の `,` `}` /
-# escape で途中切りし、transcript 不在扱いの無音 fail-open になった — 2026-07-10 監査)
-TRANSCRIPT=$(printf '%s' "$INPUT" | parse_json_string_field transcript_path)
-
-# Windows path 正規化 (= JSON-escape 済 backslash を forward slash に)
-if [ -n "$TRANSCRIPT" ]; then
-  TRANSCRIPT=$(printf '%s' "$TRANSCRIPT" | tr '\\\\' '/' | tr -s '/')
-fi
-
-# transcript が取れない / 存在しないなら fail-open (= 規律より AI 有用性を優先、warning のみ)
-if [ -z "$TRANSCRIPT" ] || [ ! -f "$TRANSCRIPT" ]; then
-  echo "project-bootstrap: cross-claude-wip check skipped (transcript not available)" >&2
-  exit 0
-fi
-
-# git が無い / repo でない場合も素通し
-command -v git >/dev/null 2>&1 || exit 0
-git rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
-
-# staged file list (path は repo root 相対 / forward slash)
-STAGED=$(git diff --cached --name-only 2>/dev/null)
-[ -z "$STAGED" ] && exit 0
-
-# repo root 取得 (= self-edited file の絶対 path を repo 相対 path に正規化するため)
-REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null | tr '\\\\' '/' | tr -s '/')
-[ -z "$REPO_ROOT" ] && exit 0
+. "${BASH_SOURCE[0]%/*}/lib/git-invocation.sh"
+# shellcheck source=lib/repo-top.sh
+. "${BASH_SOURCE[0]%/*}/lib/repo-top.sh"
 
 # transcript から Edit / Write / MultiEdit / NotebookEdit の file_path / notebook_path を抽出。
 # JSONL の各行から "file_path": "..." / "notebook_path": "..." を grep。
@@ -95,11 +54,10 @@ extract_edited() {
 
 # repo 相対 path に正規化 (= 絶対 path なら repo root prefix を削除。多重 escape 回避に / 正規化)
 normalize_to_rel() {
-  local P="$1"
-  P=$(printf '%s' "$P" | tr '\\\\' '/' | tr -s '/')
-  case "$P" in
-    "$REPO_ROOT"/*) printf '%s\n' "${P#$REPO_ROOT/}" ;;
-    *)              printf '%s\n' "$P" ;;
+  norm_path_var "$1"
+  case "$NORM_PATH" in
+    "$REPO_ROOT"/*) printf '%s\n' "${NORM_PATH#$REPO_ROOT/}" ;;
+    *)              printf '%s\n' "$NORM_PATH" ;;
   esac
 }
 
@@ -113,15 +71,53 @@ build_set() {
   done
 }
 
+# gate 本体 — 契約は lib/standalone.sh ヘッダ参照 (global INPUT / CMD を読む)。
+gate_block_cross_claude_wip() {
+  local TRANSCRIPT STAGED REPO_ROOT TRANSCRIPT_DIR WINDOW_HOURS CUR_NORM SIBLINGS
+  local FOREIGN_EDITED SIB SIB_NORM FE SELF_EDITED INTRUDERS S S_NORM
+
+  cmd_invokes_git_subcommand "$CMD" commit || return 0
+
+  # --amend も対象に含める。共有 index 構成では `git commit --amend` こそが他 session の
+  # staged file を最も巻き込む経路 (実事故: 別 Terminal の 14 staged file が amend で commit に
+  # 混入し origin/main へ push された)。message-only amend (index が clean) は下の
+  # `[ -z "$STAGED" ] && return 0` で素通しになるので、除外しなくても over-block しない。
+
+  # transcript_path を input から抽出 (単一権威 decoder。旧 grep 抽出は path 中の `,` `}` /
+  # escape で途中切りし、transcript 不在扱いの無音 fail-open になった — 2026-07-10 監査)
+  json_field_var transcript_path "$INPUT" || JSON_FIELD=""
+  TRANSCRIPT="$JSON_FIELD"
+
+  # Windows path 正規化 (= JSON-escape 済 backslash を forward slash に)
+  if [ -n "$TRANSCRIPT" ]; then
+    norm_path_var "$TRANSCRIPT"
+    TRANSCRIPT="$NORM_PATH"
+  fi
+
+  # transcript が取れない / 存在しないなら fail-open (= 規律より AI 有用性を優先、warning のみ)
+  if [ -z "$TRANSCRIPT" ] || [ ! -f "$TRANSCRIPT" ]; then
+    echo "project-bootstrap: cross-claude-wip check skipped (transcript not available)" >&2
+    return 0
+  fi
+
+  # git が無い / repo でない場合も素通し (repo_top_var は repo 外で空を memo する)
+  repo_top_var
+  REPO_ROOT="$REPO_TOP"
+  [ -z "$REPO_ROOT" ] && return 0
+
+  # staged file list (path は repo root 相対 / forward slash)
+  STAGED=$(git diff --cached --name-only 2>/dev/null)
+  [ -z "$STAGED" ] && return 0
+
 # ── self-edited set (= 当 session が file 編集ツールで触った file。常に許可)
 SELF_EDITED=$(extract_edited "$TRANSCRIPT" | build_set)
 
 # ── foreign-edited set (= 同一 working tree を共有する *他* session が編集した file)
 # 同一 projects dir の sibling transcript を走査。current は除外。stale session の巻き添えを
 # 避けるため、鮮度窓 (default 24h) 内に更新された sibling だけを対象にする。
-TRANSCRIPT_DIR=$(dirname "$TRANSCRIPT")
+TRANSCRIPT_DIR="${TRANSCRIPT%/*}"
 WINDOW_HOURS="${BOOTSTRAP_WIP_WINDOW_HOURS:-24}"
-CUR_NORM=$(printf '%s' "$TRANSCRIPT" | tr '\\\\' '/' | tr -s '/')
+CUR_NORM="$TRANSCRIPT"   # 既に norm_path_var 済み
 
 if [ "$WINDOW_HOURS" -gt 0 ] 2>/dev/null; then
   SIBLINGS=$(find "$TRANSCRIPT_DIR" -maxdepth 1 -name '*.jsonl' -mmin "-$((WINDOW_HOURS * 60))" 2>/dev/null)
@@ -132,7 +128,8 @@ fi
 FOREIGN_EDITED=""
 while IFS= read -r SIB; do
   [ -z "$SIB" ] && continue
-  SIB_NORM=$(printf '%s' "$SIB" | tr '\\\\' '/' | tr -s '/')
+  norm_path_var "$SIB"
+  SIB_NORM="$NORM_PATH"
   [ "$SIB_NORM" = "$CUR_NORM" ] && continue   # 自分の transcript は sibling から除外
   FE=$(extract_edited "$SIB" | build_set)
   [ -n "$FE" ] && FOREIGN_EDITED="${FOREIGN_EDITED}${FE}
@@ -142,13 +139,14 @@ $SIBLINGS
 EOF
 
 # 他 session の編集証拠が 1 件も無ければ block すべき file は無い (= fail-open)
-[ -z "$(printf '%s' "$FOREIGN_EDITED" | tr -d '[:space:]')" ] && exit 0
+[ -z "$(printf '%s' "$FOREIGN_EDITED" | tr -d '[:space:]')" ] && return 0
 
 # ── 判定: staged file のうち self-edited に無く foreign-edited に*ある* ものだけが intruder
 INTRUDERS=""
 while IFS= read -r S; do
   [ -z "$S" ] && continue
-  S_NORM=$(printf '%s' "$S" | tr '\\\\' '/' | tr -s '/')
+  norm_path_var "$S"
+  S_NORM="$NORM_PATH"
   printf '%s' "$SELF_EDITED" | grep -Fxq "$S_NORM" && continue        # 自分の編集は常に許可
   printf '%s' "$FOREIGN_EDITED" | grep -Fxq "$S_NORM" || continue     # 他 session 編集証拠が無ければ素通し
   INTRUDERS="${INTRUDERS}${S_NORM}
@@ -157,7 +155,7 @@ done <<EOF
 $STAGED
 EOF
 
-[ -z "$(printf '%s' "$INTRUDERS" | tr -d '[:space:]')" ] && exit 0
+[ -z "$(printf '%s' "$INTRUDERS" | tr -d '[:space:]')" ] && return 0
 
 cat >&2 <<EOF
 project-bootstrap: blocking commit — staged file(s) edited by ANOTHER Claude session
@@ -181,4 +179,12 @@ $(printf '%s' "$INTRUDERS" | sed 's/^/  - /')
   git status --porcelain
   git diff --cached --name-only
 EOF
-exit 2
+return 2
+}
+
+# 単体起動 (tests / vendoring 消費者) — dispatcher からは source されるので走らない。
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  # shellcheck source=lib/standalone.sh
+  . "${BASH_SOURCE[0]%/*}/lib/standalone.sh"
+  bootstrap_standalone_bash_gate gate_block_cross_claude_wip
+fi

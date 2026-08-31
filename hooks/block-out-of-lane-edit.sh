@@ -12,36 +12,35 @@
 
 set -u
 
-INPUT=$(cat)
-
 # field 抽出は単一権威 lib/parse-command.sh の decoder に委ねる。旧 grep 抽出は path 中の
 # `,` `}` / escape で途中切りし、この gate を無音 fail-open にした (2026-07-10 監査)。
 # shellcheck source=lib/parse-command.sh
-. "$(dirname "$0")/lib/parse-command.sh"
-FILE=$(printf '%s' "$INPUT" | parse_json_string_field file_path)
-if [ -z "$FILE" ]; then
-  FILE=$(printf '%s' "$INPUT" | parse_json_string_field path)
-fi
-[ -z "$FILE" ] && exit 0
-
-# git worktree root を解決。repo 外 / git 不在なら fail-open。
-command -v git >/dev/null 2>&1 || exit 0
-TOP=$(git rev-parse --show-toplevel 2>/dev/null | tr '\\\\' '/' | tr -s '/')
-[ -z "$TOP" ] && exit 0
-
-# lane marker は `.bootstrap/lane` (新) / `.bootstrap-lane` (旧) どちらでも可。
+. "${BASH_SOURCE[0]%/*}/lib/parse-command.sh"
 # shellcheck source=lib/resolve-marker.sh
-. "$(dirname "$0")/lib/resolve-marker.sh"
-LANE="$(resolve_marker "$TOP" lane)"
-# lane 宣言が無ければ sprint 非適用 → 素通し
-[ -f "$LANE" ] || exit 0
-
+. "${BASH_SOURCE[0]%/*}/lib/resolve-marker.sh"
 # lane 照合は共有エンジンに委ねる (commit 関所と単一権威。drift 防止)。
 # shellcheck source=lib/lane-match.sh
-. "$(dirname "$0")/lib/lane-match.sh"
+. "${BASH_SOURCE[0]%/*}/lib/lane-match.sh"
+# shellcheck source=lib/repo-top.sh
+. "${BASH_SOURCE[0]%/*}/lib/repo-top.sh"
+
+# gate 本体 — 契約は lib/standalone.sh ヘッダ参照 (global FILE を読む / return 0=pass, 2=block)。
+gate_block_out_of_lane_edit() {
+  local TOP LANE FILE_NORM REL OTHER LANES
+
+# git worktree root を解決。repo 外 / git 不在なら fail-open。
+repo_top_var
+TOP="$REPO_TOP"
+[ -z "$TOP" ] && return 0
+
+# lane marker は `.bootstrap/lane` (新) / `.bootstrap-lane` (旧) どちらでも可。
+LANE="$(resolve_marker "$TOP" lane)"
+# lane 宣言が無ければ sprint 非適用 → 素通し
+[ -f "$LANE" ] || return 0
 
 # 編集対象を repo 相対 path に正規化
-FILE_NORM=$(printf '%s' "$FILE" | tr '\\\\' '/' | tr -s '/')
+norm_path_var "$FILE"
+FILE_NORM="$NORM_PATH"
 case "$FILE_NORM" in
   "$TOP"/*) REL="${FILE_NORM#"$TOP"/}" ;;
   /*|[A-Za-z]:/*)
@@ -65,14 +64,14 @@ lane の不変条件は「自分の worktree の外を触らない」。別 work
   3. メインリポ側の独立した debt (lint 落ち等) が commit を阻んでいるなら、それは lane の外の
      問題。lane を出て直すのでなく lead に上げる
 EOF
-      exit 2
+      return 2
     fi
-    exit 0
+    return 0
     ;;
   *) REL="$FILE_NORM" ;;       # 既に相対ならそのまま
 esac
 
-lane_allows "$REL" "$LANE" && exit 0
+lane_allows "$REL" "$LANE" && return 0
 
 LANES=$(grep -vE '^[[:space:]]*(#|$)' "$LANE" | sed 's/^/  - /')
 cat >&2 <<EOF
@@ -91,4 +90,12 @@ $LANES
   - 本 task の正当な scope なら .bootstrap-lane に glob を 1 行追記し、board.json の scope も同期
   - 共有依存なら lead に直列 spine task 化を相談 (= 並列の前に先行で済ませる)
 EOF
-exit 2
+return 2
+}
+
+# 単体起動 (tests / vendoring 消費者) — dispatcher からは source されるので走らない。
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  # shellcheck source=lib/standalone.sh
+  . "${BASH_SOURCE[0]%/*}/lib/standalone.sh"
+  bootstrap_standalone_edit_gate gate_block_out_of_lane_edit
+fi

@@ -26,48 +26,46 @@
 
 set -u
 
-INPUT=$(cat)
-
-DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=lib/parse-command.sh
-. "$DIR/lib/parse-command.sh"
-FILE=$(printf '%s' "$INPUT" | parse_json_string_field file_path)
-if [ -z "$FILE" ]; then
-  FILE=$(printf '%s' "$INPUT" | parse_json_string_field path)
-fi
-[ -z "$FILE" ] && exit 0   # 根拠不在 → fail-open
-
-command -v git >/dev/null 2>&1 || exit 0
-TOP=$(git rev-parse --show-toplevel 2>/dev/null | tr '\\' '/' | tr -s '/')
-[ -z "$TOP" ] && exit 0
-
+. "${BASH_SOURCE[0]%/*}/lib/parse-command.sh"
 # shellcheck source=lib/resolve-docs.sh
-. "$DIR/lib/resolve-docs.sh"
+. "${BASH_SOURCE[0]%/*}/lib/resolve-docs.sh"
+# shellcheck source=lib/source-face.sh
+. "${BASH_SOURCE[0]%/*}/lib/source-face.sh"
+# shellcheck source=lib/wo.sh
+. "${BASH_SOURCE[0]%/*}/lib/wo.sh"
+# shellcheck source=lib/repo-top.sh
+. "${BASH_SOURCE[0]%/*}/lib/repo-top.sh"
+
+# gate 本体 — 契約は lib/standalone.sh ヘッダ参照 (global FILE を読む / return 0=pass, 2=block)。
+gate_block_impl_without_wo() {
+  local TOP CDIR CREL FILE_NORM REL ORDERED wo REASON
+
+repo_top_var
+TOP="$REPO_TOP"
+[ -z "$TOP" ] && return 0
+
 CDIR="$(resolve_docs_dir "$TOP" commission)"
 CREL="$(resolve_docs_label "$TOP" commission)"
-[ -d "$CDIR" ] || exit 0   # 未採用 → 素通し
+[ -d "$CDIR" ] || return 0   # 未採用 → 素通し
 
-FILE_NORM=$(printf '%s' "$FILE" | tr '\\' '/' | tr -s '/')
+norm_path_var "$FILE"
+FILE_NORM="$NORM_PATH"
 case "$FILE_NORM" in
   "$TOP"/*) REL="${FILE_NORM#"$TOP"/}" ;;
-  /*|[A-Za-z]:/*) exit 0 ;;   # worktree 外の絶対 path は判断不能 → fail-open
+  /*|[A-Za-z]:/*) return 0 ;;   # worktree 外の絶対 path は判断不能 → fail-open
   *) REL="$FILE_NORM" ;;
 esac
 
 # このサブシステム自身の成果物への書き込みは決して止めない (両レイアウトを見る)。
-docs_state_face "$REL" commission && exit 0
+docs_state_face "$REL" commission && return 0
 
 # 既存 file の編集/上書きは「新規 feature 面の作成」ではない → fail-open。
-[ -e "$TOP/$REL" ] && exit 0
+[ -e "$TOP/$REL" ] && return 0
 
 # test / config / docs / 非 source 拡張子は feature 面ではない。判定は共有エンジン
 # (sprint gate・guard 2 と「source 面とは何か」を単一権威に保つ)。
-# shellcheck source=lib/source-face.sh
-. "$DIR/lib/source-face.sh"
-is_source_path "$REL" || exit 0
-
-# shellcheck source=lib/wo.sh
-. "$DIR/lib/wo.sh"
+is_source_path "$REL" || return 0
 
 ORDERED=0
 for wo in "$CDIR"/wo/*.md; do
@@ -76,7 +74,7 @@ for wo in "$CDIR"/wo/*.md; do
   [ "$(wo_frontmatter "$wo" status)" = "ordered" ] || continue
   ORDERED=$((ORDERED + 1))
   if wo_covers_path "$wo" "$REL"; then
-    exit 0
+    return 0
   fi
 done
 
@@ -107,4 +105,12 @@ $CREL/ が在る = commission (上流工程) を採用した project。新しい
 2 節の glob が狭すぎるだけなら、WO の 2 節を直して発注し直す
 (= 範囲の拡大は契約の変更なので、黙って広げず記録に残す)。
 EOF
-exit 2
+return 2
+}
+
+# 単体起動 (tests / vendoring 消費者) — dispatcher からは source されるので走らない。
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  # shellcheck source=lib/standalone.sh
+  . "${BASH_SOURCE[0]%/*}/lib/standalone.sh"
+  bootstrap_standalone_edit_gate gate_block_impl_without_wo
+fi

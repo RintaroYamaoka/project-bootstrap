@@ -33,42 +33,49 @@
 
 set -u
 
-INPUT=$(cat)
-
-DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=lib/parse-command.sh
-. "$DIR/lib/parse-command.sh"
-if ! CMD="$(printf '%s' "$INPUT" | parse_command)"; then
-  echo "project-bootstrap: could not parse the tool command from hook input — blocking to fail safe (fail-closed). If this is a false positive, disable this hook via /permissions." >&2
-  exit 2
-fi
+. "${BASH_SOURCE[0]%/*}/lib/parse-command.sh"
+# shellcheck source=lib/git-invocation.sh
+. "${BASH_SOURCE[0]%/*}/lib/git-invocation.sh"
+# shellcheck source=lib/resolve-docs.sh
+. "${BASH_SOURCE[0]%/*}/lib/resolve-docs.sh"
+# shellcheck source=lib/commit-files.sh
+. "${BASH_SOURCE[0]%/*}/lib/commit-files.sh"
+# shellcheck source=lib/wo.sh
+. "${BASH_SOURCE[0]%/*}/lib/wo.sh"
+# shellcheck source=lib/repo-top.sh
+. "${BASH_SOURCE[0]%/*}/lib/repo-top.sh"
+
+in_list() { local n="$1" x; for x in $2; do [ "$x" = "$n" ] && return 0; done; return 1; }
+
+note() { PROBLEMS="$PROBLEMS
+  [$1] $2"; }
+
+# gate 本体 — 契約は lib/standalone.sh ヘッダ参照 (global CMD を読む / return 0=pass, 2=block)。
+gate_block_commit_if_wo_incomplete() {
+  local TOP CDIR CREL WORK CHARTER_REL CHARTER CHARTER_PRESENT OPEN_UNKNOWNS LEDGER_IDS
+  local PROBLEMS rel WO label UNFILLED MISS_ORACLE MISS_DOD UNRESOLVED RETRY BUDGET REFS DEFERS u d
 
 # git commit でなければ素通し (検出は単一権威 lib/git-invocation.sh、ADR 0019)。
-# shellcheck source=lib/git-invocation.sh
-. "$DIR/lib/git-invocation.sh"
-cmd_invokes_git_subcommand "$CMD" commit || exit 0
+cmd_invokes_git_subcommand "$CMD" commit || return 0
 
-command -v git >/dev/null 2>&1 || exit 0
-TOP=$(git rev-parse --show-toplevel 2>/dev/null | tr '\\' '/' | tr -s '/')
-[ -z "$TOP" ] && exit 0
+repo_top_var
+TOP="$REPO_TOP"
+[ -z "$TOP" ] && return 0
 
-# shellcheck source=lib/resolve-docs.sh
-. "$DIR/lib/resolve-docs.sh"
 CDIR="$(resolve_docs_dir "$TOP" commission)"
 CREL="$(resolve_docs_label "$TOP" commission)"
-[ -d "$CDIR" ] || exit 0   # 未採用 → 無音で素通し
-
-# shellcheck source=lib/commit-files.sh
-. "$DIR/lib/commit-files.sh"
-# shellcheck source=lib/wo.sh
-. "$DIR/lib/wo.sh"
+[ -d "$CDIR" ] || return 0   # 未採用 → 無音で素通し
 
 # 検査する中身は **この commit が運ぶ版** (index、`-a` なら worktree) であって disk の現在形では
 # ない。file 名を index から取りながら中身を worktree から読むと、`git add -p` の部分 stage や
 # stage 後の編集で「検査した中身 ≠ commit される中身」になり、完全性検査が fail-open 側に倒れる。
 # 解決は単一権威 lib/commit-files.sh の commit_file_content。
-WORK="$(mktemp -d)" || exit 0
-trap 'rm -rf "$WORK"' EXIT
+#
+# NOTE: dispatcher (1 プロセスで gate 群を回す) の中では EXIT trap を張れない — 他 gate や
+# dispatcher 自身の trap と衝突する。後始末は下の 2 つの return 経路で明示的に rm する。
+# 新しい return 経路を足すときは rm -rf "$WORK" を先に置くこと。
+WORK="$(mktemp -d)" || return 0
 
 CHARTER_REL="$CREL/charter.md"
 CHARTER="$WORK/charter.md"
@@ -79,11 +86,7 @@ CHARTER_PRESENT=1
 OPEN_UNKNOWNS="$(charter_open_unknowns "$CHARTER")"
 LEDGER_IDS="$(charter_unknown_ids "$CHARTER")"
 
-in_list() { local n="$1" x; for x in $2; do [ "$x" = "$n" ] && return 0; done; return 1; }
-
 PROBLEMS=""
-note() { PROBLEMS="$PROBLEMS
-  [$1] $2"; }
 
 while IFS= read -r rel; do
   [ -n "$rel" ] || continue
@@ -158,7 +161,11 @@ while IFS= read -r rel; do
   fi
 done < <(commit_files_from_cmd "$CMD")
 
-[ -n "$PROBLEMS" ] || exit 0
+if [ -z "$PROBLEMS" ]; then
+  rm -rf "$WORK"
+  return 0
+fi
+rm -rf "$WORK"
 
 cat >&2 <<EOF
 project-bootstrap: blocking commit — 発注しようとしている作業指示書 (WO) が未完成。
@@ -177,4 +184,12 @@ WO を status: ordered で commit する行為が「AI に仕事を渡す」行�
   4. まだ発注できる状態でないなら frontmatter を status: draft に戻す
      (draft はこの gate の対象外 — 起草そのものは止めない)
 EOF
-exit 2
+return 2
+}
+
+# 単体起動 (tests / vendoring 消費者) — dispatcher からは source されるので走らない。
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  # shellcheck source=lib/standalone.sh
+  . "${BASH_SOURCE[0]%/*}/lib/standalone.sh"
+  bootstrap_standalone_bash_gate gate_block_commit_if_wo_incomplete
+fi

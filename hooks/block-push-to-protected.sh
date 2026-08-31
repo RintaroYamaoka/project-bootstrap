@@ -17,34 +17,33 @@
 
 set -u
 
-INPUT=$(cat)
 # shellcheck source=lib/parse-command.sh
-. "$(dirname "$0")/lib/parse-command.sh"
+. "${BASH_SOURCE[0]%/*}/lib/parse-command.sh"
 # shellcheck source=lib/protected-branch.sh
 # Single authority for `git push` detection, refspec-destination enumeration, and the
 # protected-branch glob match — shared so the gate cannot drift from the lib (and the lib
 # fixes the two LIVE bugs: path-prefixed git was invisible, and a greedy sed inspected
 # only the LAST push of a compound command). See lib/protected-branch.sh.
-. "$(dirname "$0")/lib/protected-branch.sh"
-if ! CMD="$(printf '%s' "$INPUT" | parse_command)"; then
-  echo "project-bootstrap: could not parse the tool command from hook input — blocking to fail safe (fail-closed). If this is a false positive, disable this hook via /permissions." >&2
-  exit 2
-fi
+. "${BASH_SOURCE[0]%/*}/lib/protected-branch.sh"
+# shellcheck source=lib/resolve-marker.sh
+. "${BASH_SOURCE[0]%/*}/lib/resolve-marker.sh"
+# shellcheck source=lib/repo-top.sh
+. "${BASH_SOURCE[0]%/*}/lib/repo-top.sh"
 
-[ -z "$CMD" ] && exit 0
+# gate 本体 — 契約は lib/standalone.sh ヘッダ参照 (global CMD を読む / return 0=pass, 2=block)。
+gate_block_push_to_protected() {
+  local TOP PROTECTED_FILE HAS_REFSPEC dst b CUR REASON=""
 
 # git push でなければ素通し (path-prefixed git も検出する: cmd_has_git_push)
-cmd_has_git_push "$CMD" || exit 0
+cmd_has_git_push "$CMD" || return 0
 
 # protected marker を解決 (`.bootstrap/protected` 新 / `.bootstrap-protected` 旧)。
 # 無ければ opt-out として fail-open。
-command -v git >/dev/null 2>&1 || exit 0
-TOP=$(git rev-parse --show-toplevel 2>/dev/null | tr '\\\\' '/' | tr -s '/')
-[ -z "$TOP" ] && exit 0
-# shellcheck source=lib/resolve-marker.sh
-. "$(dirname "$0")/lib/resolve-marker.sh"
+repo_top_var
+TOP="$REPO_TOP"
+[ -z "$TOP" ] && return 0
 PROTECTED_FILE="$(resolve_marker "$TOP" protected)"
-[ -f "$PROTECTED_FILE" ] || exit 0
+[ -f "$PROTECTED_FILE" ] || return 0
 # protected 判定 (is_protected) は lib/protected-branch.sh の single authority に委譲する。
 
 # `git push` の refspec destination を全 segment 分 列挙する (push_destination_branches)。
@@ -80,17 +79,15 @@ $(git for-each-ref refs/heads/ --format='%(refname:short)' 2>/dev/null)
 EOF
 fi
 
-# refspec が無い push は現在 branch を見る
+# refspec が無い push は現在 branch を見る (repo であることは TOP 解決済みで確定)
 if [ -z "${REASON:-}" ] && [ "$HAS_REFSPEC" -eq 0 ]; then
-  if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    CUR=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
-    if is_protected "$CUR" "$PROTECTED_FILE"; then
-      REASON="現在 branch '$CUR' への暗黙 push"
-    fi
+  CUR=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+  if is_protected "$CUR" "$PROTECTED_FILE"; then
+    REASON="現在 branch '$CUR' への暗黙 push"
   fi
 fi
 
-[ -z "${REASON:-}" ] && exit 0
+[ -z "${REASON:-}" ] && return 0
 
 cat >&2 <<EOF
 project-bootstrap: blocking direct push to a protected branch — $REASON
@@ -106,4 +103,12 @@ project-bootstrap: blocking direct push to a protected branch — $REASON
 
 solo で意図的に main へ直接 push する必要があるなら、/permissions で本 hook を一時 deny にする。
 EOF
-exit 2
+return 2
+}
+
+# 単体起動 (tests / vendoring 消費者) — dispatcher からは source されるので走らない。
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  # shellcheck source=lib/standalone.sh
+  . "${BASH_SOURCE[0]%/*}/lib/standalone.sh"
+  bootstrap_standalone_bash_gate gate_block_push_to_protected
+fi

@@ -19,29 +19,34 @@
 
 set -u
 
-INPUT=$(cat)
-# shellcheck source=lib/parse-command.sh
-. "$(dirname "$0")/lib/parse-command.sh"
-if ! CMD="$(printf '%s' "$INPUT" | parse_command)"; then
-  echo "project-bootstrap: could not parse the tool command from hook input — blocking to fail safe (fail-closed). If this is a false positive, disable this hook via /permissions." >&2
-  exit 2
-fi
-
-# git commit でなければ素通し。検出は単一権威 lib/git-invocation.sh (path-prefixed git /
+# git commit 検出は単一権威 lib/git-invocation.sh (path-prefixed git /
 # git グローバルオプション形も捕まえる — 旧 regex はどちらも素通りさせた。ADR 0019)。
+# shellcheck source=lib/parse-command.sh
+. "${BASH_SOURCE[0]%/*}/lib/parse-command.sh"
 # shellcheck source=lib/git-invocation.sh
-. "$(dirname "$0")/lib/git-invocation.sh"
-cmd_invokes_git_subcommand "$CMD" commit || exit 0
+. "${BASH_SOURCE[0]%/*}/lib/git-invocation.sh"
+# shellcheck source=lib/resolve-marker.sh
+. "${BASH_SOURCE[0]%/*}/lib/resolve-marker.sh"
+# shellcheck source=lib/commit-files.sh
+. "${BASH_SOURCE[0]%/*}/lib/commit-files.sh"
+# shellcheck source=lib/lane-match.sh
+. "${BASH_SOURCE[0]%/*}/lib/lane-match.sh"
+# shellcheck source=lib/repo-top.sh
+. "${BASH_SOURCE[0]%/*}/lib/repo-top.sh"
 
-command -v git >/dev/null 2>&1 || exit 0
-TOP=$(git rev-parse --show-toplevel 2>/dev/null | tr '\\' '/' | tr -s '/')
-[ -z "$TOP" ] && exit 0
+# gate 本体 — 契約は lib/standalone.sh ヘッダ参照 (global CMD を読む / return 0=pass, 2=block)。
+gate_block_out_of_lane_commit() {
+  local TOP LANE STAGED OFFENDERS rel LANES
+
+cmd_invokes_git_subcommand "$CMD" commit || return 0
+
+repo_top_var
+TOP="$REPO_TOP"
+[ -z "$TOP" ] && return 0
 
 # lane 宣言が無ければ sprint 非適用 → 素通し
-# shellcheck source=lib/resolve-marker.sh
-. "$(dirname "$0")/lib/resolve-marker.sh"
 LANE="$(resolve_marker "$TOP" lane)"
-[ -f "$LANE" ] || exit 0
+[ -f "$LANE" ] || return 0
 
 # 統合操作中 (lead が conflict を解決している) なら通す。merge commit は定義上 lane を跨ぐ。
 if git rev-parse -q --verify MERGE_HEAD >/dev/null 2>&1 \
@@ -49,19 +54,14 @@ if git rev-parse -q --verify MERGE_HEAD >/dev/null 2>&1 \
    || git rev-parse -q --verify REVERT_HEAD >/dev/null 2>&1 \
    || [ -d "$(git rev-parse --git-path rebase-merge 2>/dev/null)" ] \
    || [ -d "$(git rev-parse --git-path rebase-apply 2>/dev/null)" ]; then
-  exit 0
+  return 0
 fi
 
 # commit に載る file を集める (lint 関所と単一権威。`-a` の扱いが drift しないように)。
-# shellcheck source=lib/commit-files.sh
-. "$(dirname "$0")/lib/commit-files.sh"
 STAGED=$(commit_files_from_cmd "$CMD")
 
 # 空 (= stage 済みが無い) なら git 自身が拒否する → 判断材料が無い、fail-open。
-[ -z "$STAGED" ] && exit 0
-
-# shellcheck source=lib/lane-match.sh
-. "$(dirname "$0")/lib/lane-match.sh"
+[ -z "$STAGED" ] && return 0
 
 OFFENDERS=""
 while IFS= read -r rel; do
@@ -71,7 +71,7 @@ done <<EOF
 $STAGED
 EOF
 
-[ -z "$OFFENDERS" ] && exit 0
+[ -z "$OFFENDERS" ] && return 0
 
 LANES=$(grep -vE '^[[:space:]]*(#|$)' "$LANE" | sed 's/^/  - /')
 cat >&2 <<EOF
@@ -92,4 +92,12 @@ codemod / redirect は編集時 hook を素通りする)。考えられる原因
   - 意図しない変更なら: git restore --staged --worktree -- <file>
   - 正当な scope なら: lane に 1 行追記してから commit し直す
 EOF
-exit 2
+return 2
+}
+
+# 単体起動 (tests / vendoring 消費者) — dispatcher からは source されるので走らない。
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  # shellcheck source=lib/standalone.sh
+  . "${BASH_SOURCE[0]%/*}/lib/standalone.sh"
+  bootstrap_standalone_bash_gate gate_block_out_of_lane_commit
+fi
