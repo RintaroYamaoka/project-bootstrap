@@ -13,35 +13,38 @@
 
 set -u
 
-INPUT=$(cat)
 # shellcheck source=lib/parse-command.sh
-. "$(dirname "$0")/lib/parse-command.sh"
-if ! CMD="$(printf '%s' "$INPUT" | parse_command)"; then
-  echo "project-bootstrap: could not parse the tool command from hook input — blocking to fail safe (fail-closed). If this is a false positive, disable this hook via /permissions." >&2
-  exit 2
-fi
+. "${BASH_SOURCE[0]%/*}/lib/parse-command.sh"
+# shellcheck source=lib/git-invocation.sh
+. "${BASH_SOURCE[0]%/*}/lib/git-invocation.sh"
+# shellcheck source=lib/resolve-marker.sh
+. "${BASH_SOURCE[0]%/*}/lib/resolve-marker.sh"
+# shellcheck source=lib/lint-scope.sh
+. "${BASH_SOURCE[0]%/*}/lib/lint-scope.sh"
+# shellcheck source=lib/commit-files.sh
+. "${BASH_SOURCE[0]%/*}/lib/commit-files.sh"
+# shellcheck source=lib/repo-top.sh
+. "${BASH_SOURCE[0]%/*}/lib/repo-top.sh"
+
+# gate 本体 — 契約は lib/standalone.sh ヘッダ参照 (global CMD を読む / return 0=pass, 2=block)。
+gate_block_commit_if_lint_fails() {
+  local TOP LINT_CMD SCOPED_BASE SCOPED_TOOL LINT_SCRIPT FILES f
 
 # git commit でなければ素通し。検出は単一権威 lib/git-invocation.sh (path-prefixed git /
 # git グローバルオプション形も捕まえる — 旧 regex はどちらも素通りさせた。ADR 0019)。
-# shellcheck source=lib/git-invocation.sh
-. "$(dirname "$0")/lib/git-invocation.sh"
-cmd_invokes_git_subcommand "$CMD" commit || exit 0
+cmd_invokes_git_subcommand "$CMD" commit || return 0
 
 # opt-in: lint marker が無ければ発火しない (= arch/lane/protected と同じ project-local
 # 宣言で opt-in)。lint は project ごとに linter 設定が違い、未設定 (= `next lint` が ESLint
 # 未設定で対話プロンプトに落ちる等) のリポを always-on で巻き込むと commit を壊すため。
 # marker は `.bootstrap/lint` (新) / `.bootstrap-lint` (旧) どちらでも可 (resolve-marker.sh)。
-# shellcheck source=lib/resolve-marker.sh
-. "$(dirname "$0")/lib/resolve-marker.sh"
-TOP=$(git rev-parse --show-toplevel 2>/dev/null)
-[ -f "$(resolve_marker "${TOP:-.}" lint)" ] || exit 0
+repo_top_var
+TOP="$REPO_TOP"
+[ -f "$(resolve_marker "${TOP:-.}" lint)" ] || return 0
 
 # lint command を検出 (runner が PATH にある場合のみ立てる)。
 # SCOPED_BASE が非空なら「この commit が運ぶ file だけ」を lint できる (= 判定対象そのものを信号に
 # する。ADR 0018)。空なら従来どおりツリー全体 (go/cargo は package 単位で file 引数を取れない)。
-# shellcheck source=lib/lint-scope.sh
-. "$(dirname "$0")/lib/lint-scope.sh"
-
 LINT_CMD=""
 SCOPED_BASE=""
 SCOPED_TOOL=""
@@ -70,13 +73,11 @@ fi
 
 if [ -z "$LINT_CMD" ]; then
   echo "project-bootstrap: no linter detected, skipping pre-commit lint check" >&2
-  exit 0
+  return 0
 fi
 
 # scope できるなら commit が運ぶ file に絞る。
 if [ -n "$SCOPED_BASE" ]; then
-  # shellcheck source=lib/commit-files.sh
-  . "$(dirname "$0")/lib/commit-files.sh"
   FILES=""
   while IFS= read -r f; do
     [ -n "$f" ] || continue
@@ -90,7 +91,7 @@ EOF
   # commit がこの linter の扱う file を 1 つも運ばないなら、判定対象が無い → 素通し。
   if [ -z "${FILES# }" ]; then
     echo "project-bootstrap: commit touches no $SCOPED_TOOL-lintable file, skipping lint" >&2
-    exit 0
+    return 0
   fi
 
   echo "project-bootstrap: running $SCOPED_BASE on this commit's files before commit..." >&2
@@ -102,9 +103,9 @@ project-bootstrap: lint failed on this commit's own files — blocking commit
 
 対象 (この commit が運ぶ file のみ):$FILES
 EOF
-    exit 2
+    return 2
   fi
-  exit 0
+  return 0
 fi
 
 # fallback: file 引数を取れない linter (go/cargo 等) はツリー全体。lane worker が自分の所有しない
@@ -119,6 +120,14 @@ project-bootstrap: lint failed — blocking commit (= 命名規約 / format / �
 この linter は file 引数を取れないためツリー全体を検査した。失敗が **自分の lane の外** の file に
 由来するなら、それを直しに lane を出てはいけない (= 越境編集)。lead に上げること。
 EOF
-  exit 2
+  return 2
 fi
-exit 0
+return 0
+}
+
+# 単体起動 (tests / vendoring 消費者) — dispatcher からは source されるので走らない。
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  # shellcheck source=lib/standalone.sh
+  . "${BASH_SOURCE[0]%/*}/lib/standalone.sh"
+  bootstrap_standalone_bash_gate gate_block_commit_if_lint_fails
+fi

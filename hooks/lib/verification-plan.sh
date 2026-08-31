@@ -68,6 +68,10 @@
 # the drift advisory, the CI check and the cross-repo contract engine — resolves it the
 # same way and cannot drift.
 # shellcheck source=resolve-docs.sh
+# Include guard — dispatcher が 1 プロセスに複数 gate を source するときの再読込抑止。
+[ -n "${_BOOTSTRAP_LIB_VERIFICATION_PLAN:-}" ] && return 0
+_BOOTSTRAP_LIB_VERIFICATION_PLAN=1
+
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/resolve-docs.sh"
 
 # vplan_path_for_branch — see header. Maps a branch name to its plan file. The same

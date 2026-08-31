@@ -16,6 +16,10 @@
 
 # lane glob の照合。bash [[ $rel == $pat ]] の glob では `*` が `/` も跨ぐので
 # `*` `**` 両方が nested に効く。空行 / # コメントは無視。
+# Include guard — dispatcher が 1 プロセスに複数 gate を source するときの再読込抑止。
+[ -n "${_BOOTSTRAP_LIB_LANE_MATCH:-}" ] && return 0
+_BOOTSTRAP_LIB_LANE_MATCH=1
+
 lane_allows() {
   local rel="$1" lane="$2" pat
   [ -f "$lane" ] || return 1

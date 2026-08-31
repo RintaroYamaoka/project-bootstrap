@@ -48,6 +48,10 @@
 #   drift_report <dir>                echo the full human-readable block, or nothing; return 0.
 
 # _rd_main_branch — the local branch name a remote-tracking ref maps to (origin/main → main).
+# Include guard — dispatcher が 1 プロセスに複数 gate を source するときの再読込抑止。
+[ -n "${_BOOTSTRAP_LIB_REPO_DRIFT:-}" ] && return 0
+_BOOTSTRAP_LIB_REPO_DRIFT=1
+
 _rd_main_branch() { printf '%s' "${1#*/}"; }
 
 # drift_main_ref — see header.

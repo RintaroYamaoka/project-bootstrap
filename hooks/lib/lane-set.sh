@@ -21,6 +21,10 @@
 
 # Single authority on board liveness (resolved relative to this lib).
 # shellcheck source=board-liveness.sh
+# Include guard — dispatcher が 1 プロセスに複数 gate を source するときの再読込抑止。
+[ -n "${_BOOTSTRAP_LIB_LANE_SET:-}" ] && return 0
+_BOOTSTRAP_LIB_LANE_SET=1
+
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/board-liveness.sh"
 # Single authority on where the sprint directory lives (new docs/bootstrap/ vs legacy docs/).
 # shellcheck source=resolve-docs.sh

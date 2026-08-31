@@ -45,39 +45,37 @@
 
 set -u
 
-INPUT=$(cat)
 # shellcheck source=lib/parse-command.sh
-. "$(dirname "$0")/lib/parse-command.sh"
+. "${BASH_SOURCE[0]%/*}/lib/parse-command.sh"
 # shellcheck source=lib/protected-branch.sh
 # Single authority for `git push` detection + refspec-destination enumeration across
 # compound commands and path-prefixed git (cmd_has_git_push / push_destination_branches).
-. "$(dirname "$0")/lib/protected-branch.sh"
+. "${BASH_SOURCE[0]%/*}/lib/protected-branch.sh"
 # shellcheck source=lib/repo-drift.sh
 # Single authority on staleness (drift_main_ref resolves the trunk; fetched_behind_count is
 # the ONLINE behind count) so this gate and the offline SessionStart doctor cannot drift.
-. "$(dirname "$0")/lib/repo-drift.sh"
+. "${BASH_SOURCE[0]%/*}/lib/repo-drift.sh"
+# shellcheck source=lib/repo-top.sh
+. "${BASH_SOURCE[0]%/*}/lib/repo-top.sh"
 
-if ! CMD="$(printf '%s' "$INPUT" | parse_command)"; then
-  echo "project-bootstrap: could not parse the tool command from hook input — blocking to fail safe (fail-closed). If this is a false positive, disable this hook via /permissions." >&2
-  exit 2
-fi
-
-[ -z "$CMD" ] && exit 0
+# gate 本体 — 契約は lib/standalone.sh ヘッダ参照 (global CMD を読む / return 0=pass, 2=block)。
+gate_block_stale_write_to_protected() {
+  local TRUNK_REF TRUNK_REMOTE TRUNK_BRANCH TARGETS_TRUNK HAS_REFSPEC dst CUR BEHIND
 
 # git push でなければ素通し (path-prefixed git も検出する: cmd_has_git_push)。
-cmd_has_git_push "$CMD" || exit 0
+cmd_has_git_push "$CMD" || return 0
 
 # git / work-tree が無ければ判断不能 → fail-open。
-command -v git >/dev/null 2>&1 || exit 0
-git rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
+repo_top_var
+[ -z "$REPO_TOP" ] && return 0
 
 # 比較対象の trunk を repo-drift の single authority で解決する (origin/main -> main 等)。
 # 解決できなければ「trunk push かどうか」を判定する根拠が無い → fail-open。
-TRUNK_REF=$(drift_main_ref ".") || exit 0     # e.g. origin/main
+TRUNK_REF=$(drift_main_ref ".") || return 0     # e.g. origin/main
 TRUNK_REMOTE="${TRUNK_REF%%/*}"               # origin
 TRUNK_BRANCH="${TRUNK_REF#*/}"                # main
 # 解決結果が <remote>/<branch> の形でなければ判断不能 → fail-open。
-[ -n "$TRUNK_REMOTE" ] && [ -n "$TRUNK_BRANCH" ] && [ "$TRUNK_REMOTE" != "$TRUNK_REF" ] || exit 0
+[ -n "$TRUNK_REMOTE" ] && [ -n "$TRUNK_BRANCH" ] && [ "$TRUNK_REMOTE" != "$TRUNK_REF" ] || return 0
 
 # この push の destination が trunk branch に一致するか判定する。
 # push_destination_branches は refspec destination を全 segment 分 列挙する (compound command
@@ -110,16 +108,16 @@ if [ "$TARGETS_TRUNK" -eq 0 ] && [ "$HAS_REFSPEC" -eq 0 ] && ! push_pushes_all_b
 fi
 
 # trunk への push でなければ何も強制しない → fail-open (= feature branch push は一切妨げない)。
-[ "$TARGETS_TRUNK" -eq 1 ] || exit 0
+[ "$TARGETS_TRUNK" -eq 1 ] || return 0
 
 # ここまでで「trunk への push」と確定。authoritative な behind 数を取りに行く。
 # fetched_behind_count は明示 refspec + timeout 付き fetch を先に行い、成功時のみ behind を
 # echo して return 0、fetch 失敗 (offline / no remote / auth fail / timeout) なら return 1。
 # fetch 失敗は work を止めない (network unavailability で block しない) → fail-open。
-BEHIND=$(fetched_behind_count "." "$TRUNK_REMOTE" "$TRUNK_BRANCH") || exit 0
+BEHIND=$(fetched_behind_count "." "$TRUNK_REMOTE" "$TRUNK_BRANCH") || return 0
 
 # behind == 0 (= 最新の trunk にいる) なら fresh なので素通し。
-[ "$BEHIND" -gt 0 ] 2>/dev/null || exit 0
+[ "$BEHIND" -gt 0 ] 2>/dev/null || return 0
 
 # trunk push + fetch 成功 + behind > 0 — ここでのみ block する。
 cat >&2 <<EOF
@@ -137,4 +135,12 @@ status が clean でも「最新 ${TRUNK_BRANCH} にいる」ことは保証さ�
 
 意図的に stale のまま trunk へ push する必要があるなら、/permissions で本 hook を一時 deny にする。
 EOF
-exit 2
+return 2
+}
+
+# 単体起動 (tests / vendoring 消費者) — dispatcher からは source されるので走らない。
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  # shellcheck source=lib/standalone.sh
+  . "${BASH_SOURCE[0]%/*}/lib/standalone.sh"
+  bootstrap_standalone_bash_gate gate_block_stale_write_to_protected
+fi

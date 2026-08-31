@@ -22,36 +22,38 @@
 
 set -u
 
-INPUT=$(cat)
 # shellcheck source=lib/parse-command.sh
-. "$(dirname "$0")/lib/parse-command.sh"
-if ! CMD="$(printf '%s' "$INPUT" | parse_command)"; then
-  echo "project-bootstrap: could not parse the tool command from hook input — blocking to fail safe (fail-closed). If this is a false positive, disable this hook via /permissions." >&2
-  exit 2
-fi
+. "${BASH_SOURCE[0]%/*}/lib/parse-command.sh"
+# shellcheck source=lib/resolve-docs.sh
+. "${BASH_SOURCE[0]%/*}/lib/resolve-docs.sh"
+# shellcheck source=lib/resolve-wip-limit.sh
+. "${BASH_SOURCE[0]%/*}/lib/resolve-wip-limit.sh"
+# shellcheck source=lib/repo-top.sh
+. "${BASH_SOURCE[0]%/*}/lib/repo-top.sh"
 
-[ -z "$CMD" ] && exit 0
+# gate 本体 — 契約は lib/standalone.sh ヘッダ参照 (global CMD を読む / return 0=pass, 2=block)。
+gate_block_over_wip_parallel() {
+  local TOP LIMIT TOTAL LINKED
+
+# 高速素通し (fork ゼロ): "git" が無ければ下の grep を払うまでもない。
+case "$CMD" in *git*) ;; *) return 0 ;; esac
 
 # `git worktree add` でなければ素通し (remove / list / prune / move は lane 生成ではない)。
 # printf '%s' で渡す (echo は先頭 '-' / backslash を解釈しうる — 全 hook で統一)
-printf '%s' "$CMD" | grep -qE '(^|[[:space:]&|;()`]+)git[[:space:]]+worktree[[:space:]]+add([[:space:]]|$)' || exit 0
+printf '%s' "$CMD" | grep -qE '(^|[[:space:]&|;()`]+)git[[:space:]]+worktree[[:space:]]+add([[:space:]]|$)' || return 0
 
 # repo root を解決。非 git は根拠不在 → fail-open。
-command -v git >/dev/null 2>&1 || exit 0
-TOP=$(git rev-parse --show-toplevel 2>/dev/null | tr '\\' '/' | tr -s '/')
-[ -z "$TOP" ] && exit 0
+repo_top_var
+TOP="$REPO_TOP"
+[ -z "$TOP" ] && return 0
 
 # opt-in: sprint flow を採用した project でのみ発火。
 # ディレクトリは `docs/bootstrap/sprint` (新) / `docs/sprint` (旧) どちらでも可 (ADR 0020)。
-# shellcheck source=lib/resolve-docs.sh
-. "$(dirname "$0")/lib/resolve-docs.sh"
-[ -d "$(resolve_docs_dir "$TOP" sprint)" ] || exit 0
+[ -d "$(resolve_docs_dir "$TOP" sprint)" ] || return 0
 
 # 宣言された wip_limit を整数で取る。未宣言/解析不能は fail-open (opt-in を尊重)。
 # 判定は表示版 resolve_wip_limit と同じ lib (= 単一権威。drift 防止)。
-# shellcheck source=lib/resolve-wip-limit.sh
-. "$(dirname "$0")/lib/resolve-wip-limit.sh"
-LIMIT="$(resolve_wip_limit_int)" || exit 0
+LIMIT="$(resolve_wip_limit_int)" || return 0
 
 # 現在の linked worktree 数 = (全 worktree 行) - 1 (= main worktree を除く)。
 TOTAL=$(git worktree list --porcelain 2>/dev/null | grep -c '^worktree ')
@@ -75,7 +77,15 @@ project-bootstrap: blocking 'git worktree add' — WIP 上限 ($LIMIT lanes) に
      lane は engine 上限 (min(16, cores-2)) 律速で wip 非対象、帯域は統合関所 (block-unreviewed-merge)
      が自動で守る (ADR 0006)。worker 路の帯域天井に縛られているのはこの hook が見る路だけ
 EOF
-  exit 2
+  return 2
 fi
 
-exit 0
+return 0
+}
+
+# 単体起動 (tests / vendoring 消費者) — dispatcher からは source されるので走らない。
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  # shellcheck source=lib/standalone.sh
+  . "${BASH_SOURCE[0]%/*}/lib/standalone.sh"
+  bootstrap_standalone_bash_gate gate_block_over_wip_parallel
+fi

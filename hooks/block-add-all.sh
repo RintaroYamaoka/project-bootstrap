@@ -19,32 +19,24 @@
 
 set -u
 
-INPUT=$(cat)
-
 # shellcheck source=lib/parse-command.sh
-. "$(dirname "$0")/lib/parse-command.sh"
-if ! CMD="$(printf '%s' "$INPUT" | parse_command)"; then
-  echo "project-bootstrap: could not parse the tool command from hook input — blocking to fail safe (fail-closed). If this is a false positive, disable this hook via /permissions." >&2
-  exit 2
-fi
-
-[ -z "$CMD" ] && exit 0
-
-# 高速素通し: "git" が文字列に無ければ tokenize するまでもない。
-case "$CMD" in *git*) ;; *) exit 0 ;; esac
-
+. "${BASH_SOURCE[0]%/*}/lib/parse-command.sh"
 # 判定は segment 単位の token walk (単一権威 lib/git-invocation.sh、ADR 0019)。
 # 旧実装は (1) 検出 regex が path-prefixed git / git グローバルオプション形を素通りさせ、
 # (2) stash 判定の greedy sed が compound command の最後の segment しか見なかった
 # (`git stash && echo done` の bare stash が素通り — 2026-07-10 監査で実測)。
 # shellcheck source=lib/git-invocation.sh
-. "$(dirname "$0")/lib/git-invocation.sh"
+. "${BASH_SOURCE[0]%/*}/lib/git-invocation.sh"
 
-REASON=""
+# gate 本体 — 契約は lib/standalone.sh ヘッダ参照 (global CMD を読む / return 0=pass, 2=block)。
+gate_block_add_all() {
+  local REASON="" NOGLOB=0 line tok FIRST HAS_MSG HAS_SEP HAS_OTHER
 
-# noglob で word-split する (token に * / ? が混ざっても filesystem 展開させない)。
-NOGLOB=0
-case $- in *f*) ;; *) NOGLOB=1; set -f ;; esac
+  # 高速素通し: "git" が文字列に無ければ tokenize するまでもない。
+  case "$CMD" in *git*) ;; *) return 0 ;; esac
+
+  # noglob で word-split する (token に * / ? が混ざっても filesystem 展開させない)。
+  case $- in *f*) ;; *) NOGLOB=1; set -f ;; esac
 
 # ── git add: bulk-staging flag / 先頭 `.` pathspec (segment ごとに判定)
 while IFS= read -r line; do
@@ -119,7 +111,7 @@ fi
 
 [ "$NOGLOB" = 1 ] && set +f
 
-[ -z "$REASON" ] && exit 0
+[ -z "$REASON" ] && return 0
 
 cat >&2 <<EOF
 project-bootstrap: blocking bulk-staging op — "$REASON"
@@ -140,4 +132,12 @@ project-bootstrap: blocking bulk-staging op — "$REASON"
 
 それでも全 add が必要なら、user に「他 session の変更を一緒に commit して良いか」と明示確認してから /permissions で本 hook を一時 deny にする。
 EOF
-exit 2
+return 2
+}
+
+# 単体起動 (tests / vendoring 消費者) — dispatcher からは source されるので走らない。
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  # shellcheck source=lib/standalone.sh
+  . "${BASH_SOURCE[0]%/*}/lib/standalone.sh"
+  bootstrap_standalone_bash_gate gate_block_add_all
+fi

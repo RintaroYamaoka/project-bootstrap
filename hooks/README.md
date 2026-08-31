@@ -338,11 +338,27 @@ Bash command が plugin 所有の **action-key enum** ([`lib/action-gate.sh`](./
 
 スクリプト: [`inject-action-memory.sh`](./inject-action-memory.sh)
 
+## 実行モデル — 単一プロセス dispatcher (ADR 0026)
+
+`hooks.json` が結線するのは **4 command だけ**: SessionStart doctor / UserPromptSubmit reminder /
+`dispatch.sh edit` (Edit|Write|MultiEdit) / `dispatch.sh bash` (Bash)。PreToolUse の 22 gate は
+別プロセスで 1 本ずつ起動するのでなく、**dispatch.sh が 1 プロセスの中で gate 関数として順に呼ぶ**。
+stdin は builtin `read` で 1 回だけ読み、payload の parse も 1 回 (fork ゼロの
+`lib/parse-command.sh` 変数 API)。旧配線は Bash tool call ごとに 16 プロセス + 各 ~7 fork を
+払っており、Linux では無害 (~0.2s) だが **Windows (Git Bash / MSYS) は fork が 10-30 倍遅く
+体感数秒/回**になっていた — これが dispatcher の存在理由。実測は `scripts/bench-hooks.sh`。
+
+各 gate script は「gate 関数 + 単体起動 footer」の二面構成 (契約は `lib/standalone.sh` のヘッダ):
+tests と vendoring 消費者 (.claude/hooks/ に script を個別配線した repo) は従来どおり
+`bash <gate>.sh` + stdin JSON で単体起動できる。vendoring 先も `dispatch.sh` と `lib/` ごと
+vendor して 2 エントリに配線し直せば同じ高速化が得られる (旧配線のままでも動作は同一)。
+
 ## 発火順
 
-全 24 hook を `hooks.json` の結線順に列挙する (= 実際の発火順、可視化のための正本)。
+全 22 gate + 2 hook を実際の発火順 (= PreToolUse は `dispatch.sh` の GATES 順) で列挙する
+(可視化のための正本)。
 
-> hook を足したら **この表と `scripts/doctor.sh` の `REQ` の両方**を直す (`MAINTENANCE.md`「同期が要る対」)。REQ に足し忘れると、その gate だけ vendoring 先での配備漏れが無音になる。
+> hook を足したら **この表・`dispatch.sh` の `BASH_GATES`/`EDIT_GATES`・`scripts/doctor.sh` の `REQ` の 3 つ**を直す (`MAINTENANCE.md`「同期が要る対」)。dispatch.sh に足し忘れると plugin 経由でその gate が発火しない。REQ に足し忘れると、その gate だけ vendoring 先での配備漏れが無音になる。
 
 **SessionStart**:
 

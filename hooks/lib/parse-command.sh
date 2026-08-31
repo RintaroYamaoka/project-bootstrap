@@ -32,11 +32,29 @@
 # escape (\" \\ \/ \n \t \r \b \f) is decoded. The single left-to-right scan also
 # resolves the \\" ambiguity correctly (\\ then ", not \ then escaped-quote).
 
-# parse_json_string_field <key> — see header. Reads stdin, writes decoded value to stdout.
-parse_json_string_field() {
-  local key="$1" input after c nxt out="" i len
+# Include guard — dispatcher が 1 プロセスに複数 gate を source するとき、同じ lib の
+# 再読込 (open+parse の I/O — Windows で高くつく) を 1 回に抑える。
+[ -n "${_BOOTSTRAP_LIB_PARSE_COMMAND:-}" ] && return 0
+_BOOTSTRAP_LIB_PARSE_COMMAND=1
 
-  input="$(cat)"
+# ── fork ゼロの変数ベース API (dispatcher の hot path 用)
+#
+# Windows (Git Bash / MSYS) は fork が Linux の 10-30 倍遅く、hook の体感遅延の主因は
+# サブプロセス数そのもの。dispatcher (hooks/dispatch.sh) は stdin を builtin read で
+# 1 回だけ読み、以下の変数ベース関数でサブプロセスなしに field を取り出す。
+# 単一権威は json_field_var — stdin 版 (parse_json_string_field / parse_command) は
+# その thin wrapper (二経路に同じ穴を作らない)。
+#
+# 契約:
+#   json_field_var <key> <json>  : 成功 = JSON_FIELD を set して return 0
+#                                  失敗 (key 不在 / 未終端) = return 1 (JSON_FIELD は空)
+#   parse_command_var <json>     : PARSED_CMD に heredoc 本文除去済みの command を set。
+#                                  return は json_field_var と同じ fail 契約。
+
+# json_field_var <key> <json> — see above. Pure bash, no subprocess.
+json_field_var() {
+  local key="$1" input="$2" after c nxt out="" i len
+  JSON_FIELD=""
 
   # Locate the first "<key>" occurrence. No occurrence => unparseable (caller decides).
   case "$input" in
@@ -76,7 +94,7 @@ parse_json_string_field() {
       continue
     fi
     if [ "$c" = '"' ]; then
-      printf '%s' "$out"
+      JSON_FIELD="$out"
       return 0
     fi
     out="$out$c"
@@ -85,6 +103,46 @@ parse_json_string_field() {
 
   # Reached end of input without a closing quote => unterminated (fail-closed).
   return 1
+}
+
+# edit_file_var <json> — Edit|Write|MultiEdit payload から編集対象 path を FILE に set
+# する (file_path が無い / 空なら path に fallback — 全 Edit gate が共有していた入口の
+# 単一権威化)。どちらも取れなければ FILE は空 (= 各 gate は fail-open で素通し)。
+# fork ゼロ。常に return 0 (fail-mode は呼び手が FILE の空で判断する)。
+edit_file_var() {
+  FILE=""
+  json_field_var file_path "$1" || JSON_FIELD=""
+  FILE="$JSON_FIELD"
+  if [ -z "$FILE" ]; then
+    json_field_var path "$1" || JSON_FIELD=""
+    FILE="$JSON_FIELD"
+  fi
+  return 0
+}
+
+# norm_path_var <path> — Windows 対応の path 正規化 (backslash → slash、連続 slash の
+# squeeze) を NORM_PATH に set する。従来 gate ごとに `tr '\\' '/' | tr -s '/'` (pipeline
+# 2 fork + tr exec ×2) を払っていたのを fork ゼロにした単一権威。
+norm_path_var() {
+  local s="$1"
+  s="${s//\\//}"
+  while :; do
+    case "$s" in
+      *//*) s="${s//\/\//\/}" ;;
+      *) break ;;
+    esac
+  done
+  # shellcheck disable=SC2034  # cross-file return channel (呼び手が読む)
+  NORM_PATH="$s"
+}
+
+# parse_json_string_field <key> — stdin wrapper over json_field_var (see file header
+# for the original contract: reads raw hook JSON on stdin, writes the decoded value
+# to stdout, rc 0 = found / 1 = absent-or-unterminated). Costs one $(cat) fork —
+# hot-path callers (dispatch.sh) use json_field_var directly instead.
+parse_json_string_field() {
+  json_field_var "$1" "$(cat)" || return 1
+  printf '%s' "$JSON_FIELD"
 }
 
 # ── heredoc 本文の除去 (ADR 0025 — ai-reception 2026-08-08 の誤検知 incident)
@@ -192,11 +250,24 @@ strip_heredoc_bodies() {
   printf '%s' "$out"
 }
 
+# parse_command_var <json> — fork ゼロの `command` 抽出 (dispatcher の hot path)。
+# PARSED_CMD に heredoc 本文除去済みの command を set する。heredoc が無い (= ほぼ全
+# ケース) は純 bash で完結し、heredoc がある稀なケースだけ strip_heredoc_bodies の
+# command substitution を払う。
+parse_command_var() {
+  PARSED_CMD=""
+  json_field_var command "$1" || return 1
+  case "$JSON_FIELD" in
+    *'<<'*) PARSED_CMD="$(strip_heredoc_bodies "$JSON_FIELD")" ;;
+    *)      PARSED_CMD="$JSON_FIELD" ;;
+  esac
+}
+
 # parse_command — the `command` alias (kept as the blocking gates' entry point so the
 # fail-closed contract reads at the call site). heredoc 本文はここで落とすので、
 # 全 gate が経路 (token walker / raw regex) を問わず同じ「実行されるコマンド」を見る。
+# stdin wrapper — 単一権威は parse_command_var。
 parse_command() {
-  local cmd
-  cmd="$(parse_json_string_field command)" || return 1
-  strip_heredoc_bodies "$cmd"
+  parse_command_var "$(cat)" || return 1
+  printf '%s' "$PARSED_CMD"
 }

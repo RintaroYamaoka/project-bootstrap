@@ -25,6 +25,10 @@
 #                reliably burns tokens. A rule that let a section pass on its
 #                boilerplate would leave exactly that hole open.
 
+# Include guard — dispatcher が 1 プロセスに複数 gate を source するときの再読込抑止。
+[ -n "${_BOOTSTRAP_LIB_WO:-}" ] && return 0
+_BOOTSTRAP_LIB_WO=1
+
 WO_SECTION_COUNT=12
 
 # shellcheck source=lane-match.sh

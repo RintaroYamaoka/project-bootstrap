@@ -176,4 +176,51 @@ test_case "parse_command は unparseable で非ゼロ (fail-closed の契約は�
 printf '%s' '{"tool_input":{"content":"x"}}' | parse_command >/dev/null 2>&1; rc=$?
 assert_eq 1 "$rc"
 
+# --- fork ゼロの変数ベース API (dispatcher の hot path 用) ----------------------
+# Windows (Git Bash / MSYS) は fork が Linux の 10-30 倍遅い。dispatcher は stdin を
+# builtin read で 1 回読み、この API でサブプロセスなしに field を取り出す。
+# 契約: json_field_var <key> <json> は成功時 JSON_FIELD を set して 0、失敗時 1。
+#       parse_command_var <json> は PARSED_CMD (heredoc 本文除去済み) を set。
+# stdin 版 (parse_json_string_field / parse_command) は this API の thin wrapper に
+# なる = 単一権威は変数版に移る (二経路に同じ穴を作らない)。
+
+test_case "json_field_var: comma/brace/escape を stdin 版と同一に decode する"
+json_field_var command '{"tool_name":"Bash","tool_input":{"command":"git commit -m \"fix, bug\" && git add -A"}}'
+rc=$?
+assert_eq 0 "$rc"
+assert_eq 'git commit -m "fix, bug" && git add -A' "$JSON_FIELD"
+
+test_case "json_field_var: key 不在は 1 を返す"
+JSON_FIELD=stale
+json_field_var command '{"tool_input":{"content":"x"}}' && rc=0 || rc=$?
+assert_eq 1 "$rc"
+
+test_case "json_field_var: 未終端 string は 1 (fail-closed 素材)"
+json_field_var command '{"command":"never closed' && rc=0 || rc=$?
+assert_eq 1 "$rc"
+
+test_case "json_field_var: 空値は成功 (rc 0, 空文字)"
+json_field_var command '{"command":""}'
+rc=$?
+assert_eq 0 "$rc"
+assert_eq '' "$JSON_FIELD"
+
+test_case "parse_command_var: heredoc 本文を落として PARSED_CMD に set する"
+parse_command_var '{"command":"cat <<EOF\ngit add -A\nEOF"}'
+rc=$?
+assert_eq 0 "$rc"
+assert_eq 'cat <<EOF' "$PARSED_CMD"
+
+test_case "parse_command_var: heredoc なしは素通し"
+parse_command_var '{"command":"git add -A && git commit -m \"x\""}'
+assert_eq 'git add -A && git commit -m "x"' "$PARSED_CMD"
+
+test_case "parse_command_var: unparseable は非ゼロ (fail-closed の契約は stdin 版と同一)"
+parse_command_var '{"tool_input":{"content":"x"}}' && rc=0 || rc=$?
+assert_eq 1 "$rc"
+
+test_case "stdin 版 parse_json_string_field は変数版の wrapper として同一値を返す"
+got="$(printf '%s' '{"cwd":"C:\\Users\\x, y\\repo"}' | parse_json_string_field cwd)"
+assert_eq 'C:\Users\x, y\repo' "$got"
+
 finish

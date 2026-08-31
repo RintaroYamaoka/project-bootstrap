@@ -10,35 +10,34 @@
 
 set -u
 
-INPUT=$(cat)
 # shellcheck source=lib/parse-command.sh
-. "$(dirname "$0")/lib/parse-command.sh"
-if ! CMD="$(printf '%s' "$INPUT" | parse_command)"; then
-  echo "project-bootstrap: could not parse the tool command from hook input — blocking to fail safe (fail-closed). If this is a false positive, disable this hook via /permissions." >&2
-  exit 2
-fi
-[ -z "$CMD" ] && exit 0
-
-# git commit でなければ素通し。検出は単一権威 lib/git-invocation.sh (path-prefixed git /
+. "${BASH_SOURCE[0]%/*}/lib/parse-command.sh"
+# git commit 検出は単一権威 lib/git-invocation.sh (path-prefixed git /
 # git グローバルオプション形も捕まえる — 旧 regex はどちらも素通りさせた。ADR 0019)。
 # shellcheck source=lib/git-invocation.sh
-. "$(dirname "$0")/lib/git-invocation.sh"
-cmd_invokes_git_subcommand "$CMD" commit || exit 0
+. "${BASH_SOURCE[0]%/*}/lib/git-invocation.sh"
+# shellcheck source=lib/resolve-marker.sh
+. "${BASH_SOURCE[0]%/*}/lib/resolve-marker.sh"
+# shellcheck source=lib/arch-check.sh
+. "${BASH_SOURCE[0]%/*}/lib/arch-check.sh"
+# shellcheck source=lib/repo-top.sh
+. "${BASH_SOURCE[0]%/*}/lib/repo-top.sh"
+
+# gate 本体 — 契約は lib/standalone.sh ヘッダ参照 (global CMD を読む / return 0=pass, 2=block)。
+gate_block_arch_violations() {
+  local TOP MANIFEST VIOLATIONS f out
+
+cmd_invokes_git_subcommand "$CMD" commit || return 0
 
 # git repo / manifest の解決
-command -v git >/dev/null 2>&1 || exit 0
-git rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
-TOP=$(git rev-parse --show-toplevel 2>/dev/null)
-[ -z "$TOP" ] && exit 0
+repo_top_var
+TOP="$REPO_TOP"
+[ -z "$TOP" ] && return 0
 # arch manifest は `.bootstrap/arch` (新) / `.bootstrap-arch` (旧) どちらでも可。
-# shellcheck source=lib/resolve-marker.sh
-. "$(dirname "$0")/lib/resolve-marker.sh"
 MANIFEST="$(resolve_marker "$TOP" arch)"
-[ -f "$MANIFEST" ] || exit 0   # fail-open
+[ -f "$MANIFEST" ] || return 0   # fail-open
 
-# shellcheck source=lib/arch-check.sh
-. "$(dirname "$0")/lib/arch-check.sh"
-arch_load_manifest "$MANIFEST" || exit 0
+arch_load_manifest "$MANIFEST" || return 0
 
 # この commit で staged な file だけ検証する (= 正しい pre-commit セマンティクス)。
 # 全 tracked を scan すると既存 debt のあるリポで無関係な commit まで全ブロックされ adopt 不能。
@@ -54,7 +53,7 @@ while IFS= read -r f; do
 "
 done < <(git diff --cached --name-only)
 
-[ -z "$(printf '%s' "$VIOLATIONS" | tr -d '[:space:]')" ] && exit 0
+[ -z "$(printf '%s' "$VIOLATIONS" | tr -d '[:space:]')" ] && return 0
 
 cat >&2 <<EOF
 project-bootstrap: blocking commit — dependency-direction violations (.bootstrap-arch):
@@ -68,4 +67,12 @@ $(printf '%s' "$VIOLATIONS" | sed '/^$/d; s/^/  - /')
 
 契約そのものを変えたいなら .bootstrap-arch を編集する。例外的に通すだけなら /permissions で本 hook を一時 deny。
 EOF
-exit 2
+return 2
+}
+
+# 単体起動 (tests / vendoring 消費者) — dispatcher からは source されるので走らない。
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  # shellcheck source=lib/standalone.sh
+  . "${BASH_SOURCE[0]%/*}/lib/standalone.sh"
+  bootstrap_standalone_bash_gate gate_block_arch_violations
+fi

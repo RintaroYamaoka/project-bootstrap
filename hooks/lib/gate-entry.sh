@@ -24,6 +24,10 @@
 #   no stdout. Pure bash, jq-free, no GNU-date arithmetic (BSD-safe: day math is done
 #   on Julian Day Numbers computed in shell integer arithmetic).
 
+# Include guard — dispatcher が 1 プロセスに複数 gate を source するときの再読込抑止。
+[ -n "${_BOOTSTRAP_LIB_GATE_ENTRY:-}" ] && return 0
+_BOOTSTRAP_LIB_GATE_ENTRY=1
+
 GATE_TTL_DAYS=3
 
 # _gate_jdn YYYY-MM-DD — Julian Day Number, pure integer arithmetic.

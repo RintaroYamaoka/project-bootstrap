@@ -63,7 +63,12 @@
 #                                          suite; this only checks for the anchored ack row.
 
 # Resolve sibling libs (idempotent — pure-function libs, re-sourcing is harmless).
-_crc_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# ${BASH_SOURCE%/*} は fork ゼロ ($(cd $(dirname)) は source のたびに 2 fork していた)。
+# Include guard — dispatcher が 1 プロセスに複数 gate を source するときの再読込抑止。
+[ -n "${_BOOTSTRAP_LIB_CROSS_REPO_CONTRACT:-}" ] && return 0
+_BOOTSTRAP_LIB_CROSS_REPO_CONTRACT=1
+
+_crc_dir="${BASH_SOURCE[0]%/*}"
 # shellcheck source=source-face.sh
 . "$_crc_dir/source-face.sh"
 # shellcheck source=repo-drift.sh

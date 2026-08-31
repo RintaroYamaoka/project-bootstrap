@@ -47,51 +47,51 @@
 
 set -u
 
-INPUT=$(cat)
 # shellcheck source=lib/parse-command.sh
-. "$(dirname "$0")/lib/parse-command.sh"
-if ! CMD="$(printf '%s' "$INPUT" | parse_command)"; then
-  echo "project-bootstrap: could not parse the tool command from hook input — blocking to fail safe (fail-closed). If this is a false positive, disable this hook via /permissions." >&2
-  exit 2
-fi
-
-[ -z "$CMD" ] && exit 0
-
-# git merge でなければ素通し (path-prefixed git も含め共有エンジンで判定)。
+. "${BASH_SOURCE[0]%/*}/lib/parse-command.sh"
 # shellcheck source=lib/merge-targets.sh
-. "$(dirname "$0")/lib/merge-targets.sh"
-cmd_has_git_merge "$CMD" || exit 0
-
-# repo root を解決。非 git は根拠不在 → fail-open。
-command -v git >/dev/null 2>&1 || exit 0
-TOP=$(git rev-parse --show-toplevel 2>/dev/null | tr '\\' '/' | tr -s '/')
-[ -z "$TOP" ] && exit 0
-
-# opt-in: verification flow を採用した project (= verification ディレクトリが在る) でのみ発火。
-# `docs/bootstrap/verification` (新) / `docs/verification` (旧) どちらでも可 (ADR 0020)。
+. "${BASH_SOURCE[0]%/*}/lib/merge-targets.sh"
 # shellcheck source=lib/resolve-docs.sh
-. "$(dirname "$0")/lib/resolve-docs.sh"
-VERIF_REL="$(resolve_docs_label "$TOP" verification)"
-[ -d "$(resolve_docs_dir "$TOP" verification)" ] || exit 0
-
-# 並列 lane の branch 集合 (review gate と同じ信号) は単一権威 lib/lane-set.sh で組み立てる
-# (活性 board の task branch ∪ linked worktree の branch、ADR 0004。board 不在なら (a) は空)。
+. "${BASH_SOURCE[0]%/*}/lib/resolve-docs.sh"
 # shellcheck source=lib/lane-set.sh
-. "$(dirname "$0")/lib/lane-set.sh"
-LANE_BRANCHES=$(lane_branches "$TOP")
-
-# lane が 1 つも無ければ判定根拠なし → fail-open (通常の merge を一切妨げない)。
-[ -z "$(printf '%s' "$LANE_BRANCHES" | tr -d '[:space:]')" ] && exit 0
+. "${BASH_SOURCE[0]%/*}/lib/lane-set.sh"
+# shellcheck source=lib/verification-plan.sh
+. "${BASH_SOURCE[0]%/*}/lib/verification-plan.sh"
+# shellcheck source=lib/cross-repo-contract.sh
+. "${BASH_SOURCE[0]%/*}/lib/cross-repo-contract.sh"
+# shellcheck source=lib/detect-test-suite.sh
+. "${BASH_SOURCE[0]%/*}/lib/detect-test-suite.sh"
+# shellcheck source=lib/repo-top.sh
+. "${BASH_SOURCE[0]%/*}/lib/repo-top.sh"
 
 is_lane_branch() { lane_set_contains "$1" "$LANE_BRANCHES"; }
 
+# gate 本体 — 契約は lib/standalone.sh ヘッダ参照 (global CMD を読む / return 0=pass, 2=block)。
+gate_block_merge_if_verification_unclosed() {
+  local TOP VERIF_REL LANE_BRANCHES HAS_LANE NEEDS_CONTRACT_SUITE BRANCH PLAN ROWS OPEN BAD CID SUITE
+
+# git merge でなければ素通し (path-prefixed git も含め共有エンジンで判定)。
+cmd_has_git_merge "$CMD" || return 0
+
+# repo root を解決。非 git は根拠不在 → fail-open。
+repo_top_var
+TOP="$REPO_TOP"
+[ -z "$TOP" ] && return 0
+
+# opt-in: verification flow を採用した project (= verification ディレクトリが在る) でのみ発火。
+# `docs/bootstrap/verification` (新) / `docs/verification` (旧) どちらでも可 (ADR 0020)。
+VERIF_REL="$(resolve_docs_label "$TOP" verification)"
+[ -d "$(resolve_docs_dir "$TOP" verification)" ] || return 0
+
+# 並列 lane の branch 集合 (review gate と同じ信号) は単一権威 lib/lane-set.sh で組み立てる
+# (活性 board の task branch ∪ linked worktree の branch、ADR 0004。board 不在なら (a) は空)。
+LANE_BRANCHES=$(lane_branches "$TOP")
+
+# lane が 1 つも無ければ判定根拠なし → fail-open (通常の merge を一切妨げない)。
+[ -z "$(printf '%s' "$LANE_BRANCHES" | tr -d '[:space:]')" ] && return 0
+
 # merge 対象 branch を全 segment から enumerate する (review gate と同じ共有エンジン)。
 # 1 つでも「計画なし / 空 / 未解決」の lane branch があれば、その branch の理由で block する。
-# shellcheck source=lib/verification-plan.sh
-. "$(dirname "$0")/lib/verification-plan.sh"
-# shellcheck source=lib/cross-repo-contract.sh
-. "$(dirname "$0")/lib/cross-repo-contract.sh"
-
 HAS_LANE=0
 NEEDS_CONTRACT_SUITE=0   # set when >=1 touched contract was acknowledged (run the suite once)
 while IFS= read -r BRANCH; do
@@ -113,7 +113,7 @@ repo ($VERIF_REL/) では、統合の precondition として計画が要る。�
 
 計画を skip したい例外時は /permissions で本 hook を一時 deny にする。
 EOF
-    exit 2
+    return 2
   fi
 
   ROWS="$(vplan_row_count "$PLAN")"
@@ -125,7 +125,7 @@ project-bootstrap: blocking merge of "$BRANCH" — verification plan has no test
 空の計画は「検証ゼロ」を緑に見せる儀式。検証すべき挙動を最低 1 行書く (テストしないと判断した
 ものは理由つき DROP 行で明示する — 無音で省かない)。
 EOF
-    exit 2
+    return 2
   fi
 
   OPEN="$(vplan_open_rows "$PLAN")"
@@ -153,7 +153,7 @@ EOF
 PASS にする前に各行へ kill-question を一度問う: 「このテストが緑のまま、ユーザーが困る
 状態はありうるか?」— Yes ならオラクルが間違っている (mood の罠)。
 EOF
-    exit 2
+    return 2
   fi
 
   # ── D3 cross-repo contract axis (ADR 0011, fail-CLOSED) — AFTER the plan checks. ──
@@ -182,12 +182,12 @@ project-bootstrap: blocking merge of "$BRANCH" — cross-repo contract "$CID" to
      では閉じません — 触れた契約は実走 or 人間の照合のどちらかでしか CLOSED にできません。
   3. テストしないと判断したなら理由つき DROP で id を参照して明示する (= 無音で省かない)。
 EOF
-    exit 2
+    return 2
   done < <(crc_touched_contract_ids "$TOP" "$BRANCH")
 done < <(merge_target_branches "$CMD")
 
 # merge 対象に並列 lane の branch が無い → 根拠不在 → fail-open。
-[ "$HAS_LANE" = 0 ] && exit 0
+[ "$HAS_LANE" = 0 ] && return 0
 
 # D3: 触れた契約が acknowledged-closed だった lane が 1 つでもあれば、関所自身が consumer 側の
 # 実スイートを 1 回回して裏取りする (free-text PASS を信じない — 信号は実テストの実行結果。
@@ -195,8 +195,6 @@ done < <(merge_target_branches "$CMD")
 # plan 行を STATUS=HUMAN にして人間が実出力で照合するのが正路 (HUMAN は OPEN なので既存 check が
 # block する)。検出は commit/review gate と共有エンジン (lib/detect-test-suite.sh) で drift 防止。
 if [ "$NEEDS_CONTRACT_SUITE" = 1 ]; then
-  # shellcheck source=lib/detect-test-suite.sh
-  . "$(dirname "$0")/lib/detect-test-suite.sh"
   if SUITE="$(cd "$TOP" && detect_test_command)"; then
     echo "project-bootstrap: running $SUITE to verify the touched cross-repo contract(s) before merge (ADR 0011)..." >&2
     if ! ( cd "$TOP" && $SUITE ) >&2; then
@@ -210,8 +208,16 @@ fail しました。契約の PASS は「相手の実出力で裏が取れた」
   2. 相手 repo (consumer 側でなく peer 側) が先に変わったのが原因なら、両側を同時に整合させる
      (片側 relax の無音破壊を避ける — ADR 0011)。
 EOF
-      exit 2
+      return 2
     fi
   fi
 fi
-exit 0
+return 0
+}
+
+# 単体起動 (tests / vendoring 消費者) — dispatcher からは source されるので走らない。
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  # shellcheck source=lib/standalone.sh
+  . "${BASH_SOURCE[0]%/*}/lib/standalone.sh"
+  bootstrap_standalone_bash_gate gate_block_merge_if_verification_unclosed
+fi

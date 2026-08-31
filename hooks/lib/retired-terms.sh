@@ -39,6 +39,10 @@
 # Pure bash, jq-free, no grep forks in the hot loop.
 
 # Loaded entries. Parallel arrays (bash 3.2-safe; no associative arrays — Git Bash / macOS).
+# Include guard — dispatcher が 1 プロセスに複数 gate を source するときの再読込抑止。
+[ -n "${_BOOTSTRAP_LIB_RETIRED_TERMS:-}" ] && return 0
+_BOOTSTRAP_LIB_RETIRED_TERMS=1
+
 RETIRED_TERM=()
 RETIRED_REPL=()
 RETIRED_SCOPE=()

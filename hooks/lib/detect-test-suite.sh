@@ -19,6 +19,10 @@
 #   gate passes — the agent review record still gated the merge). Pure bash, jq-free.
 
 # detect_test_command — see header. Operates on cwd; callers `cd` to the target tree.
+# Include guard — dispatcher が 1 プロセスに複数 gate を source するときの再読込抑止。
+[ -n "${_BOOTSTRAP_LIB_DETECT_TEST_SUITE:-}" ] && return 0
+_BOOTSTRAP_LIB_DETECT_TEST_SUITE=1
+
 detect_test_command() {
   if [ -f package.json ]; then
     if grep -q '"test"' package.json && command -v npm >/dev/null 2>&1; then

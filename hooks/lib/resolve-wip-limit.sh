@@ -45,6 +45,10 @@
 # blocked). The default "worker 3-4" is advisory display only and never blocks; Workflow
 # lanes are not wip-capped at all (ADR 0006).
 # shellcheck source=resolve-marker.sh
+# Include guard — dispatcher が 1 プロセスに複数 gate を source するときの再読込抑止。
+[ -n "${_BOOTSTRAP_LIB_RESOLVE_WIP_LIMIT:-}" ] && return 0
+_BOOTSTRAP_LIB_RESOLVE_WIP_LIMIT=1
+
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/resolve-marker.sh"
 
 resolve_wip_limit_int() {

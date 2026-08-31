@@ -27,6 +27,10 @@
 
 # Resolve the shared walker relative to this lib (works when sourced from any cwd).
 # shellcheck source=git-invocation.sh
+# Include guard — dispatcher が 1 プロセスに複数 gate を source するときの再読込抑止。
+[ -n "${_BOOTSTRAP_LIB_PROTECTED_BRANCH:-}" ] && return 0
+_BOOTSTRAP_LIB_PROTECTED_BRANCH=1
+
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/git-invocation.sh"
 
 # cmd_has_git_push <command> — return 0 if the command invokes `git push`.

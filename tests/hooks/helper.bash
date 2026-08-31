@@ -18,14 +18,16 @@ HOOK_STDOUT=""
 # test_case <name> — label the assertions that follow.
 test_case() { CURRENT_TEST="$1"; }
 
-# run_hook <script-name> <stdin-json>
+# run_hook <script-name> <stdin-json> [args…]
 # Runs hooks/<script-name> with the JSON piped on stdin. If RUN_DIR is set, runs
 # with that as cwd (hooks resolve git context from cwd). Captures exit code, stderr,
 # and stdout (stdout matters for context-injecting hooks like UserPromptSubmit).
+# Extra args are passed to the script (dispatch.sh takes its matcher mode this way).
 run_hook() {
   local script="$1" input="$2"
+  shift 2
   local errf outf; errf="$(mktemp)"; outf="$(mktemp)"
-  ( cd "${RUN_DIR:-$PWD}" && printf '%s' "$input" | bash "$HOOKS_DIR/$script" ) >"$outf" 2>"$errf"
+  ( cd "${RUN_DIR:-$PWD}" && printf '%s' "$input" | bash "$HOOKS_DIR/$script" "$@" ) >"$outf" 2>"$errf"
   HOOK_EXIT=$?
   HOOK_STDERR="$(cat "$errf")"
   HOOK_STDOUT="$(cat "$outf")"

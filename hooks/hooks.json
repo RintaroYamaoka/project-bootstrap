@@ -26,27 +26,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}\"/hooks/block-out-of-lane-edit.sh"
-          },
-          {
-            "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}\"/hooks/block-uniso-main-edit.sh"
-          },
-          {
-            "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}\"/hooks/block-unplanned-feature-build.sh"
-          },
-          {
-            "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}\"/hooks/block-impl-without-wo.sh"
-          },
-          {
-            "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}\"/hooks/block-cross-layer-import.sh"
-          },
-          {
-            "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}\"/hooks/require-test-companion.sh"
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}\"/hooks/dispatch.sh edit"
           }
         ]
       },
@@ -55,67 +35,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}\"/hooks/block-add-all.sh"
-          },
-          {
-            "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}\"/hooks/block-dangerous-git-ops.sh"
-          },
-          {
-            "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}\"/hooks/block-cross-claude-wip.sh"
-          },
-          {
-            "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}\"/hooks/block-push-to-protected.sh"
-          },
-          {
-            "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}\"/hooks/block-stale-write-to-protected.sh"
-          },
-          {
-            "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}\"/hooks/block-over-wip-parallel.sh"
-          },
-          {
-            "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}\"/hooks/block-unreviewed-merge.sh"
-          },
-          {
-            "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}\"/hooks/block-merge-if-verification-unclosed.sh"
-          },
-          {
-            "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}\"/hooks/block-arch-violations.sh"
-          },
-          {
-            "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}\"/hooks/block-out-of-lane-commit.sh"
-          },
-          {
-            "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}\"/hooks/block-commit-if-retired-term.sh"
-          },
-          {
-            "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}\"/hooks/block-commit-if-wo-incomplete.sh"
-          },
-          {
-            "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}\"/hooks/block-commit-if-impl-uncovered.sh"
-          },
-          {
-            "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}\"/hooks/block-commit-if-lint-fails.sh"
-          },
-          {
-            "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}\"/hooks/block-commit-if-tests-fail.sh"
-          },
-          {
-            "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}\"/hooks/inject-action-memory.sh"
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}\"/hooks/dispatch.sh bash"
           }
         ]
       }

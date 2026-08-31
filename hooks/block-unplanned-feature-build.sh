@@ -25,63 +25,67 @@
 
 set -u
 
-INPUT=$(cat)
-
 # field 抽出は単一権威 lib/parse-command.sh の decoder に委ねる。旧 grep 抽出は path 中の
 # `,` `}` / escape で途中切りし、この gate を無音 fail-open にした (2026-07-10 監査)。
 # shellcheck source=lib/parse-command.sh
-. "$(dirname "$0")/lib/parse-command.sh"
-FILE=$(printf '%s' "$INPUT" | parse_json_string_field file_path)
-if [ -z "$FILE" ]; then
-  FILE=$(printf '%s' "$INPUT" | parse_json_string_field path)
-fi
-[ -z "$FILE" ] && exit 0   # 根拠不在 → fail-open
+. "${BASH_SOURCE[0]%/*}/lib/parse-command.sh"
+# shellcheck source=lib/resolve-docs.sh
+. "${BASH_SOURCE[0]%/*}/lib/resolve-docs.sh"
+# shellcheck source=lib/source-face.sh
+. "${BASH_SOURCE[0]%/*}/lib/source-face.sh"
+# shellcheck source=lib/board-liveness.sh
+. "${BASH_SOURCE[0]%/*}/lib/board-liveness.sh"
+# shellcheck source=lib/gate-entry.sh
+. "${BASH_SOURCE[0]%/*}/lib/gate-entry.sh"
+# shellcheck source=lib/resolve-wip-limit.sh
+. "${BASH_SOURCE[0]%/*}/lib/resolve-wip-limit.sh"
+# shellcheck source=lib/repo-top.sh
+. "${BASH_SOURCE[0]%/*}/lib/repo-top.sh"
+
+# gate 本体 — 契約は lib/standalone.sh ヘッダ参照 (global FILE を読む / return 0=pass, 2=block)。
+gate_block_unplanned_feature_build() {
+  local TOP SPRINT_DIR SPRINT_REL FILE_NORM REL GATE IGNORED line pat dt _rest WIP_DISPLAY
 
 # git repo root を解決。repo 外 / git 不在なら fail-open (scope を論じる基盤が無い)。
-command -v git >/dev/null 2>&1 || exit 0
-TOP=$(git rev-parse --show-toplevel 2>/dev/null | tr '\\\\' '/' | tr -s '/')
-[ -z "$TOP" ] && exit 0
+repo_top_var
+TOP="$REPO_TOP"
+[ -z "$TOP" ] && return 0
 
 # opt-in: sprint flow を採用した project (= sprint ディレクトリが在る) でのみ発火。
 # `docs/bootstrap/sprint` (新) / `docs/sprint` (旧) どちらでも可 (ADR 0020)。
-# shellcheck source=lib/resolve-docs.sh
-. "$(dirname "$0")/lib/resolve-docs.sh"
 SPRINT_DIR="$(resolve_docs_dir "$TOP" sprint)"
 SPRINT_REL="$(resolve_docs_label "$TOP" sprint)"
-[ -d "$SPRINT_DIR" ] || exit 0
+[ -d "$SPRINT_DIR" ] || return 0
 
 # 編集対象を repo 相対 path に正規化 (block-out-of-lane-edit と同方式)。
-FILE_NORM=$(printf '%s' "$FILE" | tr '\\\\' '/' | tr -s '/')
+norm_path_var "$FILE"
+FILE_NORM="$NORM_PATH"
 case "$FILE_NORM" in
   "$TOP"/*) REL="${FILE_NORM#"$TOP"/}" ;;
-  /*|[A-Za-z]:/*) exit 0 ;;   # worktree 外の絶対 path は判断不能 → fail-open
+  /*|[A-Za-z]:/*) return 0 ;;   # worktree 外の絶対 path は判断不能 → fail-open
   *) REL="$FILE_NORM" ;;       # 既に相対ならそのまま
 esac
 
 # sprint runtime state 自身 (board.json / .gate) の書き込みは決して止めない。
 # 判定は両レイアウトを見る (= 新レイアウトを作る最初の board.json 書き込み時点では
 # docs/bootstrap/sprint/ がまだ無い。ADR 0020)。
-docs_state_face "$REL" sprint && exit 0
+docs_state_face "$REL" sprint && return 0
 
 # 既存 file の編集/上書きは「新規 feature 面の作成」ではない → fail-open。
 # PreToolUse は書き込み前に走るので、新規作成のときだけ対象 path が未存在になる。
-[ -e "$TOP/$REL" ] && exit 0
+[ -e "$TOP/$REL" ] && return 0
 
 # test ファイル / config / docs / 非 source 拡張子は feature 面ではない → 素通し
 # (require-test-companion と同慣行)。判定は共有エンジン (= guard 2 の block-uniso-main-edit.sh
 # と「source 面とは何か」を単一権威に保ち drift を防ぐ。ADR 0005)。
-# shellcheck source=lib/source-face.sh
-. "$(dirname "$0")/lib/source-face.sh"
-is_source_path "$REL" || exit 0
+is_source_path "$REL" || return 0
 
 # 進行中の sprint なら lane hook が scope を握る → 素通し。「進行中」は board の**存在**では
 # なく**活性** (= 未完了 task の有無) で判定する。全 task done / task 無し / status 不在の board
 # は sprint 終了後の残置 (stale) でありうるため素通しの根拠にしない — 存在を信号にすると state
 # の lifecycle 終端で gate が無音で fail-open する (実事故: docs/bootstrap/incidents/2026-06-07-stale-board-gate-bypass)。
 # 判定エンジンは block-unreviewed-merge.sh と共有 (= 信号の drift 防止)。
-# shellcheck source=lib/board-liveness.sh
-. "$(dirname "$0")/lib/board-liveness.sh"
-board_has_active_tasks "$SPRINT_DIR/board.json" && exit 0
+board_has_active_tasks "$SPRINT_DIR/board.json" && return 0
 
 # .gate に記録された判定のうち「生きている」entry に REL が一致すれば、判定済みの feature 面
 # → 素通し。形式: 各行 `<scope-glob>  <YYYY-MM-DD>  <free-text rationale>`。# / 空行は無視。
@@ -92,8 +96,6 @@ board_has_active_tasks "$SPRINT_DIR/board.json" && exit 0
 # 日付なし (旧形式) / 失効 / 全域 glob は「判定の活性を証明できない」→ 不採用 (= 解析不能を
 # 素通し側に倒さない)。不採用 entry は block message に列挙する (= 正データを隠させない)。
 # 判定エンジンは lib/gate-entry.sh (= 信号の drift 防止。board-liveness と同慣行)。
-# shellcheck source=lib/gate-entry.sh
-. "$(dirname "$0")/lib/gate-entry.sh"
 GATE="$SPRINT_DIR/.gate"
 IGNORED=""
 if [ -f "$GATE" ]; then
@@ -115,14 +117,12 @@ if [ -f "$GATE" ]; then
     fi
     # shellcheck disable=SC2053
     if [[ "$REL" == $pat ]]; then
-      exit 0
+      return 0
     fi
   done < "$GATE"
 fi
 
 # wip_limit の表示値: project が .bootstrap-wip で宣言していればその値、なければ form-aware な既定 (worker 3-4・Workflow lane は wip 非対象、ADR 0006)。
-# shellcheck source=lib/resolve-wip-limit.sh
-. "$(dirname "$0")/lib/resolve-wip-limit.sh"
 WIP_DISPLAY=$(resolve_wip_limit)
 
 cat >&2 <<EOF
@@ -152,4 +152,12 @@ prefix を持つ glob のみ有効 (src/** のような全域 glob は entry と
 
 なお .gate に entry はあるが、以下は判定の証拠として無効だった (行の削除は不要 — 失効は正常な終端):$IGNORED}
 EOF
-exit 2
+return 2
+}
+
+# 単体起動 (tests / vendoring 消費者) — dispatcher からは source されるので走らない。
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  # shellcheck source=lib/standalone.sh
+  . "${BASH_SOURCE[0]%/*}/lib/standalone.sh"
+  bootstrap_standalone_edit_gate gate_block_unplanned_feature_build
+fi

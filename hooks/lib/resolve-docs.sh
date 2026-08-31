@@ -37,6 +37,10 @@
 #   return : always 0.
 #
 # Pure bash, jq-free (matches the hooks' no-dependency policy).
+# Include guard — dispatcher が 1 プロセスに複数 gate を source するときの再読込抑止。
+[ -n "${_BOOTSTRAP_LIB_RESOLVE_DOCS:-}" ] && return 0
+_BOOTSTRAP_LIB_RESOLVE_DOCS=1
+
 resolve_docs_dir() {
   local top="${1%/}" name="$2" new old
   [ -n "$top" ] || return 0

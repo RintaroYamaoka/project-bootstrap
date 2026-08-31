@@ -18,43 +18,44 @@
 
 set -u
 
-INPUT=$(cat)
-
 # field 抽出は単一権威 lib/parse-command.sh の decoder に委ねる。旧 grep 抽出は path 中の
 # `,` `}` / escape で途中切りし、この gate を無音 fail-open にした (2026-07-10 監査)。
 # shellcheck source=lib/parse-command.sh
-. "$(dirname "$0")/lib/parse-command.sh"
-FILE=$(printf '%s' "$INPUT" | parse_json_string_field file_path)
-if [ -z "$FILE" ]; then
-  FILE=$(printf '%s' "$INPUT" | parse_json_string_field path)
-fi
-[ -z "$FILE" ] && exit 0   # 根拠不在 → fail-open
+. "${BASH_SOURCE[0]%/*}/lib/parse-command.sh"
+# shellcheck source=lib/resolve-docs.sh
+. "${BASH_SOURCE[0]%/*}/lib/resolve-docs.sh"
+# shellcheck source=lib/resolve-marker.sh
+. "${BASH_SOURCE[0]%/*}/lib/resolve-marker.sh"
+# shellcheck source=lib/source-face.sh
+. "${BASH_SOURCE[0]%/*}/lib/source-face.sh"
+# shellcheck source=lib/repo-top.sh
+. "${BASH_SOURCE[0]%/*}/lib/repo-top.sh"
+
+# gate 本体 — 契約は lib/standalone.sh ヘッダ参照 (global FILE を読む / return 0=pass, 2=block)。
+gate_block_uniso_main_edit() {
+  local TOP MAIN TOTAL FILE_NORM REL
 
 # git worktree root を解決。repo 外 / git 不在なら fail-open。
-command -v git >/dev/null 2>&1 || exit 0
-TOP=$(git rev-parse --show-toplevel 2>/dev/null | tr '\\' '/' | tr -s '/')
-[ -z "$TOP" ] && exit 0
+repo_top_var
+TOP="$REPO_TOP"
+[ -z "$TOP" ] && return 0
 
 # (a) opt-in: sprint flow を採用した project でのみ発火。
 # ディレクトリは `docs/bootstrap/sprint` (新) / `docs/sprint` (旧) どちらでも可 (ADR 0020)。
-# shellcheck source=lib/resolve-docs.sh
-. "$(dirname "$0")/lib/resolve-docs.sh"
-[ -d "$(resolve_docs_dir "$TOP" sprint)" ] || exit 0
+[ -d "$(resolve_docs_dir "$TOP" sprint)" ] || return 0
 
 # (b) lane worktree (lane marker 在り) は block-out-of-lane-edit が所有 → 譲る。
 # marker は `.bootstrap/lane` (新) / `.bootstrap-lane` (旧) どちらでも可。
-# shellcheck source=lib/resolve-marker.sh
-. "$(dirname "$0")/lib/resolve-marker.sh"
-[ -f "$(resolve_marker "$TOP" lane)" ] && exit 0
+[ -f "$(resolve_marker "$TOP" lane)" ] && return 0
 # main worktree でのみ強制する。linked worktree が lane file を欠く異常配置はこの gate の対象外。
 # porcelain の最初の `worktree` 行 = main worktree。
 MAIN=$(git worktree list --porcelain 2>/dev/null | sed -n 's/^worktree //p' | head -1 | tr '\\' '/' | tr -s '/')
-[ -n "$MAIN" ] && [ "$TOP" != "$MAIN" ] && exit 0
+[ -n "$MAIN" ] && [ "$TOP" != "$MAIN" ] && return 0
 
 # (c) active な linked worktree lane が在るか (= 全 worktree 数 > 1)。無ければ並列 mutation
 #     の衝突相手が居ない → fail-open。
 TOTAL=$(git worktree list --porcelain 2>/dev/null | grep -c '^worktree ')
-[ "${TOTAL:-0}" -gt 1 ] 2>/dev/null || exit 0
+[ "${TOTAL:-0}" -gt 1 ] 2>/dev/null || return 0
 
 # (d) 統合操作中 (lead が conflict を解決している) なら通す。
 if git rev-parse -q --verify MERGE_HEAD >/dev/null 2>&1 \
@@ -62,27 +63,26 @@ if git rev-parse -q --verify MERGE_HEAD >/dev/null 2>&1 \
    || git rev-parse -q --verify REVERT_HEAD >/dev/null 2>&1 \
    || [ -d "$(git rev-parse --git-path rebase-merge 2>/dev/null)" ] \
    || [ -d "$(git rev-parse --git-path rebase-apply 2>/dev/null)" ]; then
-  exit 0
+  return 0
 fi
 
 # 編集対象を repo 相対 path に正規化。
-FILE_NORM=$(printf '%s' "$FILE" | tr '\\' '/' | tr -s '/')
+norm_path_var "$FILE"
+FILE_NORM="$NORM_PATH"
 case "$FILE_NORM" in
   "$TOP"/*) REL="${FILE_NORM#"$TOP"/}" ;;
-  /*|[A-Za-z]:/*) exit 0 ;;   # tree 外の絶対 path は判断不能 → fail-open
+  /*|[A-Za-z]:/*) return 0 ;;   # tree 外の絶対 path は判断不能 → fail-open
   *) REL="$FILE_NORM" ;;
 esac
 
 # sprint runtime state (board.json / reviews / .gate) の書き込みは決して止めない。
 # 判定は両レイアウトを見る (= 新レイアウトを作る最初の board.json 書き込み時点では
 # docs/bootstrap/sprint/ がまだ無い。ADR 0020)。
-docs_state_face "$REL" sprint && exit 0
+docs_state_face "$REL" sprint && return 0
 
 # (e) source 面のみ対象。docs/config/test/非 source は fail-open。判定は block-unplanned と
 #     共有エンジン (= 単一権威。drift 防止)。
-# shellcheck source=lib/source-face.sh
-. "$(dirname "$0")/lib/source-face.sh"
-is_source_path "$REL" || exit 0
+is_source_path "$REL" || return 0
 
 cat >&2 <<EOF
 project-bootstrap: blocking edit on "$REL" — un-isolated mutation in the shared main worktree.
@@ -96,4 +96,12 @@ mutate しようとした。隔離されていない並列編集は他 lane の�
   3. lane を統合している途中なら、conflict 解決は merge/rebase の最中に行う (= その間は通る)
   4. 開いている lane を先に全て integrate して閉じれば、main tree の編集は通常通り通る
 EOF
-exit 2
+return 2
+}
+
+# 単体起動 (tests / vendoring 消費者) — dispatcher からは source されるので走らない。
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  # shellcheck source=lib/standalone.sh
+  . "${BASH_SOURCE[0]%/*}/lib/standalone.sh"
+  bootstrap_standalone_edit_gate gate_block_uniso_main_edit
+fi
