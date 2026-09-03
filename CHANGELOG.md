@@ -7,6 +7,8 @@
 
 ## [Unreleased]
 
+## [0.36.1] - 2026-09-03
+
 ### Fixed
 
 - **`block-cross-claude-wip.sh` が「終わった session の記録」で正当な commit を止めるのを直した**。foreign-edited set は transcript に残る「そのファイルを編集した」記録だけで作られており、**その編集が今も未コミットで残っているか**を見ていなかった。そのため、前日に別 session が触ったファイル(編集は既に main にマージ済み)を翌日 別 session が正当に編集して commit しようとすると、巻き込む WIP が1件も無いのに block した。実例では未 staged の変更ゼロ・staged 差分は全て当 session の追加、という状態で止まっている。
