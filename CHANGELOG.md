@@ -7,6 +7,15 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- **`require-test-companion.sh` が「runner に実行できない test」しか受け付けない状態を直した**。companion 候補を source の拡張子から機械的に組み立てていたため、`app/page.tsx` には `page.test.tsx` しか認めなかった。ところが Node の test runner は **`.tsx` を実行できない** (Node 24 は JSX 非対応 / `ERR_UNKNOWN_FILE_EXTENSION`、`--experimental-transform-types` でも不可)。つまり **hook を満たせる唯一のファイルが「一度も実行されない飾り」**という状態で、gate が TDD ではなく decoy を要求していた。実行可能な `tests/page.test.ts` を red→green で回しても block は解けない。
+  - **影響は `.tsx` に留まらなかった**。`.ts` 実装 + `tests/<name>.test.mjs` companion (Node の test runner では普通の構成) も同じ理由で誤 block していた。実測した1リポジトリだけで、本物の companion を持つ **10 ファイル**が誤って止められていた。
+  - JS/TS の 8 拡張子 (`ts` `tsx` `js` `jsx` `mjs` `cjs` `mts` `cts`) を**互いに読み込める1つの族**として扱い、族内なら companion と認める。beside / `__tests__/` / `tests/` / 深い `tests/unit/<layer>/` の再帰 fallback すべてで族を跨ぐ。探索順は source 自身の拡張子が先頭なので最頻ケースの当たりは変わらない。
+  - **widening は言語境界で止めた**: `.ts` 実装を同名の `.py` test では通さないし、その逆も通さない。
+  - block 時の案内は候補を 88 行に展開せず、`tests/foo.test.{ts,tsx,js,jsx,mjs,cjs,mts,cts}` の形で 11 行のまま「どれか1つ置けばよい」と読めるようにした。
+  - 回帰テスト 9 assertion 追加 (.tsx→.ts / .ts→.mjs / .jsx→.js / 同一拡張子の従来経路 / 深い階層 / 言語跨ぎ2方向の非通過 / 案内文面)。既存 13 assertion は不変で green、suite 54 本も全 green。新規 fork は無く、実測コストは 33→35 ms/call (bash 起動が支配的で有意差なし)。
+
 ## [0.36.1] - 2026-09-03
 
 ### Fixed
