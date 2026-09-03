@@ -7,6 +7,8 @@
 
 ## [Unreleased]
 
+## [0.36.2] - 2026-09-03
+
 ### Fixed
 
 - **`require-test-companion.sh` が「runner に実行できない test」しか受け付けない状態を直した**。companion 候補を source の拡張子から機械的に組み立てていたため、`app/page.tsx` には `page.test.tsx` しか認めなかった。ところが Node の test runner は **`.tsx` を実行できない** (Node 24 は JSX 非対応 / `ERR_UNKNOWN_FILE_EXTENSION`、`--experimental-transform-types` でも不可)。つまり **hook を満たせる唯一のファイルが「一度も実行されない飾り」**という状態で、gate が TDD ではなく decoy を要求していた。実行可能な `tests/page.test.ts` を red→green で回しても block は解けない。
