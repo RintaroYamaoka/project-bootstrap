@@ -58,6 +58,12 @@ make_foreign_transcript() {
   printf '%s\n' "$f"
 }
 
+# add_self_staged <command> — 当 session の transcript に Bash tool_use を1件足す。
+# 「当 session が自分で stage した」証跡をつくるために使う。
+add_self_staged() {
+  printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"%s"}}]}}\n' "$1" >> "$TRANSCRIPT"
+}
+
 # input_json <command> <transcript-path> <cwd>
 input_json() {
   printf '{"tool_name":"Bash","tool_input":{"command":"%s"},"transcript_path":"%s","cwd":"%s"}' "$1" "$2" "$3"
@@ -169,5 +175,75 @@ assert_exit 2
 test_case "git -C <path> commit is detected and gated (global-option bypass)"
 run_hook block-cross-claude-wip.sh "$(input_json 'git -C . commit -m x' "$TRANSCRIPT" "$REPO")"
 assert_exit 2
+
+# 10. A file THIS session staged by name is its own choice, not a sweep.
+#     実例: 終了済みの別 session が過去にそのファイルを編集していたが、その編集は既に
+#     commit 済み / 取り消し済みで working tree には残っていない。それでも旧実装は
+#     「他 session が触った file」というだけで intruder 扱いし、当 session が自分で書いて
+#     自分で `git add <path>` した file の commit を止めていた (誤検知)。
+#     巻き込み事故の本体は「自分が選んでいない file が index に居る」ことなので、
+#     path を名指しで staged した file は self として扱う。
+setup_repo
+echo shared > "$REPO/shared.txt"
+git -C "$REPO" add shared.txt
+make_transcript "$REPO/mine.txt"          # 編集ツールでは触っていない (Bash 経由で書いた file)
+add_self_staged "git add shared.txt"      # だが当 session が名指しで stage した
+make_foreign_transcript "$REPO/shared.txt" >/dev/null   # 別 session も過去に編集していた
+RUN_DIR="$REPO"
+test_case "file this session staged by name passes even if a sibling once edited it"
+run_hook block-cross-claude-wip.sh "$(input_json 'git commit -m x' "$TRANSCRIPT" "$REPO")"
+assert_exit 0
+
+# 11. 逆に、bulk staging は path を名指ししないので self にならない — 事故の本体を守る。
+#     (別 terminal の bulk stage が他 session の WIP を index に入れた、という経路)
+setup_repo
+echo foreign > "$REPO/foreign.txt"
+git -C "$REPO" add foreign.txt
+make_transcript "$REPO/mine.txt"
+add_self_staged "git add -A"
+make_foreign_transcript "$REPO/foreign.txt" >/dev/null
+RUN_DIR="$REPO"
+test_case "bulk staging does not make a foreign file self-staged"
+run_hook block-cross-claude-wip.sh "$(input_json 'git commit -m x' "$TRANSCRIPT" "$REPO")"
+assert_exit 2
+
+# 12. `git add` を含まないコマンドで path に触れただけでは self にならない
+#     (例: 読んだだけの file を自分のものにしない)
+setup_repo
+echo foreign > "$REPO/foreign.txt"
+git -C "$REPO" add foreign.txt
+make_transcript "$REPO/mine.txt"
+add_self_staged "cat foreign.txt"
+make_foreign_transcript "$REPO/foreign.txt" >/dev/null
+RUN_DIR="$REPO"
+test_case "merely reading a path does not make it self-staged"
+run_hook block-cross-claude-wip.sh "$(input_json 'git commit -m x' "$TRANSCRIPT" "$REPO")"
+assert_exit 2
+
+# 13. 実際に踏んだ誤検知: transcript の command は複数行を JSON の \n で持つ。
+#     `cd repo\ngit add path` のように \n の直後に git が来ると、境界を「英数字でない文字」
+#     で判定していた旧パターンは n を英数字と見て弾き、self-staged を取りこぼした。
+setup_repo
+echo shared > "$REPO/shared.txt"
+git -C "$REPO" add shared.txt
+make_transcript "$REPO/mine.txt"
+add_self_staged "cd /somewhere\\ngit add shared.txt\\ngit status"
+make_foreign_transcript "$REPO/shared.txt" >/dev/null
+RUN_DIR="$REPO"
+test_case "git add after an escaped newline still counts as self-staged"
+run_hook block-cross-claude-wip.sh "$(input_json 'git commit -m x' "$TRANSCRIPT" "$REPO")"
+assert_exit 0
+
+# 14. `git -C <dir> add <path>` も self-staged として数える (値つきグローバルオプション)
+setup_repo
+echo shared > "$REPO/shared.txt"
+git -C "$REPO" add shared.txt
+make_transcript "$REPO/mine.txt"
+add_self_staged "git -C . add shared.txt"
+make_foreign_transcript "$REPO/shared.txt" >/dev/null
+RUN_DIR="$REPO"
+test_case "git -C <dir> add <path> counts as self-staged"
+run_hook block-cross-claude-wip.sh "$(input_json 'git commit -m x' "$TRANSCRIPT" "$REPO")"
+assert_exit 0
 
 finish
