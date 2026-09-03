@@ -7,6 +7,15 @@
 
 ## [Unreleased]
 
+## [0.36.1] - 2026-09-03
+
+### Fixed
+
+- **`block-cross-claude-wip.sh` が「終わった session の記録」で正当な commit を止めるのを直した**。foreign-edited set は transcript に残る「そのファイルを編集した」記録だけで作られており、**その編集が今も未コミットで残っているか**を見ていなかった。そのため、前日に別 session が触ったファイル(編集は既に main にマージ済み)を翌日 別 session が正当に編集して commit しようとすると、巻き込む WIP が1件も無いのに block した。実例では未 staged の変更ゼロ・staged 差分は全て当 session の追加、という状態で止まっている。
+  - 判定に **self-staged set** を足した = 当 session が `git add <path>` で **path を名指しして** index に入れたファイルは自分のもの。巻き込み事故の本体は「自分が選んでいないファイルが index に居る」ことなので、名指しの staging は意思であって巻き込みではない。bulk staging (`add -A` / `.` / `-u`) は path を名指ししないので self にならず、事故経路 (`block-add-all.sh` が別途止める) はそのまま塞がっている。
+  - transcript の command は改行を JSON の `\n` で持つため、`\n` の直後の `git` を「英数字でない文字が前置」条件で弾いていた (n が英数字)。境界判定をやめ、`git -C <dir> add` のような値つきグローバルオプションも数えるようにした。
+  - 回帰テスト 5 本追加 (名指し staging は通る / bulk staging は通さない / 読んだだけの path は self にしない / `\n` 直後の git add / `git -C <dir> add`)。既存 10 assertion (実事故由来の `--amend` 回帰を含む) は不変で green。
+
 ## [0.36.0] - 2026-08-31
 
 ### Changed

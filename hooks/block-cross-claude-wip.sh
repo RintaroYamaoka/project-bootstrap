@@ -9,8 +9,10 @@
 #      = "foreign-edited set"。projects dir の hash は cwd 由来なので、同一 dir の sibling は
 #      「同一 working tree (= 共有 .git/index) を共有する別 session」を意味する。worktree 隔離下
 #      では別 session は別 dir に入り sibling に現れない (= 誤 block しない)。
-#   3. staged file のうち、self-edited に無く foreign-edited に*ある* file だけを intruder として
-#      exit 2 で block。他 session の編集証拠が無い file は素通し (= fail-open)。
+#   2b. 現 session の transcript から `git add <path>` の path を抽出 = "self-staged set"
+#      (= 自分で名指しして index に入れた file。bulk staging は path を名指ししないので入らない)
+#   3. staged file のうち、self-edited / self-staged に無く foreign-edited に*ある* file だけを
+#      intruder として exit 2 で block。他 session の編集証拠が無い file は素通し (= fail-open)。
 #
 # なぜこの設計か (旧実装のバグ修正):
 #   旧実装は「self-edited set に無ければ intruder」で、npm install (package-lock.json) /
@@ -50,6 +52,19 @@ set -u
 extract_edited() {
   grep -oE '"(file_path|notebook_path)"[[:space:]]*:[[:space:]]*"[^"]*"' "$1" 2>/dev/null \
     | sed 's/.*:[[:space:]]*"//; s/"$//'
+}
+
+# transcript から「当 session が path を名指しで stage した」証跡を抜く。
+# 巻き込み事故の本体は「自分が選んでいない file が index に居る」ことなので、path を名指しで
+# `git add` したのは意思であって巻き込みではない。bulk staging (add -A / . / -u) は path を
+# 名指ししないのでここに現れず、block-add-all.sh が別途止める (= 事故経路は塞いだまま)。
+extract_git_add_commands() {
+  # 境界は見ない: command 文字列は改行を JSON の \n で持つため、\n の直後の git を
+  # 「英数字でない文字が前置」条件で弾いてしまう (n が英数字)。ここは self 判定を
+  # *広げる* 方向の grep なので、多少緩くても事故経路 (bulk staging) は塞いだまま。
+  # `git -C <dir> add` のような値つきグローバルオプションも数える。
+  grep -oE '"command"[[:space:]]*:[[:space:]]*"[^"]*"' "$1" 2>/dev/null \
+    | grep -E 'git([[:space:]]+-[^[:space:]]+([[:space:]]+[^-[:space:]][^[:space:]]*)?)*[[:space:]]+add[[:space:]]'
 }
 
 # repo 相対 path に正規化 (= 絶対 path なら repo root prefix を削除。多重 escape 回避に / 正規化)
@@ -112,6 +127,14 @@ gate_block_cross_claude_wip() {
 # ── self-edited set (= 当 session が file 編集ツールで触った file。常に許可)
 SELF_EDITED=$(extract_edited "$TRANSCRIPT" | build_set)
 
+# ── self-staged set (= 当 session が path を名指しで `git add` した file)
+# 他 session の編集が既に commit 済み / 取り消し済みで working tree に残っていなくても、
+# transcript には「編集した」記録が残り続ける。その記録だけを根拠に intruder 扱いすると、
+# 当 session が自分で書いて自分で stage した file の commit まで止まる (誤検知)。
+# 実例: 前日の session が触った schema file を、翌日 別 session が正当に編集して commit
+# しようとして止まった。編集は既に main にマージ済みで、巻き込む WIP は存在しなかった。
+SELF_STAGED_CMDS=$(extract_git_add_commands "$TRANSCRIPT" || true)
+
 # ── foreign-edited set (= 同一 working tree を共有する *他* session が編集した file)
 # 同一 projects dir の sibling transcript を走査。current は除外。stale session の巻き添えを
 # 避けるため、鮮度窓 (default 24h) 内に更新された sibling だけを対象にする。
@@ -148,6 +171,10 @@ while IFS= read -r S; do
   norm_path_var "$S"
   S_NORM="$NORM_PATH"
   printf '%s' "$SELF_EDITED" | grep -Fxq "$S_NORM" && continue        # 自分の編集は常に許可
+  # 当 session が path を名指しで stage した file も自分のもの (= 巻き込みではない)
+  if [ -n "$SELF_STAGED_CMDS" ] && printf '%s' "$SELF_STAGED_CMDS" | grep -Fq "$S_NORM"; then
+    continue
+  fi
   printf '%s' "$FOREIGN_EDITED" | grep -Fxq "$S_NORM" || continue     # 他 session 編集証拠が無ければ素通し
   INTRUDERS="${INTRUDERS}${S_NORM}
 "
