@@ -5,6 +5,11 @@
 #
 # 検出する慣例 (汎用ベストプラクティス):
 #   - foo.ts        → foo.test.ts / foo.spec.ts / foo_test.ts / __tests__/foo.test.ts / tests/foo.test.ts
+#   - JS/TS は ts/tsx/js/jsx/mjs/cjs/mts/cts を1つの族として扱い、実装と companion の
+#     拡張子が食い違ってよい (foo.tsx → foo.test.ts 等)。runner 側の制約でそうなるため:
+#     `node --test` は .tsx を実行できない (Node 24 は JSX 非対応) ので、拡張子一致を
+#     強いると「hook は満たすが一度も実行されない test」しか置けなくなる。族は言語境界で
+#     止める (.ts 実装を .py の test では通さない)。
 #   - foo.py        → test_foo.py (同 dir or tests/)
 #   - foo.go        → foo_test.go (同 dir)
 #   - foo.rs        → tests/foo.rs
@@ -22,7 +27,8 @@ set -u
 
 # gate 本体 — 契約は lib/standalone.sh ヘッダ参照 (global FILE を読む / return 0=pass, 2=block)。
 gate_require_test_companion() {
-  local FILE_NORM EXT BASE NAME DIR ROOT CANDIDATES found C
+  local FILE_NORM EXT BASE NAME DIR ROOT CANDIDATES DISPLAY found C
+  local EXTS EXT_DISPLAY FAMILY E PAT FIND_ARGS
 
 # Windows path 正規化 (= `\` を `/` に置換、case パターン match のため)。
 # Claude Code は Windows 環境で JSON escape 済の backslash 区切り絶対 path を渡してくるが
@@ -74,19 +80,53 @@ if [ -z "$ROOT" ] || [ "$ROOT" = "/" ] || [ "$ROOT" = "." ]; then
   ROOT="$PWD"
 fi
 
+# companion に認める拡張子。JS/TS は互いに読み込める1つの族なので、実装と test で
+# 拡張子が違ってよい (詳細は冒頭コメント)。族外の言語は従来どおり拡張子一致のみ。
+# 探索順は source 自身の拡張子を先頭に置き、最頻ケースを最初に当てる。
+FAMILY="ts tsx js jsx mjs cjs mts cts"
+EXTS="$EXT"
+EXT_DISPLAY="$EXT"
+case " $FAMILY " in
+  *" $EXT "*)
+    for E in $FAMILY; do
+      [ "$E" = "$EXT" ] || EXTS="$EXTS $E"
+    done
+    EXT_DISPLAY="{ts,tsx,js,jsx,mjs,cjs,mts,cts}"
+    ;;
+esac
+
 # 慣例 test ファイル候補
-CANDIDATES=(
-  "${BASE}.test.${EXT}"
-  "${BASE}.spec.${EXT}"
-  "${BASE}_test.${EXT}"
-  "${DIR}/__tests__/${NAME}.test.${EXT}"
-  "${DIR}/__tests__/${NAME}.spec.${EXT}"
-  "${DIR}/_test/${NAME}.${EXT}"
-  "${ROOT}/tests/${NAME}.test.${EXT}"
-  "${ROOT}/tests/${NAME}.spec.${EXT}"
-  "${ROOT}/tests/${NAME}_test.${EXT}"
-  "${ROOT}/test/${NAME}.test.${EXT}"
-  "${ROOT}/test/${NAME}_test.${EXT}"
+CANDIDATES=()
+for E in $EXTS; do
+  CANDIDATES+=(
+    "${BASE}.test.${E}"
+    "${BASE}.spec.${E}"
+    "${BASE}_test.${E}"
+    "${DIR}/__tests__/${NAME}.test.${E}"
+    "${DIR}/__tests__/${NAME}.spec.${E}"
+    "${DIR}/_test/${NAME}.${E}"
+    "${ROOT}/tests/${NAME}.test.${E}"
+    "${ROOT}/tests/${NAME}.spec.${E}"
+    "${ROOT}/tests/${NAME}_test.${E}"
+    "${ROOT}/test/${NAME}.test.${E}"
+    "${ROOT}/test/${NAME}_test.${E}"
+  )
+done
+
+# block 時の案内。族のときは拡張子を brace で1行にまとめ、11行のまま読める形に保つ
+# (族を展開すると 88 行になり、読み手が「どれか1つ置けばよい」と分からなくなる)。
+DISPLAY=(
+  "${BASE}.test.${EXT_DISPLAY}"
+  "${BASE}.spec.${EXT_DISPLAY}"
+  "${BASE}_test.${EXT_DISPLAY}"
+  "${DIR}/__tests__/${NAME}.test.${EXT_DISPLAY}"
+  "${DIR}/__tests__/${NAME}.spec.${EXT_DISPLAY}"
+  "${DIR}/_test/${NAME}.${EXT_DISPLAY}"
+  "${ROOT}/tests/${NAME}.test.${EXT_DISPLAY}"
+  "${ROOT}/tests/${NAME}.spec.${EXT_DISPLAY}"
+  "${ROOT}/tests/${NAME}_test.${EXT_DISPLAY}"
+  "${ROOT}/test/${NAME}.test.${EXT_DISPLAY}"
+  "${ROOT}/test/${NAME}_test.${EXT_DISPLAY}"
 )
 
 case "$EXT" in
@@ -96,15 +136,26 @@ case "$EXT" in
       "${ROOT}/tests/test_${NAME}.py"
       "${ROOT}/test/test_${NAME}.py"
     )
+    DISPLAY+=(
+      "${DIR}/test_${NAME}.py"
+      "${ROOT}/tests/test_${NAME}.py"
+      "${ROOT}/test/test_${NAME}.py"
+    )
     ;;
   go)
     CANDIDATES+=("${BASE}_test.go")
+    DISPLAY+=("${BASE}_test.go")
     ;;
   rs)
     CANDIDATES+=("${ROOT}/tests/${NAME}.rs" "${ROOT}/tests/${NAME}_test.rs")
+    DISPLAY+=("${ROOT}/tests/${NAME}.rs" "${ROOT}/tests/${NAME}_test.rs")
     ;;
   rb)
     CANDIDATES+=(
+      "${ROOT}/spec/${NAME}_spec.rb"
+      "${ROOT}/spec/${DIR#*/}/${NAME}_spec.rb"
+    )
+    DISPLAY+=(
       "${ROOT}/spec/${NAME}_spec.rb"
       "${ROOT}/spec/${DIR#*/}/${NAME}_spec.rb"
     )
@@ -115,13 +166,16 @@ esac
 # 既存 CANDIDATES は tests/${NAME}.test.${EXT} 直下のみだったため、リポジトリで
 # tests/unit/<layer>/ の構造を採用すると red test 済みでも hook が誤検知していた。
 if [ -d "$ROOT/tests" ] || [ -d "$ROOT/test" ]; then
+  FIND_ARGS=()
+  for E in $EXTS; do
+    for PAT in "${NAME}.test.${E}" "${NAME}.spec.${E}" "${NAME}_test.${E}"; do
+      [ ${#FIND_ARGS[@]} -gt 0 ] && FIND_ARGS+=( -o )
+      FIND_ARGS+=( -name "$PAT" )
+    done
+  done
   while IFS= read -r found; do
     [ -n "$found" ] && CANDIDATES+=("$found")
-  done < <(find "$ROOT/tests" "$ROOT/test" -type f \( \
-    -name "${NAME}.test.${EXT}" -o \
-    -name "${NAME}.spec.${EXT}" -o \
-    -name "${NAME}_test.${EXT}" \
-  \) 2>/dev/null)
+  done < <(find "$ROOT/tests" "$ROOT/test" -type f \( "${FIND_ARGS[@]}" \) 2>/dev/null)
 fi
 
 for C in "${CANDIDATES[@]}"; do
@@ -134,7 +188,7 @@ cat >&2 <<EOF
 project-bootstrap: blocking edit on "$FILE" — no companion test file found.
 
 Write a failing test first (Red phase). The hook searched these locations:
-$(printf '  - %s\n' "${CANDIDATES[@]}")
+$(printf '  - %s\n' "${DISPLAY[@]}")
 
 If this is genuinely a non-tested file (e.g. type-only declarations, generated code), bypass this hook with /permissions or add the file to an exception list.
 EOF
