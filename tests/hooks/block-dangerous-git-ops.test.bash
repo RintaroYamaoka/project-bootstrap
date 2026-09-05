@@ -138,6 +138,12 @@ expect_block 'git -C /repo push --force'
 expect_block 'echo hi && git push -f'
 expect_block 'git status; git clean -fd'
 
+# Flag-cluster scanning must not word-expand its tokens against the filesystem: a
+# pathspec like *.log would otherwise make the verdict depend on what happens to sit in
+# the cwd. `-nd` is a dry-run listing (no f) and must pass regardless.
+expect_pass 'git clean -nd *.log'
+expect_block 'git clean -fd *.log'
+
 # KNOWN LIMIT (unchanged by this migration, documented in lib/git-invocation.sh):
 # a `git <sub>` sequence inside a quoted argument tokenizes as a bare `git` head, so it
 # OVER-detects. That is the fail-CLOSED side and is accepted; pinned here so a future

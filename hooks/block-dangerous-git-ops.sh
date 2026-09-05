@@ -51,8 +51,14 @@ _dg_tok() {
 # _dg_short_cluster <letters> <argline> — `-fd` `-xf` のような単一 dash の flag cluster に
 # <letters> のどれかが含まれるか (`--force` のような long option は対象外)。
 _dg_short_cluster() {
-  local letters="$1" line="$2" t c i
-  for t in $line; do
+  local letters="$1" line="$2" t c i noglob=0
+  # word-split する前に noglob。`git clean -fd *.log` のような token を filesystem に対して
+  # 展開すると token が増減し、判定が cwd の中身に依存してしまう (lib/git-invocation.sh の
+  # walker が同じ理由で set -f している)。
+  case $- in *f*) ;; *) noglob=1; set -f ;; esac
+  # shellcheck disable=SC2086
+  set -- $line
+  for t in "$@"; do
     case "$t" in
       --*) continue ;;
       -?*) ;;
@@ -61,10 +67,11 @@ _dg_short_cluster() {
     i=1
     while [ "$i" -lt "${#t}" ]; do
       c="${t:$i:1}"
-      case "$letters" in *"$c"*) return 0 ;; esac
+      case "$letters" in *"$c"*) [ "$noglob" = 1 ] && set +f; return 0 ;; esac
       i=$((i+1))
     done
   done
+  [ "$noglob" = 1 ] && set +f
   return 1
 }
 
