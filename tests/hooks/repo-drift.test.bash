@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # Unit tests for hooks/lib/repo-drift.sh — the SessionStart doctor's "repo drift" judge.
 #
-# Two silent states the doctor surfaces (visibility, not enforcement): HEAD behind the
-# main remote-tracking ref (stale-checkout class) and merged-but-leftover worktrees
-# (lane teardown skipped). We build throwaway repos with a LOCAL refs/remotes/origin/main
-# (no network — the lib never fetches) and assert behind counts, ref resolution, the
-# merged-worktree listing, and the composed report's silence/speech.
+# Three silent states the doctor surfaces (visibility, not enforcement): HEAD behind the
+# main remote-tracking ref (stale-checkout class), merged-but-leftover worktrees (lane
+# teardown skipped), and branch residue (local merged branches + a remote that never
+# deletes head branches on merge). We build throwaway repos with a LOCAL
+# refs/remotes/origin/main (no network — the lib never fetches) and assert behind counts,
+# ref resolution, the merged-worktree listing, the residue counters, and the composed
+# report's silence/speech.
 
 set -u
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -156,5 +158,72 @@ read -r LOC4 REM4 <<<"$(mkpair)"
 test_case "nonexistent remote branch → fetch failure non-zero return"
 fetched_behind_count "$LOC4" origin no-such-branch >/dev/null; RC=$?
 assert_eq "1" "$RC"
+
+# --- branch residue (audit 3) --------------------------------------------------------
+# The teardown step for branches was structurally broken (integrate said `git branch -d`,
+# which squash merge makes fail, and `-D` is blocked), so residue accumulated unmeasured.
+# These pin the counters the doctor keys on.
+
+# mkbranches <repo> <n> <prefix> — n branches pointing at HEAD (= merged into origin/main).
+mkbranches() {
+  local r="$1" n="$2" p="$3" i
+  for ((i = 0; i < n; i++)); do git -C "$r" branch "$p$i" HEAD; done
+}
+
+R="$(mkrepo)"
+git -C "$R" update-ref refs/remotes/origin/main "$(git -C "$R" rev-parse HEAD)"
+test_case "no extra branches → merged_branch_count 0"
+assert_eq "0" "$(merged_branch_count "$R" origin/main)"
+
+mkbranches "$R" 3 merged-
+test_case "3 branches at the main tip are counted as merged residue"
+assert_eq "3" "$(merged_branch_count "$R" origin/main)"
+
+test_case "main itself is never counted as residue"
+git -C "$R" rev-parse --abbrev-ref HEAD >/dev/null   # still on main
+assert_eq "3" "$(merged_branch_count "$R" origin/main)"
+
+# An UNMERGED branch is not residue — it may hold the only copy of some work.
+git -C "$R" branch unmerged HEAD
+git -C "$R" -c user.email=t@e.x -c user.name=t commit -q --allow-empty -m ahead
+git -C "$R" branch -f unmerged HEAD
+git -C "$R" update-ref refs/heads/unmerged "$(git -C "$R" rev-parse HEAD)"
+git -C "$R" reset -q --hard "$(git -C "$R" rev-parse refs/remotes/origin/main)"
+test_case "a branch ahead of the main ref is NOT counted (never propose deleting it)"
+assert_eq "3" "$(merged_branch_count "$R" origin/main)"
+
+# A branch a worktree has checked out cannot be deleted, so it must not be counted.
+WT="$(mktemp -d)/lane"
+git -C "$R" worktree add -q "$WT" merged-0
+test_case "a branch checked out by a worktree is excluded from the count"
+assert_eq "2" "$(merged_branch_count "$R" origin/main)"
+git -C "$R" worktree remove --force "$WT" 2>/dev/null
+
+# remote_branch_count — the deleteBranchOnMerge symptom, counted offline.
+R2="$(mkrepo)"
+git -C "$R2" update-ref refs/remotes/origin/main "$(git -C "$R2" rev-parse HEAD)"
+test_case "remote_branch_count counts origin tracking refs"
+assert_eq "1" "$(remote_branch_count "$R2")"
+git -C "$R2" update-ref refs/remotes/origin/feat-a "$(git -C "$R2" rev-parse HEAD)"
+git -C "$R2" update-ref refs/remotes/origin/feat-b "$(git -C "$R2" rev-parse HEAD)"
+test_case "...and grows with each leftover remote branch"
+assert_eq "3" "$(remote_branch_count "$R2")"
+
+# drift_report stays SILENT below the thresholds and SPEAKS above them (advisory bloat bar).
+R3="$(mkrepo)"
+git -C "$R3" update-ref refs/remotes/origin/main "$(git -C "$R3" rev-parse HEAD)"
+mkbranches "$R3" 4 few-
+test_case "4 merged branches is below the local threshold → report silent"
+assert_eq "" "$(drift_report "$R3")"
+
+mkbranches "$R3" 8 more-
+test_case "12 merged branches crosses the threshold → report names the cleanup script"
+case "$(drift_report "$R3")" in
+  *"branch-cleanup.sh"*) assert_eq ok ok ;;
+  *) assert_eq "mentions branch-cleanup.sh" "did not" ;;
+esac
+
+test_case "the threshold is overridable for repos with a different normal"
+BOOTSTRAP_LOCAL_RESIDUE_MIN=999 _RD_LOCAL_RESIDUE_MIN=999 assert_eq "" "$(_RD_LOCAL_RESIDUE_MIN=999 drift_report "$R3")"
 
 finish

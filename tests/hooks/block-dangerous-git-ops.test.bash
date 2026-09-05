@@ -112,4 +112,40 @@ test_case "malformed payload with no command key is blocked (fail-closed)"
 run_hook block-dangerous-git-ops.sh '{"tool_name":"Bash","tool_input":{"foo":"bar"}}'
 assert_exit 2
 
+# ---------------------------------------------------------------------------
+# Walker migration (ADR 0019 single authority) — the OVER-block bug this fixes.
+#
+# The old regexes matched "git push" and a "-f" from ANYWHERE in the command
+# string, so a command that never invokes git was blocked. Hit for real on
+# 2026-09-04 while cleaning up remote branches: a `pkill` whose -f pattern
+# happened to contain the words "git push" was refused. MAINTENANCE.md's rule
+# applies — a false positive is not the safe side, it is a reason to route
+# around the discipline.
+#
+# The walker reads the argline of EACH git invocation, so a danger flag can no
+# longer be borrowed from a different command or from quoted text.
+# ---------------------------------------------------------------------------
+expect_pass 'pkill -9 -f "git push origin --delete"'   # kills a process; invokes no git
+expect_pass 'grep -f pats.txt -- "git push"'           # searches text; invokes no git
+expect_pass 'git push origin --delete stale-branch'    # deletes a remote branch; not a force push
+expect_pass 'git push origin --delete a b c'
+expect_pass 'git worktree remove ../wt-x'
+
+# Detection power is unchanged: path-prefixed git, git global options before the
+# subcommand, and a danger in a LATER segment of a compound command still block.
+expect_block '/usr/bin/git reset --hard HEAD~1'
+expect_block 'git -C /repo push --force'
+expect_block 'echo hi && git push -f'
+expect_block 'git status; git clean -fd'
+
+# KNOWN LIMIT (unchanged by this migration, documented in lib/git-invocation.sh):
+# a `git <sub>` sequence inside a quoted argument tokenizes as a bare `git` head, so it
+# OVER-detects. That is the fail-CLOSED side and is accepted; pinned here so a future
+# change to the walker's quote handling is a visible decision, not a silent drift.
+# (Raw payload: input_json cannot carry embedded quotes — they would terminate the
+# JSON string early and the parser would see a truncated, harmless command.)
+test_case "quoted git-sub inside a message still over-detects (documented limit)"
+run_hook block-dangerous-git-ops.sh '{"tool_name":"Bash","tool_input":{"command":"git commit -m \"do not git push -f here\""}}'
+assert_exit 2
+
 finish

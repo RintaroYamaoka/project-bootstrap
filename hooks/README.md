@@ -183,6 +183,10 @@ linter が解決できない (script 無し / runner 不在) 場合は warn し�
 
 `git push --force-with-lease` は競合検出付きなので素通し。意図して実行するときは user に明示確認してから `/permissions` で hook を一時 deny にする。
 
+判定は **`lib/git-invocation.sh` の walker (ADR 0019)** で、各 git 起動の argline を取り出してその invocation 自身の token だけを見る。0.37.0 より前は CMD 全体への正規表現だったため、**git を一切起動しないコマンドを block していた** — 例: `pkill -f "git push origin --delete"` が「git push … -f」に見える (実測 2026-09-04)。危険 flag を別のコマンドや引用符の中から借りてくることは無くなった。検出力 (path 前置 `/usr/bin/git`、`git -C dir push` の global option、compound の後段) は不変。
+
+`git branch -D` を止められて困るのは大抵 **merge 済 branch の後片付け**なので、その用途には [`scripts/branch-cleanup.sh`](../scripts/branch-cleanup.sh) を使う (PR 状態を根拠に取ってから消すので、hook を deny にする必要がない)。
+
 スクリプト: [`block-dangerous-git-ops.sh`](./block-dangerous-git-ops.sh)
 
 ### D. PreToolUse on `Bash` — bulk-staging を blocking
