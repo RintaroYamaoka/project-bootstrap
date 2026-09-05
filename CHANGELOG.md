@@ -9,6 +9,8 @@
 
 ## [0.37.0] - 2026-09-05
 
+経緯と教訓は `docs/bootstrap/incidents/2026-09-04-branch-teardown-deadlock/` に記録した。
+
 ### Fixed
 
 - **branch の後片付け手順が構造的に完走できなかったのを直した**。`integrate` skill Step 5 は `git branch -d feat/<id>-<topic>` と書いていたが、GitHub の **squash merge** で PR を閉じる repo では squash commit が元 branch の commit を親に持たないため **branch は main の祖先にならず、`-d` は必ず「未 merge」と判定して失敗する**。残る手の `git branch -D` は自分の `block-dangerous-git-ops.sh` が blocking する。つまり **hook と手順が噛み合わず、後片付けだけが誰にも実行できないまま残っていた**。
