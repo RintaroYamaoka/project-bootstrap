@@ -63,6 +63,7 @@ scripts/velocity.sh [repo ...]    # 週次の commit数・defect率を複数repo
 scripts/wo-metrics.sh [repo ...]  # 作業指示書ごとの実績を集計。「AIが止まったとき穴は指示書の何節にあったか」を出す
 scripts/arch-check.sh [file ...]  # 依存方向(レイヤ)違反を検査。Claude非依存なので pre-commit/CI で全員に効かせられる
 scripts/retired-check.sh <base>   # 引退した名前が追加行に混入していないか検査 (PR は origin/main...HEAD を渡す)
+scripts/branch-cleanup.sh [--remote] [--apply]  # merge 済 branch の検証つき撤去 (既定は dry-run)
 scripts/setup-server-enforcement.sh --check   # GitHub側の保護設定を監査 (admin素通りの穴を検出)
 scripts/setup-server-enforcement.sh           # 保護設定を適用 (下記「サーバ側」参照)
 ```
@@ -184,7 +185,7 @@ scripts/setup-server-enforcement.sh --merge-queue   # (任意) 古いレーン�
 | `hooks/hooks.json` + `hooks/dispatch.sh` | 22 gate + doctor + reminder を `plugin.json` 経由でデフォルト発火。PreToolUse は **matcher あたり 1 プロセスの dispatcher** が gate 関数を順に呼ぶ (ADR 0026 — Windows/Git Bash は fork が 10-30 倍遅く、旧配線の 16 プロセス/call は体感数秒だった。実測は `scripts/bench-hooks.sh`)。内訳 — SessionStart doctor / test 先行 / commit 前 lint+test / destructive git op・bulk-stage・cross-session WIP / 保護 branch 直 push・stale push (ADR 0009) / lane 外の編集と commit (ADR 0017) / 未隔離 main tree 編集 (guard 2)・wip 超過 worktree (guard 3) / 依存方向 edit+commit / sprint 発火 gate + reminder / merge 関所 (review + verification) / 引退名の混入 (ADR 0021) / inject-action-memory |
 | `hooks/block-merge-if-verification-unclosed.sh` + `hooks/lib/verification-plan.sh` | lane merge に plan の存在・OPEN 行ゼロ・理由なき DROP ゼロを fail-closed 要求 (ADR 0007)。format 権威は lib に集約。ローカルは速い feedback 層 — 恒久は CI twin (ADR 0012) |
 | `hooks/lib/verification-ci-check.sh` | 上記のサーバ側 (CI) twin。required status check `verification-closed` として全マージ経路 (Merge ボタン含む) を覆う |
-| `hooks/bootstrap-session-doctor.sh` + `scripts/doctor.sh` + `hooks/lib/repo-drift.sh` + `hooks/lib/verification-drift.sh` | SessionStart で 3 軸を可視化 — 採用状態 audit (ADR 0003) / repo drift (stale checkout・merge 済み残置 worktree) / 未判断 trunk 変更 (逐次経路、ADR 0007 委任。source 面判定は `lib/source-face.sh` を再利用)。強制でなく可視化 |
+| `hooks/bootstrap-session-doctor.sh` + `scripts/doctor.sh` + `hooks/lib/repo-drift.sh` + `hooks/lib/verification-drift.sh` | SessionStart で 3 軸を可視化 — 採用状態 audit (ADR 0003) / repo drift (stale checkout・merge 済み残置 worktree・**branch 残骸**) / 未判断 trunk 変更 (逐次経路、ADR 0007 委任。source 面判定は `lib/source-face.sh` を再利用)。強制でなく可視化 |
 | `hooks/block-unplanned-feature-build.sh` | 新規 source file 作成を信号に、sprint 判定記録 (`docs/bootstrap/sprint/.gate` or 活性 board) を fail-closed 要求 |
 | `hooks/sprint-trigger-reminder.sh` | feature っぽい prompt への早期ヒント (強制本体は上記 gate) |
 | `hooks/block-unreviewed-merge.sh` | lane branch の merge にレビュー記録 `verdict: approve` + 検出スイートの実走を要求。PR 経路は `templates/ci/bootstrap-review-gate.yml` が CI で同等要求 |
@@ -209,6 +210,7 @@ scripts/setup-server-enforcement.sh --merge-queue   # (任意) 古いレーン�
 | `scripts/velocity.sh` | 週次 throughput / defect rate の複数 repo 横断計測 — trust ladder の安全網 |
 | `scripts/wo-metrics.sh` | 作業指示書ごとの実績集計 (ADR 0024)。節別エスカレーションが「事前条件テンプレートのどこが薄いか」を名指しする。self-report の限界も出力に明記 |
 | `scripts/arch-check.sh` | 依存方向検査 CLI (pre-commit / CI 用) |
+| `scripts/branch-cleanup.sh` | merge 済 branch の検証つき撤去 (local / remote)。squash merge で `git branch -d` が必ず失敗する袋小路を塞ぐ。根拠 (main の祖先 / PR が MERGED) が取れた branch だけ消し、取れなければ残す |
 | `scripts/retired-check.sh` | 引退名検査 CLI (CI 用)。PR は三点差分 `origin/<base>...HEAD` を渡す — 二点だと base 側の改名をこの branch のせいにする |
 | `scripts/setup-server-enforcement.sh` | branch protection (required checks / `enforce_admins=true` / PR 必須・人間承認 0) の冪等設定 + `--check` 監査 + `--merge-queue` (ADR 0012) |
 | `templates/CLAUDE.md` | 新規プロジェクト用 CLAUDE.md 雛形 (prune 済) |

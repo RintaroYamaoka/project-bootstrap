@@ -48,14 +48,47 @@ scope を disjoint に切れていれば file conflict はほぼ出ない。出�
 
 各 task の `docs/bootstrap/verification/<branch>.md` が閉じている (OPEN 行ゼロ・理由なき DROP ゼロ) ことを確認する。`block-merge-if-verification-unclosed.sh` が lane branch の merge で fail-closed に要求するが、計画の設計と `HUMAN` 行の実施は `verification` skill (ADR 0007) で済ませておく — 統合フェーズで初めて書くものではない。さらに lane の delta が登記済みの cross-repo 契約 (`docs/bootstrap/verification/contracts`) の面を触っているなら、同 gate はその契約に対し `[contract:<id>]` タグつきの CLOSED plan 行 + consumer 側スイートの緑 (関所自身が実走) も要求する (ADR 0011) ので、これも閉じていることを確認する。統合後、production-affecting な変更があれば `project-bootstrap` SKILL の verification 4 罠を最終 gate として確認する。user-facing bug fix を含むなら同根 cohort audit も。
 
-### Step 5: claim を閉じ、worktree を撤去
+### Step 5: claim を閉じ、worktree と branch を撤去
 
 各 task の `status` を `done` に。worktree を撤去する:
 
 ```
 git worktree remove ../wt-<id>
-git branch -d feat/<id>-<topic>   # merge 済を確認してから
 ```
+
+branch の撤去は **`scripts/branch-cleanup.sh` に任せる**。手で `git branch -d` を叩かない:
+
+```
+scripts/branch-cleanup.sh                    # dry-run — 何が消えるか先に見る
+scripts/branch-cleanup.sh --apply            # local
+scripts/branch-cleanup.sh --remote --apply   # remote も (merge 済 PR の head branch)
+```
+
+> **なぜ `git branch -d` を直に書かなくなったか (2026-09-05、実測に基づく修正)**
+>
+> GitHub の **squash merge** で PR を閉じる repo では、squash commit は元 branch の commit を
+> 親に持たない。つまり **branch は main の祖先にならず、`git branch -d` は必ず「未 merge」と
+> 判定して失敗する**。残る手の `git branch -D` は `block-dangerous-git-ops.sh` が blocking する
+> (= 検証なしの強制削除は作業を消すので、それは正しい)。結果、**この手順は構造的に完走できず**、
+> 後片付けだけが誰にも実行されないまま残っていた。
+>
+> 実測 (2026-09-04、dogfood 5 repo): local に約 1,000 本・remote に約 1,800 本が滞留し、
+> うち **397 本が「PR は MERGED なのに `-d` では消せない」**状態だった。
+>
+> `scripts/branch-cleanup.sh` は削除前に 1 本ずつ根拠を取る — (a) main の祖先である、または
+> (b) その branch を head とする PR が MERGED である。根拠が取れない branch は残す。
+> つまり hook が禁じているのは「**検証なしの**強制削除」であって、この script はその検証を
+> 供給する正規の経路。gh が使えない環境では (a) だけに縮退して安全側に倒れる。
+
+> ⚠️ **蛇口も閉める**。掃除は対症療法で、`deleteBranchOnMerge` が false のままだと remote は
+> また溜まる。repo ごとに一度だけ:
+>
+> ```
+> gh repo edit <owner>/<repo> --delete-branch-on-merge
+> ```
+>
+> 設定変更には **ADMIN 権限**が要る (WRITE では 404)。権限が無いなら org 管理者に依頼する。
+> SessionStart の doctor は remote branch 数が閾値を超えると、この症状として可視化する。
 
 > ⚠️ **`git mv` は index の既存 blob を rename して運ぶ**。`status` を `done` に編集した board を**未 stage のまま `git mv`** すると編集が落ち、archive に `status: todo` のまま commit される (実バグ: 2026-06-25 の 2 sprint で連続発生)。回避: **編集後に `git add board.json` で stage してから `git mv`** する (または先に archive へ `git mv` し、archived 側を `done` に編集して `git add`)。同じ罠は reviews / verification plan を status 編集してから mv する経路にも効く — 「編集 → stage → 移動」の順を崩さない。
 
@@ -65,7 +98,8 @@ board の全 task が done になったら sprint 終了。**board.json と `rev
 
 - **統合 verify を省く** (= 各 task 緑だから OK と決めつける。結合は別物)
 - conflict を握り潰す merge (= `-X ours`/`theirs` で機械的に潰して中身を見ない)
-- 未 merge branch の `git branch -D` (= 強制削除は作業を消す。`-d` で merge 済を確認)
+- 未 merge branch の `git branch -D` (= 検証なしの強制削除は作業を消す。撤去は `scripts/branch-cleanup.sh` に通す — PR 状態を根拠に取ってから消すので、squash merge でも袋小路にならない)
+- **worktree だけ撤去して branch を残す** (= 残骸は無音で溜まる。実測 1,000 本。doctor が閾値超えで可視化するが、Step 5 で閉じるのが本筋)
 - main への直接 push (= `block-push-to-protected.sh` が止める。PR / integration branch 経由で)
 
 ## 関連

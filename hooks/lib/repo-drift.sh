@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shared judge for "repo drift" — the two silent states a session opens into that no
+# Shared judge for "repo drift" — the silent states a session opens into that no
 # gate enforces, but the orchestrator keeps getting burned by. Surfaced (not enforced)
 # by the SessionStart doctor (bootstrap-session-doctor.sh).
 #
@@ -14,6 +14,16 @@
 #       worktrees accumulate. Ephemeral lane state whose termination owner was skipped
 #       (cf. memory feedback_gate_signal_and_failmode: read ephemeral state by liveness,
 #       and own the teardown). Leftover lanes also silently consume the WIP budget.
+#   (3) branch residue — local branches already merged, and a remote whose head branches are
+#       never deleted on merge. Same class as (2) (ephemeral state whose teardown owner was
+#       skipped) but for branches, and it went unmeasured far longer because the teardown STEP
+#       ITSELF was broken: integrate(skill) said `git branch -d`, which under GitHub squash
+#       merge ALWAYS fails (the squash commit is not a descendant of the branch), and the only
+#       other way — `git branch -D` — is blocked by block-dangerous-git-ops.sh. The documented
+#       step could not complete, and nothing measured the residue, so it stayed silent.
+#       Measured 2026-09-04 across the dogfood repos: ~1,000 local / ~1,800 remote branches, of
+#       which 397 were "PR MERGED but `-d` refuses". Cure: scripts/branch-cleanup.sh (verified
+#       deletion) + `gh repo edit --delete-branch-on-merge` (closes the tap).
 #
 # This is VISIBILITY, not enforcement. Whether a given checkout is right for a given op
 # is an irreducible judgment (ADR 0001's residue) — but the drift FACT can be shown
@@ -45,6 +55,11 @@
 #   merged_worktree_lines <dir> <ref> echo one indented line per LINKED worktree whose branch
 #                                     tip is an ancestor of <ref> (= merged), excluding the
 #                                     main branch itself and detached heads.
+#   merged_branch_count <dir> <ref>   echo integer = local branches already merged into <ref>,
+#                                     excluding the main branch and anything a worktree has
+#                                     checked out (OFFLINE, same under-report contract).
+#   remote_branch_count <dir>         echo integer = remote-tracking refs under origin
+#                                     (origin/HEAD excluded).
 #   drift_report <dir>                echo the full human-readable block, or nothing; return 0.
 
 # _rd_main_branch — the local branch name a remote-tracking ref maps to (origin/main → main).
@@ -162,9 +177,51 @@ merged_worktree_lines() {
   [ -n "$wt_path" ] && _rd_emit_merged "$dir" "$ref" "$main_branch" "$wt_path" "$wt_branch"
 }
 
-# drift_report — see header. Composes the two audits; silent when neither fires.
+# _rd_checked_out_branches — branch names any worktree (incl. the main one) has checked out.
+# One fork; used to keep the residue count from flagging branches you cannot delete anyway.
+_rd_checked_out_branches() {
+  git -C "$1" worktree list --porcelain 2>/dev/null | sed -n 's|^branch refs/heads/||p'
+}
+
+# merged_branch_count — see header. OFFLINE (compares against the LOCAL tracking ref), so a
+# stale tracking ref only UNDER-reports, never false-alarms — same contract as behind_count.
+merged_branch_count() {
+  local dir="$1" ref="$2" main_branch checked br n=0
+  main_branch=$(_rd_main_branch "$ref")
+  checked=$(_rd_checked_out_branches "$dir")
+  while IFS= read -r br || [ -n "$br" ]; do
+    [ -n "$br" ] || continue
+    [ "$br" = "$main_branch" ] && continue
+    printf '%s\n' "$checked" | grep -qxF "$br" && continue
+    n=$((n+1))
+  done < <(git -C "$dir" for-each-ref --format='%(refname:short)' --merged "refs/remotes/$ref" refs/heads 2>/dev/null)
+  printf '%s' "$n"
+}
+
+# remote_branch_count — number of remote-tracking refs under origin (origin/HEAD excluded).
+# A blunt but load-bearing signal: when a repo does NOT have deleteBranchOnMerge, every merged
+# PR leaves its head branch on the remote forever and the count climbs without bound. We cannot
+# read the GitHub setting offline, so we surface the SYMPTOM (the count) and name the cure.
+remote_branch_count() {
+  local dir="$1" r n=0
+  while IFS= read -r r || [ -n "$r" ]; do
+    [ -n "$r" ] || continue
+    case "$r" in origin/HEAD) continue ;; esac
+    n=$((n+1))
+  done < <(git -C "$dir" for-each-ref --format='%(refname:short)' refs/remotes/origin 2>/dev/null)
+  printf '%s' "$n"
+}
+
+# 閾値 — advisory bloat を増やさないための下限。ここを下回るうちは無音。
+# local 10: 数本の残骸は普通の作業の途中経過で、毎 session 言うほどではない。
+# remote 150: 手で数える気が失せる規模 = 蛇口 (deleteBranchOnMerge) が閉まっていない兆候。
+#   実測 (2026-09-04 dogfood): marketing-app 923 / appo-followup 648 / propagate-ai 250。
+_RD_LOCAL_RESIDUE_MIN=${BOOTSTRAP_LOCAL_RESIDUE_MIN:-10}
+_RD_REMOTE_RESIDUE_MIN=${BOOTSTRAP_REMOTE_RESIDUE_MIN:-150}
+
+# drift_report — see header. Composes the audits; silent when none fires.
 drift_report() {
-  local dir="$1" ref behind cur wts out=""
+  local dir="$1" ref behind cur wts out="" nlocal nremote
   git -C "$dir" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
   ref=$(drift_main_ref "$dir") || return 0
 
@@ -182,6 +239,25 @@ drift_report() {
   if [ -n "$wts" ]; then
     out="${out}merge 済みなのに残っている worktree (lane の撤去漏れ — integrate skill は merge の後に worktree を撤去する):
 ${wts}  撤去: git worktree remove <path> (未コミットが無いか確認してから)。残すと並列 lane が WIP 上限を無駄に食う。
+"
+  fi
+
+  nlocal=$(merged_branch_count "$dir" "$ref")
+  if [ "$nlocal" -ge "$_RD_LOCAL_RESIDUE_MIN" ] 2>/dev/null; then
+    out="${out}merge 済みなのに残っている local branch が ${nlocal} 本 (branch の撤去漏れ):
+  棚卸し: scripts/branch-cleanup.sh          (dry-run。何が消えるかだけ出る)
+  実行  : scripts/branch-cleanup.sh --apply
+  squash merge の repo では PR が MERGED でも branch は main の祖先にならないので \`git branch -d\` は
+  必ず失敗する。script は PR 状態を根拠に取ってから消すので、その袋小路を通らずに済む。
+"
+  fi
+
+  nremote=$(remote_branch_count "$dir")
+  if [ "$nremote" -ge "$_RD_REMOTE_RESIDUE_MIN" ] 2>/dev/null; then
+    out="${out}remote branch が ${nremote} 本 — merge しても head branch が消えていない可能性が高い:
+  蛇口を閉める: gh repo edit <owner>/<repo> --delete-branch-on-merge   (ADMIN 権限が要る。WRITE では 404)
+  溜まった分  : scripts/branch-cleanup.sh --remote --apply
+  設定を入れないと掃除しても再び溜まる (= 掃除は対症、設定が原因側)。
 "
   fi
 

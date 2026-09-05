@@ -7,6 +7,44 @@
 
 ## [Unreleased]
 
+## [0.37.0] - 2026-09-05
+
+経緯と教訓は `docs/bootstrap/incidents/2026-09-04-branch-teardown-deadlock/` に記録した。
+
+### Fixed
+
+- **branch の後片付け手順が構造的に完走できなかったのを直した**。`integrate` skill Step 5 は `git branch -d feat/<id>-<topic>` と書いていたが、GitHub の **squash merge** で PR を閉じる repo では squash commit が元 branch の commit を親に持たないため **branch は main の祖先にならず、`-d` は必ず「未 merge」と判定して失敗する**。残る手の `git branch -D` は自分の `block-dangerous-git-ops.sh` が blocking する。つまり **hook と手順が噛み合わず、後片付けだけが誰にも実行できないまま残っていた**。
+  - **実測 (2026-09-04、dogfood repo 群)**: local に約 1,000 本・remote に約 1,800 本の branch が滞留。うち **397 本が「PR は MERGED なのに `-d` では消せない」**状態だった (marketing-app 127 / appo-followup 200 / ai-reception 40 ほか)。remote は marketing-app 923・appo-followup 648・propagate-ai 250。
+  - 手順を `scripts/branch-cleanup.sh` に置き換えた (下記)。`-D` を無条件に許すのではなく、**削除前に 1 本ずつ根拠を取る**設計にしてある。hook が禁じているのは「検証なしの強制削除」であって、script はその検証を供給する正規の経路 — hook を deny にして手で叩く運用を作らない。
+  - `integrate` skill の「やってはいけないこと」に **worktree だけ撤去して branch を残す** を追加。worktree 残骸は doctor が見ていたが、branch 残骸は誰も見ていなかった。
+
+- **`block-dangerous-git-ops.sh` が git を一切起動しないコマンドを block していたのを直した (OVER-block)**。CMD 全体に `git[[:space:]]+push…(-f|--force)` の類を当てていたため、「git push という文字列」と「後ろのどこかにある `-f`」を**別々の場所から拾えて**しまっていた。
+  - 実測 (2026-09-04): remote branch の後片付け中に `pkill -9 -f "git push origin --delete"` が blocking された。`grep -f pats.txt -- "git push"` も同型で止まる。MAINTENANCE.md の「誤検知は安全側ではなく、規律を回避する動機を作る」に反する状態だった。
+  - **ADR 0019 の単一権威 (`lib/git-invocation.sh` の walker) に合流**させ、各 git 起動の argline を取り出してその invocation 自身の token だけを見るようにした。危険 flag を別コマンドや引用符の中から借りてこられない。検出力は不変 (`/usr/bin/git reset --hard`、`git -C /repo push --force`、compound の後段 `echo hi && git push -f` はいずれも従来どおり block)。
+  - walker 既知の残余 (引用符の中の `git <sub>` が裸 token に割れて OVER-detect する — `git commit -m "… git push -f …"`) は ADR 0019 記載のとおり fail-CLOSED 側なので維持し、**回帰テストで固定した** (将来この挙動を変えるなら明示的な判断として行う)。
+  - これで raw regex で git を見ている gate は `block-over-wip-parallel.sh` / `block-commit-if-tests-fail.sh` の 2 本のみになった。
+
+### Added
+
+- **`scripts/branch-cleanup.sh`** — merge 済 branch の**検証つき**撤去 (local / remote)。既定は dry-run。
+  - 消す根拠は 2 種類だけ: (a) branch が main ref の祖先である、(b) その branch を head とする PR が MERGED である (`gh` に問い合わせる)。**どちらも取れない branch は残す**。`gh` が無い / 未認証 / GitHub でない repo では **(a) だけに縮退する** (判断材料が無い側では消さない)。
+  - 常に消さないもの: `main`/`master`/`trunk`/`develop`/`staging`/`production`、現在 HEAD と linked worktree が checkout 中の branch、PR が OPEN の branch。
+  - 削除前に name+SHA を `~/.cache/project-bootstrap/branch-backup/<repo>/` に保存する (repo 内には置かない — untracked file で `git status` を汚さないため)。復元は `git branch <name> <sha>` / `git push origin <sha>:refs/heads/<name>`。
+  - `--remote` で remote 側も対象にする。**1 本でも存在しない ref が混ざると `git push --delete` は全体が失敗する**ので、chunk 失敗時は 1 本ずつ retry して部分的な取りこぼしを作らない (実測でこの失敗を踏んだ)。
+  - `git branch -d` は **HEAD 基準**で merge 済かを見る。こちらの根拠は main ref なので、**ローカル main が origin/main より遅れていると `-d` は既に merge 済の branch を「未 merge」と言って失敗する**。根拠 (a) が取れている場合に限り `-D` に落とす (実測 2026-09-05: appo-followup / rust-100-knocks で発生)。
+  - テスト 12 assertion (`tests/hooks/branch-cleanup.test.bash`)。`gh` を PATH 上で fake して (b) 経路と縮退経路の両方をオフラインで検査する。
+
+- **SessionStart doctor の repo drift に「branch 残骸」軸を追加** (`hooks/lib/repo-drift.sh`)。従来は stale checkout と merge 済み worktree の 2 軸だった。
+  - `merged_branch_count` = main ref に取り込み済みの local branch 数 (main 自身と worktree が checkout 中のものは除く)。既定 **10 本**以上で `scripts/branch-cleanup.sh` を案内する。
+  - `remote_branch_count` = origin の remote-tracking ref 数。既定 **150 本**以上で `deleteBranchOnMerge` が閉じていない症状として可視化する。オフラインでは GitHub の設定を読めないので、**症状 (件数) を出して原因 (設定) を名指しする**。
+  - 閾値は `BOOTSTRAP_LOCAL_RESIDUE_MIN` / `BOOTSTRAP_REMOTE_RESIDUE_MIN` で上書きできる。どちらも下回るうちは無音 (advisory bloat を増やさない、採用 audit と同じ基準)。
+  - 従来どおり **可視化であって強制ではない** (`exit 2` しない)。オフライン専用なので stale な tracking ref は under-report にしかならず、誤警報にならない。
+
+### Changed
+
+- `integrate` skill Step 5 に **蛇口を閉める手順**を明記した: `gh repo edit <owner>/<repo> --delete-branch-on-merge`。掃除は対症療法で、この設定が false のままだと remote はまた溜まる。**設定変更には ADMIN 権限が要る** (WRITE では API が 404 を返す) ので、権限が無ければ org 管理者に依頼する、という所まで書いた (実測: dogfood 30 repo のうち 12 repo が WRITE 止まりで変更できなかった)。
+
+
 ## [0.36.2] - 2026-09-03
 
 ### Fixed
