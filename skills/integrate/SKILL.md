@@ -5,6 +5,8 @@ description: 並列開発した複数の feature branch を依存順に統合し
 
 # /integrate — 並列レーンを安全に組み戻す
 
+> **置き場の解決:**`.bootstrap/docs-owner`(旧 `.bootstrap-docs-owner`)に 1 つの segment が宣言されている repo では、下記の `docs/bootstrap/<name>/` は **`docs/<owner>/bootstrap/<name>/`** と読み替える。宣言が無ければ従来どおり。判定の単一権威は `hooks/lib/resolve-docs.sh` の `resolve_docs_dir`。
+
 `sprint-plan` で分解・並列実装した branch を統合する skill。並列開発の事故は統合フェーズに集中するので、**merge 順序と統合 verify を単一の頭脳 (lead) で所有する**。
 
 ## いつ呼ぶか

@@ -33,7 +33,7 @@ TOP="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 # opt-in: only repos that adopted the verification flow. New docs/bootstrap/verification
 # is preferred, legacy docs/bootstrap/verification still honoured (ADR 0020).
 VERIF_DIR="$(resolve_docs_dir "$TOP" verification)"
-[ -d "$VERIF_DIR" ] || { echo "verification-ci-check: verification directory not adopted (looked for docs/bootstrap/verification and docs/verification) — neutral pass." >&2; exit 0; }
+[ -d "$VERIF_DIR" ] || { echo "verification-ci-check: verification directory not adopted (looked for the declared owner root, docs/bootstrap/verification and docs/verification) — neutral pass." >&2; exit 0; }
 
 BRANCH="${1:-}"
 [ -z "$BRANCH" ] && BRANCH="${GITHUB_HEAD_REF:-}"

@@ -5,6 +5,8 @@ description: 自明でないコーディング作業 (新機能追加・バグ�
 
 # /plan — 探索 → 計画 → 提示
 
+> **置き場の解決:**`.bootstrap/docs-owner`(旧 `.bootstrap-docs-owner`)に 1 つの segment が宣言されている repo では、下記の `docs/bootstrap/<name>/` は **`docs/<owner>/bootstrap/<name>/`** と読み替える。宣言が無ければ従来どおり。判定の単一権威は `hooks/lib/resolve-docs.sh` の `resolve_docs_dir`。
+
 このスキルは、自明でない作業を始める前に **構造化された計画書** を出力するためのもの。
 
 **鉄則**: このスキルの実行中は **実装を行わない**。`Edit` / `Write` ツールを使わない。`Read` / `Grep` / `Glob` だけで探索し、計画を出力したら停止する。ユーザーの承認を得てから初めて実装フェーズに移行する。

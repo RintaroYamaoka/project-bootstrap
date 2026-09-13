@@ -7,6 +7,19 @@
 
 ## [Unreleased]
 
+## [0.38.0] - 2026-09-13
+
+### Added
+
+- **五面の置き場を「1 人のメンバーのフォルダ配下」に寄せられるようにした**(`.bootstrap/docs-owner`)。`sprint` / `verification` / `commission` / `handoffs` / `incidents` を `docs/<owner>/bootstrap/<name>/` に置ける。
+  - **なぜ**: 採用側の repo が「**人は自分のフォルダの外に文書を作らない**」を規則にしている場合、共有の `docs/bootstrap/` はその規則と正面から衝突する。置き場を理由にプラグインを採用できない状態だった。
+  - marker の**存在**が従来どおりスイッチで、中身は 1 行・1 segment だけ。gate は 1 つもパーサを持たない(`resolve-marker.sh` と同じ設計)。
+  - **解決順は 3 段**: 宣言された owner → `docs/bootstrap/<name>`(新)→ `docs/<name>`(旧)。**marker が無い repo の挙動は 1 ビットも変わらない**ので、既存の採用 repo を壊さない。
+  - marker が空・空白のみ・`/` を含む・`.` / `..` のときは**何も宣言していない扱い**にして従来の解決に落とす。`docs//bootstrap/<name>` や traversal に解決すると、**誰も作れないパスを全 gate が見にいって 5 本が同時に無音で開く** — このプラグインで最悪の fail-mode なので、値の検証は fail-closed 側に倒した。
+  - `docs_state_face`(gate が自分の state 面への書き込みを止めないための述語)は `<top>` を受け取らず、**ディレクトリが存在する前のパスを分類する**(既存テスト 13)ので marker を読めない。`bootstrap/<name>/` という literal segment で構造的に判定する形にした。`docs/<owner>/src/…` と `docs/<owner>/<name>/…` はどちらも外に残るので、広がりはこのプラグインが所有するパスに限定される。
+  - `scripts/doctor.sh` は resolver 経由なので追随する(owner 宣言の repo で `commission=1` を検出することを実測)。
+  - 10 本の skill に読み替えの 1 行を足した。`resolve-docs.test.bash` に 9 ケース群(44 assertion)。
+
 ## [0.37.0] - 2026-09-05
 
 経緯と教訓は `docs/bootstrap/incidents/2026-09-04-branch-teardown-deadlock/` に記録した。

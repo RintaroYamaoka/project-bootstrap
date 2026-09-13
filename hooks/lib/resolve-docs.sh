@@ -26,14 +26,24 @@
 # migration aid, slated for removal once every dogfood repo has migrated (see the
 # ADR for the removal condition).
 #
+# A third layout is opt-in: an adopting repo may declare ONE owner so the five
+# surfaces live under that member's own folder (`docs/<owner>/bootstrap/<name>`).
+# Repos whose own rule is "a person writes only under their own folder" cannot use
+# the shared `docs/bootstrap/` root without breaking that rule. The declaration is
+# a marker (`.bootstrap/docs-owner`, legacy `.bootstrap-docs-owner`) holding a
+# single path segment — PRESENCE is still the switch and no gate grows a parser.
+# An absent, empty or unsafe marker declares nothing and resolution is unchanged,
+# so this cannot disarm an existing adopter.
+#
 # resolve_docs_dir <top> <name>
 #   stdout = the directory path the caller should read:
 #     - <top> empty                        => "" (caller falls open exactly as before)
+#     - owner declared                      => `docs/<owner>/bootstrap/<name>` (wins over both)
 #     - new `docs/bootstrap/<name>` present => that path (new wins over legacy)
 #     - only legacy `docs/<name>` present   => the legacy path
-#     - neither present                     => the new canonical `docs/bootstrap/<name>`,
-#       so an absence check `[ -d "$(resolve_docs_dir …)" ]` behaves identically to
-#       the old hardcoded path.
+#     - neither present                     => the canonical path for the declared
+#       layout, so an absence check `[ -d "$(resolve_docs_dir …)" ]` behaves
+#       identically to the old hardcoded path.
 #   return : always 0.
 #
 # Pure bash, jq-free (matches the hooks' no-dependency policy).
@@ -41,9 +51,40 @@
 [ -n "${_BOOTSTRAP_LIB_RESOLVE_DOCS:-}" ] && return 0
 _BOOTSTRAP_LIB_RESOLVE_DOCS=1
 
-resolve_docs_dir() {
-  local top="${1%/}" name="$2" new old
+# docs_owner <top>
+#   stdout = the declared owner segment, or "" when nothing is declared.
+#   Reads the FIRST line only and trims surrounding whitespace, so an editor's
+#   trailing newline or stray spaces never become part of a directory name.
+#   A value that is not a single safe path segment declares NOTHING (empty output)
+#   rather than resolving elsewhere: `docs//bootstrap/<name>` or a traversal would
+#   send every gate to a path no one can create, silently disarming all five —
+#   the worst fail-mode this plugin has.
+#   return : always 0.
+docs_owner() {
+  local top="${1%/}" f v
   [ -n "$top" ] || return 0
+  for f in "$top/.bootstrap/docs-owner" "$top/.bootstrap-docs-owner"; do
+    [ -f "$f" ] || continue
+    IFS= read -r v < "$f" || v=""
+    v="${v#"${v%%[![:space:]]*}"}"   # trim leading
+    v="${v%"${v##*[![:space:]]}"}"   # trim trailing
+    case "$v" in
+      ""|*/*|.|..) continue ;;
+    esac
+    printf '%s' "$v"
+    return 0
+  done
+  return 0
+}
+
+resolve_docs_dir() {
+  local top="${1%/}" name="$2" owner new old
+  [ -n "$top" ] || return 0
+  owner="$(docs_owner "$top")"
+  if [ -n "$owner" ]; then
+    printf '%s' "$top/docs/$owner/bootstrap/$name"
+    return 0
+  fi
   new="$top/docs/bootstrap/$name"
   old="$top/docs/$name"
   if [ -d "$new" ]; then
@@ -85,12 +126,19 @@ resolve_docs_label() {
 #   send the check to the legacy branch and block the file that creates the new
 #   layout). Matching both is strictly safer: this predicate only ever widens
 #   fail-open exemptions on paths this plugin owns.
+#
+#   The declared-owner form is matched structurally rather than by reading the
+#   marker, because this predicate takes no <top>. What bounds the match is the
+#   literal `bootstrap/<name>/` segment — `docs/<owner>/src/thing.ts` and
+#   `docs/<owner>/<name>/…` both stay outside, so the widening is confined to
+#   paths this plugin owns under any owner.
 #   return : 0 when inside, 1 otherwise.
 docs_state_face() {
   local rel="$1" name="$2"
   case "$rel" in
     docs/"$name"/*|*/docs/"$name"/*) return 0 ;;
     docs/bootstrap/"$name"/*|*/docs/bootstrap/"$name"/*) return 0 ;;
+    docs/*/bootstrap/"$name"/*|*/docs/*/bootstrap/"$name"/*) return 0 ;;
   esac
   return 1
 }

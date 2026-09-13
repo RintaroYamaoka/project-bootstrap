@@ -5,6 +5,8 @@ description: AI / 人間が踏んだ事故を docs/bootstrap/incidents/ に記�
 
 # /incident — 事故記録 + memory への昇格
 
+> **置き場の解決:**`.bootstrap/docs-owner`(旧 `.bootstrap-docs-owner`)に 1 つの segment が宣言されている repo では、下記の `docs/bootstrap/<name>/` は **`docs/<owner>/bootstrap/<name>/`** と読み替える。宣言が無ければ従来どおり。判定の単一権威は `hooks/lib/resolve-docs.sh` の `resolve_docs_dir`。
+
 このスキルは、踏んだ事故を `docs/bootstrap/incidents/` に記録し、**再発防止を memory に昇格** させるためのもの。
 
 事故の記録だけでは効かない (= 次セッションで AI が読まない)。memory `feedback_*.md` / `reference_*.md` に転記して初めて、次回 session 開始時に load されて再発抑止する。

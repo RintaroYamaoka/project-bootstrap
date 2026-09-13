@@ -5,6 +5,8 @@ description: 実装が返ってきた作業指示書 (WO) を検収する skill�
 
 # accept — 検収し、上流の品質を測る
 
+> **置き場の解決:**`.bootstrap/docs-owner`(旧 `.bootstrap-docs-owner`)に 1 つの segment が宣言されている repo では、下記の `docs/bootstrap/<name>/` は **`docs/<owner>/bootstrap/<name>/`** と読み替える。宣言が無ければ従来どおり。判定の単一権威は `hooks/lib/resolve-docs.sh` の `resolve_docs_dir`。
+
 ## この skill が答える問い
 
 > **返ってきた物は、発注した物か。** そして

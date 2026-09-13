@@ -5,6 +5,8 @@ description: 上位1％の AI 駆動開発を個人の規律でなく構造と�
 
 # AI 駆動開発の規律
 
+> **置き場の解決:**`.bootstrap/docs-owner`(旧 `.bootstrap-docs-owner`)に 1 つの segment が宣言されている repo では、下記の `docs/bootstrap/<name>/` は **`docs/<owner>/bootstrap/<name>/`** と読み替える。宣言が無ければ従来どおり。判定の単一権威は `hooks/lib/resolve-docs.sh` の `resolve_docs_dir`。
+
 ## 強制の技芸 — 上位1％を構造で default 化する
 
 本プラグインは、AI の速度を壊さずに引き出しきる **上位1％の AI 駆動開発** を、個人の規律 (= 忘れられる) でなく **構造として default 化する**。**規律 = AI が常にそう振る舞うこと** — 明示コマンドで初めて発動する形式 (slash command / 明示 subagent 呼び出し) は advisory にすぎず忘れられる。だから hook で deterministic に強制し、違反を blocking する (Anthropic 公式 https://code.claude.com/docs/en/best-practices: "Hooks are deterministic ... Unlike CLAUDE.md instructions which are advisory.")。
