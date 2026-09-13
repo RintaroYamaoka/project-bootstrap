@@ -122,7 +122,7 @@ _vd_has_real_monitor() {
 # Fires iff the plan has >=1 kind=async row AND no monitor row with a real oracle. The caller
 # guarantees a source-face change already gated this (so docs-only branches are silent).
 _vd_async_blindspot_block() {
-  local plan="$1" cur="$2" vdir_rel="${3:-docs/bootstrap/verification}"
+  local plan="$1" cur="$2" vdir_rel="${3:-docs/bootstrap/verification}"   # 呼び出し側は resolve_docs_label を渡す。既定は宣言なしの canonical
   vplan_has_kind "$plan" async || return 0           # no async work declared → nothing to say
   _vd_has_real_monitor "$plan" && return 0           # a real monitor backs it → covered
   printf 'async / scheduled な検証行があるのに、外部オラクルを持つ monitor 行がありません (silent-skip の盲点):\n'
@@ -143,7 +143,7 @@ EOF
 # row. Same controlled-vocab keying as the async axis (never a prose scan). The caller
 # guarantees a source-face change already gated this (so docs-only branches are silent).
 _vd_heldout_blindspot_block() {
-  local plan="$1" cur="$2" vdir_rel="${3:-docs/bootstrap/verification}"
+  local plan="$1" cur="$2" vdir_rel="${3:-docs/bootstrap/verification}"   # 呼び出し側は resolve_docs_label を渡す。既定は宣言なしの canonical
   vplan_has_kind "$plan" gameable || return 0        # no gameable path declared → nothing to say
   vplan_has_kind "$plan" metamorphic && return 0     # a metamorphic mitigation backs it → covered
   printf 'オラクル捕獲 (テストゲーミング) の盲点: kind=gameable 行があるのに kind=metamorphic 行がありません:\n'

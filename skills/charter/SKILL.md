@@ -5,6 +5,8 @@ description: プロジェクトの不可逆な判断だけを 1 ファイル (do
 
 # charter — 不可逆だけを、1 ファイルに
 
+> **置き場の解決:**`.bootstrap/docs-owner`(旧 `.bootstrap-docs-owner`)に 1 つの segment が宣言されている repo では、下記の `docs/bootstrap/<name>/` は **`docs/<owner>/bootstrap/<name>/`** と読み替える。宣言が無ければ従来どおり。判定の単一権威は `hooks/lib/resolve-docs.sh` の `resolve_docs_dir`。
+
 ## この skill が答える問い
 
 > **後から覆すコストが高い判断は何か。それ以外は何を決めないでおくか。**

@@ -13,11 +13,12 @@
 # Contract:
 #   resolve_docs_dir <top> <name>
 #     - <top> empty                        => empty stdout (caller falls open as before)
-#     - new docs/bootstrap/<name> present   => that path            (new wins)
+#     - owner declared (.bootstrap/docs-owner) => docs/<owner>/bootstrap/<name>  (wins)
+#     - new docs/bootstrap/<name> present   => that path            (new wins over legacy)
 #     - only legacy docs/<name> present     => the legacy path      (backward compat)
-#     - neither present                     => the new canonical path, so absence
-#                                              checks behave identically to the old
-#                                              hardcoded path.
+#     - neither present                     => the canonical path for the declared
+#                                              layout, so absence checks behave
+#                                              identically to the old hardcoded path.
 #   resolve_docs_label <top> <name>  => the same answer, repo-relative (for messages)
 #   docs_state_face <rel> <name>     => 0 when rel is inside EITHER layout's <name>
 #   all always return 0 (docs_state_face returns 0/1 as its answer).
@@ -143,5 +144,92 @@ T="$(mk)"; mkdir -p "$T/docs/sprint"   # legacy on disk, writing the NEW layout
 test_case "new-layout state is exempt even while only the legacy dir exists"
 docs_state_face "docs/bootstrap/sprint/board.json" sprint && R=in || R=out
 assert_eq "in" "$R"
+
+# ------------------------------------------------- declared owner (per-member root)
+#
+# Why: an adopting repo may want the five bootstrap surfaces to live under one
+# member's own folder (docs/<handle>/bootstrap/<name>) instead of a shared
+# docs/bootstrap/. The consuming repo's own rule may be "a person writes only
+# under their own folder", which the shared root violates. The root is declared
+# by a marker so that PRESENCE is still the switch and no gate grows a parser.
+
+# 14. Declared owner wins over both existing layouts, and is used even before the
+#     directory exists (so the opt-in check and the label point at the right place).
+T="$(mk)"; mkdir -p "$T/.bootstrap"; printf 'RintaroYamaoka\n' > "$T/.bootstrap/docs-owner"
+test_case "declared owner: absent directory still resolves under the owner"
+assert_eq "$T/docs/RintaroYamaoka/bootstrap/sprint" "$(resolve_docs_dir "$T" sprint)"
+mkdir -p "$T/docs/RintaroYamaoka/bootstrap/sprint"
+test_case "declared owner: present directory resolves under the owner"
+assert_eq "$T/docs/RintaroYamaoka/bootstrap/sprint" "$(resolve_docs_dir "$T" sprint)"
+test_case "declared owner: the opt-in existence check passes"
+[ -d "$(resolve_docs_dir "$T" sprint)" ] && R=adopted || R=absent
+assert_eq "adopted" "$R"
+
+# 15. A declared owner outranks a shared docs/bootstrap/ that also exists — a repo
+#     mid-migration must not read two sources.
+T="$(mk)"; mkdir -p "$T/.bootstrap" "$T/docs/bootstrap/sprint" "$T/docs/me/bootstrap/sprint"
+printf 'me\n' > "$T/.bootstrap/docs-owner"
+test_case "declared owner outranks the shared new layout"
+assert_eq "$T/docs/me/bootstrap/sprint" "$(resolve_docs_dir "$T" sprint)"
+
+# 16. …and outranks the legacy flat layout too.
+T="$(mk)"; mkdir -p "$T/.bootstrap" "$T/docs/sprint" "$T/docs/me/bootstrap/sprint"
+printf 'me\n' > "$T/.bootstrap/docs-owner"
+test_case "declared owner outranks the legacy layout"
+assert_eq "$T/docs/me/bootstrap/sprint" "$(resolve_docs_dir "$T" sprint)"
+
+# 17. The legacy marker location works too (same fallback shape as resolve_marker).
+T="$(mk)"; printf 'me\n' > "$T/.bootstrap-docs-owner"
+test_case "legacy marker location is honoured"
+assert_eq "$T/docs/me/bootstrap/verification" "$(resolve_docs_dir "$T" verification)"
+
+# 18. An EMPTY or whitespace-only marker declares nothing. Falling back is the only
+#     safe reading: resolving to docs//bootstrap/<name> would send every gate to a
+#     path no one can create, silently disarming all five.
+for body in "" "   " $'\n'; do
+  T="$(mk)"; mkdir -p "$T/.bootstrap" "$T/docs/bootstrap/sprint"; printf '%s' "$body" > "$T/.bootstrap/docs-owner"
+  test_case "empty marker declares nothing (falls back to the shared layout)"
+  assert_eq "$T/docs/bootstrap/sprint" "$(resolve_docs_dir "$T" sprint)"
+done
+
+# 19. The owner is one path segment. A marker containing a slash or traversal must
+#     not escape docs/ — it declares nothing rather than resolving somewhere else.
+for body in "a/b" "../escape" "/abs" "."; do
+  T="$(mk)"; mkdir -p "$T/.bootstrap" "$T/docs/bootstrap/sprint"; printf '%s\n' "$body" > "$T/.bootstrap/docs-owner"
+  test_case "unsafe owner value declares nothing: $body"
+  assert_eq "$T/docs/bootstrap/sprint" "$(resolve_docs_dir "$T" sprint)"
+done
+
+# 20. Only the first line is read, and it is trimmed — an editor's trailing
+#     newline or stray spaces must not become part of the directory name.
+T="$(mk)"; mkdir -p "$T/.bootstrap"; printf '  me  \nsecond line\n' > "$T/.bootstrap/docs-owner"
+test_case "first line only, trimmed"
+assert_eq "$T/docs/me/bootstrap/handoffs" "$(resolve_docs_dir "$T" handoffs)"
+
+# 21. The label must name the declared path (a message pointing at
+#     docs/bootstrap/sprint sends the human to a directory that will never exist).
+T="$(mk)"; mkdir -p "$T/.bootstrap"; printf 'me\n' > "$T/.bootstrap/docs-owner"
+test_case "label follows the declared owner"
+assert_eq "docs/me/bootstrap/sprint" "$(resolve_docs_label "$T" sprint)"
+
+# 22. docs_state_face cannot consult a marker (it takes no <top>, and classifies
+#     paths before they exist — test 13). It therefore recognises the owner form
+#     structurally: the literal `bootstrap/<name>/` segment is what makes a path a
+#     state face, so the match stays bounded to paths this plugin owns.
+test_case "owner-form state is recognised"
+docs_state_face "docs/RintaroYamaoka/bootstrap/sprint/board.json" sprint && R=in || R=out
+assert_eq "in" "$R"
+test_case "nested owner-form state is recognised"
+docs_state_face "sub/docs/me/bootstrap/sprint/.gate" sprint && R=in || R=out
+assert_eq "in" "$R"
+test_case "owner form is still name-scoped"
+docs_state_face "docs/me/bootstrap/verification/feat_x.md" sprint && R=in || R=out
+assert_eq "out" "$R"
+test_case "a source path under docs/ is not a state face"
+docs_state_face "docs/me/src/thing.ts" sprint && R=in || R=out
+assert_eq "out" "$R"
+test_case "the owner directory itself without the bootstrap segment is not a state face"
+docs_state_face "docs/me/sprint/board.json" sprint && R=in || R=out
+assert_eq "out" "$R"
 
 finish

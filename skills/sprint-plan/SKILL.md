@@ -5,6 +5,8 @@ description: 1 つの feature を複数 Claude で安全に並列開発するた
 
 # /sprint-plan — feature を安全に並列分解する
 
+> **置き場の解決:**`.bootstrap/docs-owner`(旧 `.bootstrap-docs-owner`)に 1 つの segment が宣言されている repo では、下記の `docs/bootstrap/<name>/` は **`docs/<owner>/bootstrap/<name>/`** と読み替える。宣言が無ければ従来どおり。判定の単一権威は `hooks/lib/resolve-docs.sh` の `resolve_docs_dir`。
+
 複数の Claude (= 別ターミナル / 別 worktree) で 1 feature を並列開発するための計画を立て、worktree と lane を用意する skill。**実装はしない**。`/plan` の単一タスク版に対し、これは並列タスクの分解版。
 
 ## 大前提 — 並列は得なときだけ

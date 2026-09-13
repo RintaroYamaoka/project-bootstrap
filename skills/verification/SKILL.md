@@ -5,6 +5,8 @@ description: 動作テスト (behavioral verification) を「意図と跨いだ�
 
 # /verification — 動作テスト設計と共同記録
 
+> **置き場の解決:**`.bootstrap/docs-owner`(旧 `.bootstrap-docs-owner`)に 1 つの segment が宣言されている repo では、下記の `docs/bootstrap/<name>/` は **`docs/<owner>/bootstrap/<name>/`** と読み替える。宣言が無ければ従来どおり。判定の単一権威は `hooks/lib/resolve-docs.sh` の `resolve_docs_dir`。
+
 このスキルは **動作テスト (behavioral verification) の設計**を担う。`require-test-companion` (TDD hook) が「コードの正しさ」を関数単位で守るのに対し、こちらは**継ぎ目 (seam)** — cross-repo 契約 / 要件 / 「実物を見ずの完了」/ 環境 — の検証を設計する。残余の事故はここに移動している (ADR 0007、appo-followup の incident ログは 1 件もロジックバグでない)。
 
 ## 唯一の原則
