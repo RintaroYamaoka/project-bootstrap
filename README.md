@@ -83,8 +83,11 @@ scripts/setup-server-enforcement.sh           # 保護設定を適用 (下記「
 | `docs/bootstrap/sprint/` (ディレクトリ) | 並列開発フロー一式の有効化 | 採用マーカー |
 | `docs/bootstrap/verification/` (ディレクトリ) | 動作テスト計画の merge gate | 採用マーカー |
 | `docs/bootstrap/commission/` (ディレクトリ) | 上流工程 (発注 → 検収) 一式の有効化 | 採用マーカー。`templates/docs/bootstrap/commission/` を丸ごとコピー |
+| `.bootstrap/docs-owner` | 上の 3 ディレクトリ (+ `handoffs` / `incidents`) の置き場を 1 人のメンバーのフォルダ配下へ寄せる | 1 行・1 segment (例 `RintaroYamaoka`) → `docs/<owner>/bootstrap/<name>/` |
 
 > **後方互換 (本 README で唯一の注記)**: マーカーの解決は単一権威 `hooks/lib/resolve-marker.sh` が担い、`.bootstrap/<name>` (新フォルダ) を優先し旧 flat path `.bootstrap-<name>` (repo root 直下) に fallback する。両方在れば新が勝つ。既存採用 repo は移行不要。本 README / skills 内の表記は新フォルダ形に統一してある。
+
+> **置き場の解決**: docs 側の解決は単一権威 `hooks/lib/resolve-docs.sh` が担い、**宣言された owner → `docs/bootstrap/<name>` → 旧 flat `docs/<name>`** の 3 段。`.bootstrap/docs-owner` が無ければ挙動は従来と同一なので、既存採用 repo は移行不要。採用側が「人は自分のフォルダの外に文書を作らない」を規則にしている repo 向けの選択肢で、宣言は 1 つだけ (複数 owner は持てない)。空・空白のみ・`/` を含む・`.` / `..` は「宣言なし」に落ちる。
 
 ### 知っておくと得する仕組み (見落としがちな機能)
 
