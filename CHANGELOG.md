@@ -7,6 +7,8 @@
 
 ## [Unreleased]
 
+## [0.38.0] - 2026-09-13
+
 ### Added
 
 - **五面の置き場を「1 人のメンバーのフォルダ配下」に寄せられるようにした**(`.bootstrap/docs-owner`)。`sprint` / `verification` / `commission` / `handoffs` / `incidents` を `docs/<owner>/bootstrap/<name>/` に置ける。
